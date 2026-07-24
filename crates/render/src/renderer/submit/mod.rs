@@ -120,7 +120,7 @@ impl Renderer {
             Some(DebugPipeline::LightDiffuse) | Some(DebugPipeline::LightSpecular)
         ) || debug_pipeline.is_some_and(|p| p.is_shaded())
         {
-            self.submit_lighting(cmd, view, geo.as_ref());
+            self.submit_lighting(cmd, view, geo.as_ref(), debug_pipeline);
         }
 
         self.submit_atmosphere(cmd, view);
@@ -169,13 +169,10 @@ impl Renderer {
             if let Some(debug_pipeline) = debug_pipeline {
                 let p = &self.globals.pipelines;
                 let technique = match debug_pipeline {
-                    DebugPipeline::GlobalLightingShading => &p.global_lighting_and_shading,
-                    DebugPipeline::GlobalLightingShadingNoAtm => {
-                        view.atmosphere.clear_lookup(cmd, &self.surfaces.read());
-                        &p.global_lighting_and_shading
-                    }
-                    DebugPipeline::DeferredShading => &p.deferred_shading,
-                    DebugPipeline::DeferredShadingNoAtm => &p.deferred_shading_no_atm,
+                    DebugPipeline::Shaded => &p.deferred_shading,
+                    DebugPipeline::ShadedNoAtm => &p.deferred_shading_no_atm,
+                    DebugPipeline::ShadedNoSun => &p.deferred_shading,
+                    DebugPipeline::ShadingOnly => &p.deferred_shading_no_atm,
                     DebugPipeline::Albedo => &p.debug_source_color,
                     DebugPipeline::Smoothness => &p.debug_specular_smoothness,
                     DebugPipeline::Metalness => &p.debug_metalness,
@@ -189,7 +186,7 @@ impl Renderer {
                     DebugPipeline::LightDiffuse => &p.debug_diffuse_light,
                     DebugPipeline::LightSpecular => &p.debug_specular_light,
 
-                    DebugPipeline::Overdraw => &p.global_lighting_and_shading,
+                    DebugPipeline::Overdraw => &p.deferred_shading,
                 };
 
                 self.execute_global_pipeline(cmd, technique, &format!("{debug_pipeline:?}"));
@@ -520,6 +517,7 @@ impl Renderer {
                 * ext.get_global_channel_by_name("down_ambient_intensity").x,
             unk90: ext.get_global_channel_by_name("up_ambient_sharpness").x,
             unk94: ext.get_global_channel_by_name("down_ambient_sharpness").x,
+            unka0: 0.20,
             unkb0: vec4(0.01, 0.01, -0.5, -0.5),
             unkc0: vec4(0.02, -2.0, 0.0, 0.0),
             unkd0: vec4(0.00333, -2.33333, 0.00, 0.00),
@@ -687,6 +685,8 @@ impl Renderer {
         ext.shadow_mask.unk00 = view.shadow_mask.into();
         // ext.shadow_mask.unk08 = view.lighting.ssao.into();
         ext.shadow_mask.unk10 = view.gbuffers.uber_depth_half.into();
+        ext.shadow_mask.unk20 = view.surfaces.get(view.shadow_mask).resolution_with_recip();
+
         *ext.atmosphere = externs::Atmosphere {
             time_of_day_normalized: misc.time_of_day,
             unk80: misc.atmosphere.atmosphere_lookup_vertical.clone().into(),
@@ -786,10 +786,10 @@ impl Renderer {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DebugPipeline {
-    GlobalLightingShading,
-    GlobalLightingShadingNoAtm,
-    DeferredShading,
-    DeferredShadingNoAtm,
+    Shaded,
+    ShadedNoAtm,
+    ShadedNoSun,
+    ShadingOnly,
 
     Albedo,
     Smoothness,
@@ -812,18 +812,19 @@ impl DebugPipeline {
     pub fn is_shaded(&self) -> bool {
         matches!(
             self,
-            DebugPipeline::GlobalLightingShading
-                | DebugPipeline::GlobalLightingShadingNoAtm
-                | DebugPipeline::DeferredShading
-                | DebugPipeline::DeferredShadingNoAtm
+            DebugPipeline::Shaded
+                | DebugPipeline::ShadedNoAtm
+                | DebugPipeline::ShadedNoSun
+                | DebugPipeline::ShadingOnly
         )
     }
 
     pub fn has_atmosphere(&self) -> bool {
-        matches!(
-            self,
-            DebugPipeline::GlobalLightingShading | DebugPipeline::DeferredShading
-        )
+        matches!(self, DebugPipeline::Shaded | DebugPipeline::ShadedNoSun)
+    }
+
+    pub fn has_sun(&self) -> bool {
+        matches!(self, DebugPipeline::Shaded | DebugPipeline::ShadedNoAtm)
     }
 
     pub fn aa_enabled(&self) -> bool {

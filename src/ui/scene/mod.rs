@@ -1239,10 +1239,10 @@ impl From<RenderMode> for Option<DebugPipeline> {
     fn from(val: RenderMode) -> Self {
         match val {
             RenderMode::Lookdev => None,
-            RenderMode::Shaded => Some(DebugPipeline::GlobalLightingShading),
-            RenderMode::ShadedNoAtm => Some(DebugPipeline::GlobalLightingShadingNoAtm),
-            RenderMode::ShadedNoSun => Some(DebugPipeline::DeferredShading),
-            RenderMode::ShadingOnly => Some(DebugPipeline::DeferredShadingNoAtm),
+            RenderMode::Shaded => Some(DebugPipeline::Shaded),
+            RenderMode::ShadedNoAtm => Some(DebugPipeline::ShadedNoAtm),
+            RenderMode::ShadedNoSun => Some(DebugPipeline::ShadedNoSun),
+            RenderMode::ShadingOnly => Some(DebugPipeline::ShadingOnly),
             // RenderMode::Matcap => Some(DebugPipeline::Matcap),
             RenderMode::Albedo => Some(DebugPipeline::Albedo),
             RenderMode::Smoothness => Some(DebugPipeline::Smoothness),

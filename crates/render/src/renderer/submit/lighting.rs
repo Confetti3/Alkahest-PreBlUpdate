@@ -9,7 +9,7 @@ use super::Renderer;
 use crate::{
     cmd_event_span,
     gpu::command_list::CommandList,
-    renderer::submit::geometry::GeometryCommandLists,
+    renderer::submit::{DebugPipeline, geometry::GeometryCommandLists},
     tfx::{
         externs,
         scope::CascadeScope,
@@ -23,6 +23,7 @@ impl Renderer {
         cmd: &mut CommandList,
         view: &MainView,
         geo: Option<&GeometryCommandLists>,
+        debug_pipeline: Option<DebugPipeline>,
     ) {
         self.compute_shadow_map(cmd, view);
 
@@ -85,7 +86,19 @@ impl Renderer {
 
             view.lighting
                 .bind_diffuse_specular(cmd, &view.surfaces, &view.gbuffers);
+
+            cmd.state = PipelineState::new(Some(2), Some(0), Some(0), Some(0));
+
+            if debug_pipeline.is_some_and(|d| d.has_sun()) {
+                self.execute_global_pipeline(
+                    cmd,
+                    &self.globals.pipelines.global_lighting,
+                    "global_lighting",
+                );
+            }
+
             cmd.state = PipelineState::new(Some(2), Some(30), Some(2), Some(2));
+
             if let Some(geo) = geo {
                 let (sync_job, set) = &geo.lighting;
                 sync_job.wait();
