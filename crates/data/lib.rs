@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
 pub mod activity;
+pub mod cui;
 pub mod hash;
 pub mod map;
 pub mod pattern;
