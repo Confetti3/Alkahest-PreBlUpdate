@@ -712,8 +712,8 @@ impl Scene {
 
         if let Some((_, directions)) = self.world.query::<&SunDirections>().iter().next() {
             let time_of_day_half = self.time_of_day / 2.0;
-            let a = time_of_day_half.floor() as usize;
-            let b = time_of_day_half.ceil() as usize;
+            let a = time_of_day_half.floor() as usize % 1800;
+            let b = time_of_day_half.ceil() as usize % 1800;
             let t = time_of_day_half.fract();
 
             let angles = &directions.sun_directions;
