@@ -33,9 +33,9 @@ fn main() -> anyhow::Result<()> {
 
     println!("Wordlist loaded");
 
-    // let data = package_manager().read_tag(0x80CF5634)?;
-    // let data = package_manager().read_tag(0x80D857A6)?;
-    let data = package_manager().read_tag(0x80D91630)?;
+    // let data = package_manager().read_tag(0x80CFCA60)?;
+    let data = package_manager().read_tag(0x8108E30A)?;
+    // let data = package_manager().read_tag(0x80D91630)?;
     let mut f = Cursor::new(data);
     let component: SComponent = TigerReadable::read_ds(&mut f)?;
     // println!("{:#?}", component);
@@ -51,16 +51,16 @@ fn main() -> anyhow::Result<()> {
 
     let globals = SUnk80808179::read_ds(&mut f)?;
 
-    println!("unk158: {}", globals.unk1c8.len());
-    println!("unk168: {}", globals.unk1d8.len());
+    println!("unk158: {}", globals.m_flow_nodes.len());
+    println!("unk168: {}", globals.m_work_nodes.len());
     // println!("unk178: {}", globals.unk1e8.len());
     print_node_recursive(
         &mut f,
         &wordlist,
         (0, 0),
-        &globals.unk1c8,
-        &globals.unk1d8,
-        &globals.unk1f8,
+        &globals.m_flow_nodes,
+        &globals.m_work_nodes,
+        &globals.m_channel_providers,
         0,
     );
 
@@ -134,8 +134,8 @@ fn print_node_recursive<F: Read + Seek>(
             //     s.unk1c,
             //     s.other_index
             // );
-            // println!("{indent_str}\tBytecode: {:02X?}", &s.bytecode);
-            // println!("{indent_str}\tConstants: {:?}", s.bytecode_constants);
+            println!("{indent_str}\tBytecode: {:02X?}", s.bytecode);
+            println!("{indent_str}\tConstants: {:?}", s.bytecode_constants);
             // println!("{indent_str}\tMisc: {}/{}", s.unk50, s.unk58);
             // if let Ok(dis) = sequencer::disassemble(&s.bytecode) {
             //     println!("{indent_str}\tDisassembly:");
@@ -178,9 +178,9 @@ fn print_node_recursive<F: Read + Seek>(
         //         printshit(f, *c, first, second, third, indent + 1);
         //     }
         // }
-        // SUnk808091f1Variant::SSequenceEmbeddedParticleSystem(s) => {
-        //     print_node("EmbeddedParticleSystem", &s.base);
-        // }
+        SUnk808091f1Variant::SSequenceEmbeddedParticleSystem(s) => {
+            print_node("EmbeddedParticleSystem(Gpu)", &s.base);
+        }
         // dawn_data::entity::SUnk80809e6Variant::SSequenceEmbeddedScreenAreaFx(s) => {
         //     print_node("EmbeddedScreenAreaFx", &s.base);
         // }

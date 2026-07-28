@@ -19,7 +19,10 @@ macro_rules! static_feature_h {
 }
 
 fn main() -> io::Result<()> {
-    let wwise_sdk = PathBuf::from(env::var("WWISESDK").expect("env variable WWISESDK not found"));
+    let Ok(wwise_sdk) = env::var("WWISESDK") else {
+        return Ok(());
+    };
+    let wwise_sdk = PathBuf::from(wwise_sdk);
 
     // --- RERUN CONFIG
     println!("cargo:rerun-if-changed=c/ak.h");

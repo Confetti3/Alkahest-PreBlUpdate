@@ -5,12 +5,9 @@ use std::{
 
 use ahash::HashMap;
 use alkahest_data::{
+    self,
     cui::{SCuiScreen, S80803C6F},
     hash::fnv1,
-    pattern::SComponent,
-    tfx::sequencer::{
-        SSequenceNodeBase, SUnk8080816f, SUnk80808179, SUnk808091f1, SUnk808091f1Variant,
-    },
 };
 use chroma_dbg::{ChromaConfig, ChromaDebug};
 use tiger_parse::{PackageManagerExt, TigerReadable};

@@ -36,30 +36,24 @@ pub struct S80803C6F {
     pub unk28: Vec<()>,
     pub components: Vec<SCuiComponent>,
     pub overlays: Vec<SCuiOverlay>,
-    pub unk58: Vec<S80803B10>,
+    pub binding_set: Vec<S80803B10>,
     pub unk68: Vec<()>,
     pub unk78: Vec<S80803D8B>,
-    pub prop_values_bool: VecPointer<bool>,
-    pub prop_values_int: VecPointer<i32>,
-    pub unka8: VecPointer<S80803ABC>,
-    pub prop_values_float1: VecPointer<S80803ABB>,
+    // value_pool
+    pub bool_values: VecPointer<bool>,
+    pub int32_values: VecPointer<i32>,
+    pub uint64_values: VecPointer<u64>,
+    pub real32_values: VecPointer<S80803ABB>,
     pub prop_values_float2: VecPointer<S80803ABB>,
-    pub prop_values_vec4: VecPointer<Vec4>,
-    pub prop_values_stringhash: VecPointer<S80803AB9>,
-    pub unkf8: VecPointer<()>,
-    pub prop_values_tagref: VecPointer<S8080AF04>,
-    pub unk118: VecPointer<S80803AB2>,
-    pub unk128: Vec<()>,
-    pub unk138: Vec<()>,
-    pub unk148: Vec<S80803AAF>,
+    pub vector4_values: VecPointer<Vec4>,
+    pub string_hash_values: VecPointer<S80803AB9>,
+    pub string_reference_values: VecPointer<()>,
+    pub handle_values: VecPointer<S8080AF04>,
+    pub component_values: VecPointer<S80803AB2>,
+    pub object_values: Vec<()>,
+    pub unk138_unlock_expression_values: Vec<()>,
+    pub owner_pointer_values: Vec<S80803AAF>,
     pub unk158: Vec<()>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-#[tiger_type(id = 0x80803ABC)]
-pub struct S80803ABC {
-    pub unk0: u32,
-    pub unk4: u32,
 }
 
 #[derive(Debug)]

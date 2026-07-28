@@ -475,10 +475,14 @@ pub fn spawn_pattern_from_header(
                 f.seek(SeekFrom::Start(component.definition.offset))?;
 
                 let globals = SUnk80808179::read_ds(&mut f)?;
-                for g in globals.unk1c8.iter().chain(globals.unk1d8.iter()) {
+                for g in globals
+                    .m_flow_nodes
+                    .iter()
+                    .chain(globals.m_work_nodes.iter())
+                {
                     match &*g.unk18 {
                         SUnk808091f1Variant::SSequenceGlobalChannel(c) => {
-                            let r = &globals.unk1f8[c.other_index as usize];
+                            let r = &globals.m_channel_providers[c.other_index as usize];
                             world.spawn((GlobalChannelExpression {
                                 channel_id: r.unk30,
                                 bytecode: c.bytecode.clone(),

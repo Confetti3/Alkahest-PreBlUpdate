@@ -8,11 +8,11 @@ use crate::tag::WideHash;
 #[tiger_type(id = 0x80808179, size = 0x220)]
 pub struct SUnk80808179 {
     #[tiger(offset = 0x1C8)]
-    pub unk1c8: Vec<SUnk808091f1>,
-    pub unk1d8: Vec<SUnk808091f1>,
+    pub m_flow_nodes: Vec<SUnk808091f1>,
+    pub m_work_nodes: Vec<SUnk808091f1>,
     // pub unk1e8: Vec<SUnk808084df>,
     #[tiger(offset = 0x1F8)]
-    pub unk1f8: Vec<SUnk8080816f>,
+    pub m_channel_providers: Vec<SUnk8080816f>,
 }
 
 #[derive(Debug, Clone)]
@@ -45,13 +45,13 @@ tiger_variant_enum! {
         SUnk808091dd,
         SSequenceLight,
         SSequenceLensFlare,
-        // SSequenceEmbeddedParticleSystem,
+        SSequenceEmbeddedParticleSystem,
         SSequenceAudioEvent
     }
 }
 
 #[derive(Debug, Clone)]
-#[tiger_type(id = 0x808091d1, size = 0x60)]
+#[tiger_type(id = 0x808091d1, size = 0x70)]
 pub struct SSequenceGlobalChannel {
     pub base: SSequenceNodeBase,
     pub unk20: u32,
