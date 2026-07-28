@@ -1,4 +1,4 @@
-use std::{cell::RefCell, time::Instant};
+use std::{sync::LazyLock, time::Instant};
 
 use egui::*;
 
@@ -76,18 +76,14 @@ impl UiExt for Ui {
     }
 }
 
+static START_TIME: LazyLock<Instant> = LazyLock::new(Instant::now);
+
 pub fn spinner_image() -> (
     &'static ImageSource<'static>,
     &'static ImageSource<'static>,
     f32,
 ) {
-    thread_local! {
-        static START_TIME: RefCell<Instant> = RefCell::new(Instant::now());
-    }
-
-    let time = START_TIME
-        .with(|start_time| start_time.borrow().elapsed())
-        .as_secs_f32();
+    let time = START_TIME.elapsed().as_secs_f32();
 
     const IMG0: ImageSource = include_image!("../../assets/ui/load0.png");
     const IMG1: ImageSource = include_image!("../../assets/ui/load1.png");

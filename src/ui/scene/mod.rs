@@ -344,7 +344,9 @@ impl Scene {
                 self.sun_light_angle = self.sun_light_angle.rem_euclid(360.0);
             }
 
-            self.render(delta_time, resolution);
+            subsecond::call(|| {
+                self.render(delta_time, resolution);
+            });
         });
 
         #[cfg(feature = "wwise")]
@@ -769,7 +771,8 @@ impl Scene {
                     "cubemap_relighting_sky_intensity",
                     Vec4::splat(1.0 - distance_to_night),
                 );
-                ext.unk_sequencer_values[0] = Vec4::splat((1.0 - distance_to_night) * 0.725);
+
+                ext.unk_sequencer_values[0] = Vec4::splat(self.time_of_day / 3600.0);
             }
 
             if self.automate_channels {

@@ -35,7 +35,7 @@ profiling = "1"
 rayon = "1.11.0"
 serde = { version = "1.0", features = ["derive"] }
 sdl3 = { version = "0.16", features = ["raw-window-handle"] }
-subsecond = "0.7.2"
+subsecond = "0.7.9"
 tiger-parse = { version = "0.7.1", git = "https://github.com/v4nguard/tiger-parse.git", features = [
     "check_types",
     "check_types_strict",
@@ -106,7 +106,7 @@ hecs = "0.10.5"
 rayon.workspace = true
 chroma-dbg = "0.2.1"
 subsecond.workspace = true
-dioxus-devtools = "0.7.2"
+dioxus-devtools = "0.7.9"
 serde.workspace = true
 toml = "0.9.10"
 inline_tweak = "1.2.2"

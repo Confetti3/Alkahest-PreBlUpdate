@@ -3,22 +3,17 @@ use std::{
     fs::File,
     io::Write as _,
     panic::PanicHookInfo,
-    path::PathBuf,
     sync::{Arc, OnceLock},
-    time::SystemTime,
 };
 
-use breakpad_handler::BreakpadHandler;
 use lazy_static::lazy_static;
 use parking_lot::Mutex;
-
-use crate::cache_relative_path;
 
 lazy_static! {
     static ref PANIC_FILE: Arc<Mutex<Option<File>>> = Arc::new(Mutex::new(None));
     static ref PANIC_LOCK: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
     static ref PANIC_HEADER: OnceLock<String> = OnceLock::new();
-    static ref BREAKPAD_HANDLER: OnceLock<BreakpadHandler> = OnceLock::new();
+    // static ref BREAKPAD_HANDLER: OnceLock<BreakpadHandler> = OnceLock::new();
     static ref PANIC_HOOK: color_eyre::config::PanicHook =
         color_eyre::config::HookBuilder::new().into_hooks().0;
 }
@@ -65,74 +60,74 @@ pub fn setup_panic_hook() {
         // std::process::exit(-1);
     }));
 
-    if !cfg!(debug_assertions) {
-        install_breakpad();
-    }
+    // if !cfg!(debug_assertions) {
+    //     install_breakpad();
+    // }
 }
 
-fn install_breakpad() {
-    let crashes_dir = cache_relative_path("crashes");
-    if !std::fs::exists(&crashes_dir).unwrap_or(false) {
-        if let Err(e) = std::fs::create_dir(&crashes_dir) {
-            eprintln!("Failed to create crash dump directory: {e}");
-        }
-    } else {
-        // Clean up dumps, keep only the last 5
-        if let Ok(dir) = std::fs::read_dir(&crashes_dir) {
-            // Get all .dmp files
-            let mut dumps: Vec<_> = dir
-                .filter_map(|entry| {
-                    entry.ok().and_then(|entry| {
-                        entry
-                            .file_name()
-                            .into_string()
-                            .ok()
-                            .and_then(|name| name.strip_suffix(".dmp").map(|_| entry))
-                    })
-                })
-                .collect();
-            // Sort by date ascending
-            dumps.sort_by_key(|entry| {
-                entry
-                    .metadata()
-                    .ok()
-                    .and_then(|m| m.modified().ok())
-                    .unwrap_or(SystemTime::UNIX_EPOCH)
-            });
-            // Reverse to descending order
-            dumps.reverse();
-            dumps.iter().skip(5).for_each(|entry| {
-                if let Err(e) = std::fs::remove_file(entry.path()) {
-                    eprintln!("Failed to remove old crash dump: {e}");
-                }
-            });
-        }
-    }
+// fn install_breakpad() {
+//     let crashes_dir = cache_relative_path("crashes");
+//     if !std::fs::exists(&crashes_dir).unwrap_or(false) {
+//         if let Err(e) = std::fs::create_dir(&crashes_dir) {
+//             eprintln!("Failed to create crash dump directory: {e}");
+//         }
+//     } else {
+//         // Clean up dumps, keep only the last 5
+//         if let Ok(dir) = std::fs::read_dir(&crashes_dir) {
+//             // Get all .dmp files
+//             let mut dumps: Vec<_> = dir
+//                 .filter_map(|entry| {
+//                     entry.ok().and_then(|entry| {
+//                         entry
+//                             .file_name()
+//                             .into_string()
+//                             .ok()
+//                             .and_then(|name| name.strip_suffix(".dmp").map(|_| entry))
+//                     })
+//                 })
+//                 .collect();
+//             // Sort by date ascending
+//             dumps.sort_by_key(|entry| {
+//                 entry
+//                     .metadata()
+//                     .ok()
+//                     .and_then(|m| m.modified().ok())
+//                     .unwrap_or(SystemTime::UNIX_EPOCH)
+//             });
+//             // Reverse to descending order
+//             dumps.reverse();
+//             dumps.iter().skip(5).for_each(|entry| {
+//                 if let Err(e) = std::fs::remove_file(entry.path()) {
+//                     eprintln!("Failed to remove old crash dump: {e}");
+//                 }
+//             });
+//         }
+//     }
 
-    // TODO(cohae): Prevent handler from triggering twice/on panic
-    let breakpad = BreakpadHandler::attach(
-        &crashes_dir,
-        breakpad_handler::InstallOptions::BothHandlers,
-        Box::new(|path: PathBuf| {
-            eprintln!("Crash dump written to: {}", path.display());
-            if let Err(e) = native_dialog::MessageDialog::new()
-                .set_type(native_dialog::MessageType::Error)
-                .set_title("Alkahest crashed!")
-                .set_text(&format!(
-                    "Alkahest encountered an unrecoverable error and must close.\n\nA crash dump \
-                     has been written to:\n{}\nPlease report this issue to the developers.",
-                    path.display()
-                ))
-                .show_alert()
-            {
-                eprintln!("Failed to show error dialog: {e}")
-            }
-        }),
-    )
-    .expect("Failed to install breakpad handler");
+//     // TODO(cohae): Prevent handler from triggering twice/on panic
+//     let breakpad = BreakpadHandler::attach(
+//         &crashes_dir,
+//         breakpad_handler::InstallOptions::BothHandlers,
+//         Box::new(|path: PathBuf| {
+//             eprintln!("Crash dump written to: {}", path.display());
+//             if let Err(e) = native_dialog::MessageDialog::new()
+//                 .set_type(native_dialog::MessageType::Error)
+//                 .set_title("Alkahest crashed!")
+//                 .set_text(&format!(
+//                     "Alkahest encountered an unrecoverable error and must close.\n\nA crash dump \
+//                      has been written to:\n{}\nPlease report this issue to the developers.",
+//                     path.display()
+//                 ))
+//                 .show_alert()
+//             {
+//                 eprintln!("Failed to show error dialog: {e}")
+//             }
+//         }),
+//     )
+//     .expect("Failed to install breakpad handler");
 
-    BREAKPAD_HANDLER.set(breakpad).ok();
-}
+//     BREAKPAD_HANDLER.set(breakpad).ok();
+// }
 
 fn write_panic_to_file(info: &PanicHookInfo<'_>, bt: Backtrace) -> std::io::Result<()> {
     let panic_log_path = if cfg!(target_os = "windows") {
