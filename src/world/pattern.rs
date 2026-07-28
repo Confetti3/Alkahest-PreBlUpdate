@@ -8,7 +8,7 @@ use std::{
 
 use alkahest_data::{
     map::{ComponentData, SComponentDataListPtr},
-    pattern::{S8080841B, SObjectChannelComponent, SPattern},
+    pattern::{S8080841B, SComponent, SObjectChannelComponent, SPattern},
     tfx::{
         TfxFeatureRenderer,
         atmosphere::SUnk80808ac8Variant,
@@ -78,14 +78,14 @@ pub fn spawn_pattern_from_header(
         world.insert_one(entity, transform)?;
     }
 
-    for e in &header.components {
-        let component = &e.unk0;
+    for component_ref in &header.components {
+        let component: SComponent = package_manager().read_tag_struct(component_ref.component)?;
 
         macro_rules! add_unknown_component {
             ($name:expr) => {
                 let component = UnimplementedTigerComponent {
                     class_id: component.default_instance.resource_type,
-                    hash: component.taghash(),
+                    hash: component_ref.component,
                     name: None,
                 };
                 if let Ok(mut components) = world.get::<&mut UnimplementedTigerComponents>(entity) {
@@ -128,7 +128,7 @@ pub fn spawn_pattern_from_header(
 
         match component.default_instance.resource_type {
             0x80806d8a => {
-                let mut cur = Cursor::new(package_manager().read_tag(component.taghash())?);
+                let mut cur = Cursor::new(package_manager().read_tag(component_ref.component)?);
                 cur.seek(SeekFrom::Start(component.definition.offset))?;
                 let model: SDynamicModelComponent = TigerReadable::read_ds(&mut cur)?;
 
@@ -159,7 +159,7 @@ pub fn spawn_pattern_from_header(
                 world.insert_one(entity, DynamicRenderObject::new(obj))?;
             }
             0x80808412 => {
-                let mut cur = Cursor::new(package_manager().read_tag(component.taghash())?);
+                let mut cur = Cursor::new(package_manager().read_tag(component_ref.component)?);
                 cur.seek(SeekFrom::Start(component.definition.offset + 0x88))?;
                 let array: Vec<S8080841B> = TigerReadable::read_ds(&mut cur)?;
 
@@ -171,7 +171,7 @@ pub fn spawn_pattern_from_header(
                                  {:?}",
                                 v2.entity,
                                 v2.entity.hash32(),
-                                component.taghash(),
+                                component_ref.component,
                                 e
                             );
                         }
@@ -179,7 +179,7 @@ pub fn spawn_pattern_from_header(
                 }
             }
             0x808095B1 => {
-                let mut cur = Cursor::new(package_manager().read_tag(component.taghash())?);
+                let mut cur = Cursor::new(package_manager().read_tag(component_ref.component)?);
                 cur.seek(SeekFrom::Start(component.definition.offset + 0x10))?;
                 let data = SObjectChannelComponent::read_ds(&mut cur)?;
                 let mut channels = ObjectChannels(
@@ -471,7 +471,7 @@ pub fn spawn_pattern_from_header(
                 }
             }
             0x80809479 => {
-                let mut f = Cursor::new(package_manager().read_tag(component.taghash())?);
+                let mut f = Cursor::new(package_manager().read_tag(component_ref.component)?);
                 f.seek(SeekFrom::Start(component.definition.offset))?;
 
                 let globals = SUnk80808179::read_ds(&mut f)?;
@@ -497,7 +497,7 @@ pub fn spawn_pattern_from_header(
                             //     "Unknown sequence class: {:08X} at offset: {:#X} in {}",
                             //     class,
                             //     offset,
-                            //     component.taghash()
+                            //     entity_data.component
                             // );
                         }
                         _ => {
@@ -593,7 +593,7 @@ pub fn spawn_pattern_from_header(
                     component.default_instance.resource_type,
                     data.class_id(),
                     data.class_name(),
-                    component.taghash()
+                    component_ref.component
                 );
                 if let Some(map_data) = map_data_list {
                     debug!(

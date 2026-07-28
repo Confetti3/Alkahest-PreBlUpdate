@@ -221,8 +221,8 @@ fn get_num_entities_with_models(pkg_id: u16) -> usize {
             continue;
         };
 
-        for c in pattern.components {
-            if c.unk0.default_instance.resource_type == 0x80806d8a {
+        for c in pattern.m_interface_map.m_accessor_list {
+            if c.class_id == 0x80806d8a {
                 num_models += 1;
                 break;
             }
