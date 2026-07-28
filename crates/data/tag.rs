@@ -1,14 +1,14 @@
 use std::fmt::{Debug, Display, Formatter};
 
-use tiger_parse::{PackageManagerExt, TigerReadable};
+use tiger_parse::{PackageManagerExt, TigerReadable, TigerReader};
 use tiger_pkg::{package_manager, TagHash, TagHash64};
 
 #[derive(Clone)]
 pub struct Tag<T: TigerReadable>(pub T, TagHash);
 
 impl<T: TigerReadable> TigerReadable for Tag<T> {
-    fn read_ds_endian<R: std::io::prelude::Read + std::io::prelude::Seek>(
-        reader: &mut R,
+    fn read_ds_endian(
+        reader: &mut dyn TigerReader,
         endian: tiger_parse::Endian,
     ) -> tiger_parse::Result<Self> {
         let tag = TagHash::read_ds_endian(reader, endian)?;
@@ -50,8 +50,8 @@ impl<T: TigerReadable + Debug> Debug for Tag<T> {
 pub struct OptionalTag<T: TigerReadable>(pub Option<T>, TagHash);
 
 impl<T: TigerReadable> TigerReadable for OptionalTag<T> {
-    fn read_ds_endian<R: std::io::prelude::Read + std::io::prelude::Seek>(
-        reader: &mut R,
+    fn read_ds_endian(
+        reader: &mut dyn TigerReader,
         endian: tiger_parse::Endian,
     ) -> tiger_parse::Result<Self> {
         let tag = TagHash::read_ds_endian(reader, endian)?;
@@ -178,8 +178,8 @@ impl From<TagHash64> for WideHash {
 }
 
 impl TigerReadable for WideHash {
-    fn read_ds_endian<R: std::io::prelude::Read + std::io::prelude::Seek>(
-        reader: &mut R,
+    fn read_ds_endian(
+        reader: &mut dyn TigerReader,
         endian: tiger_parse::Endian,
     ) -> tiger_parse::Result<Self> {
         let hash32: TagHash = TigerReadable::read_ds_endian(reader, endian)?;
@@ -200,8 +200,8 @@ impl TigerReadable for WideHash {
 pub struct WideTag<T: TigerReadable>(pub T, pub TagHash);
 
 impl<T: TigerReadable> TigerReadable for WideTag<T> {
-    fn read_ds_endian<R: std::io::prelude::Read + std::io::prelude::Seek>(
-        reader: &mut R,
+    fn read_ds_endian(
+        reader: &mut dyn TigerReader,
         endian: tiger_parse::Endian,
     ) -> tiger_parse::Result<Self> {
         let tag = WideHash::read_ds_endian(reader, endian)?;

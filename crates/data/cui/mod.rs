@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use glam::Vec4;
 use tiger_parse::{
     tiger_type, tiger_variant_enum, FnvHash, OptionalVariantPointer, Padding, Pointer,
-    TigerReadable,
+    TigerReadable, TigerReader,
 };
 use tiger_pkg::TagHash;
 
@@ -284,8 +284,8 @@ impl<T> VecPointer<T> {
 impl<T: TigerReadable> TigerReadable for VecPointer<T> {
     const SIZE: usize = 16;
 
-    fn read_ds_endian<R: std::io::Read + std::io::Seek>(
-        reader: &mut R,
+    fn read_ds_endian(
+        reader: &mut dyn TigerReader,
         endian: tiger_parse::Endian,
     ) -> tiger_parse::Result<Self> {
         reader.seek(std::io::SeekFrom::Current(8))?;

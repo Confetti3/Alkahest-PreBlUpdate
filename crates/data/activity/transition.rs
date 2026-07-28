@@ -1,6 +1,6 @@
 use glam::Vec4;
 use int_enum::IntEnum;
-use tiger_parse::{tiger_type, FnvHash, NullString, Padding, Pointer, TigerReadable};
+use tiger_parse::{tiger_type, FnvHash, NullString, Padding, Pointer, TigerReadable, TigerReader};
 use tiger_pkg::TagHash;
 
 use crate::tag::Tag;
@@ -36,8 +36,8 @@ pub enum S808096CEKind {
 }
 
 impl TigerReadable for S808096CEKind {
-    fn read_ds_endian<R: std::io::Read + std::io::Seek>(
-        reader: &mut R,
+    fn read_ds_endian(
+        reader: &mut dyn TigerReader,
         endian: tiger_parse::Endian,
     ) -> tiger_parse::Result<Self> {
         let v = u16::read_ds_endian(reader, endian)?;

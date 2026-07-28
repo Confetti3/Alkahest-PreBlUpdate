@@ -36,7 +36,7 @@ rayon = "1.11.0"
 serde = { version = "1.0", features = ["derive"] }
 sdl3 = { version = "0.16", features = ["raw-window-handle"] }
 subsecond = "0.7.9"
-tiger-parse = { version = "0.7.1", git = "https://github.com/v4nguard/tiger-parse.git", features = [
+tiger-parse = { version = "0.8.0", git = "https://github.com/v4nguard/tiger-parse.git", features = [
     "check_types",
     "check_types_strict",
     "tiger_pkg",
@@ -56,7 +56,6 @@ rrise = { path = "./crates/rrise", optional = true, features = [
 ] }
 
 # (De)serialization
-gltf = { package = "gltf-json", version = "1.4.1" }
 serde_json = "1"
 tiger-parse.workspace = true
 tiger-pkg.workspace = true
@@ -100,7 +99,6 @@ egui_extras = { version = "0.33.3", features = ["image", "svg"] }
 egui_dock.workspace = true
 image = { version = "0.25", features = ["png"] }
 clap = { version = "4.5.37", features = ["derive"] }
-spin_sleep = "1.3.1"
 google_material_symbols = "0.2.9"
 hecs = "0.10.5"
 rayon.workspace = true
@@ -141,10 +139,11 @@ embed-resource = "3.0.1"
 opt-level = 3
 
 [profile.dev.package.alkahest-data]
-opt-level = 3
+opt-level = 0
 
 [profile.dev]
 opt-level = 1
+codegen-units = 256
 
 [profile.profiling]
 inherits = "release"

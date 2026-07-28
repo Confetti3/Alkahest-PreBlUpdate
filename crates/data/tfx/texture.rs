@@ -1,5 +1,5 @@
 use d3d11::dxgi;
-use tiger_parse::{tiger_type, TigerReadable};
+use tiger_parse::{tiger_type, TigerReadable, TigerReader};
 use tiger_pkg::TagHash;
 
 #[derive(Debug)]
@@ -32,8 +32,8 @@ pub struct STextureHeader {
 pub struct DxgiFormat(d3d11::dxgi::Format);
 
 impl TigerReadable for DxgiFormat {
-    fn read_ds_endian<R: std::io::prelude::Read + std::io::prelude::Seek>(
-        reader: &mut R,
+    fn read_ds_endian(
+        reader: &mut dyn TigerReader,
         endian: tiger_parse::Endian,
     ) -> tiger_parse::Result<Self> {
         let v = u32::read_ds_endian(reader, endian)?;

@@ -2,7 +2,7 @@ use std::fmt::{Display, Formatter};
 
 use bitflags::bitflags;
 use int_enum::IntEnum;
-use tiger_parse::{tiger_type, TigerReadable};
+use tiger_parse::{tiger_type, TigerReadable, TigerReader};
 
 use super::features::dynamic::RenderStageSubscription;
 
@@ -77,8 +77,8 @@ impl Display for RenderStage {
 }
 
 impl TigerReadable for RenderStage {
-    fn read_ds_endian<R: std::io::prelude::Read + std::io::prelude::Seek>(
-        reader: &mut R,
+    fn read_ds_endian(
+        reader: &mut dyn TigerReader,
         endian: tiger_parse::Endian,
     ) -> tiger_parse::Result<Self> {
         let v = u8::read_ds_endian(reader, endian)?;
@@ -157,8 +157,8 @@ impl Display for TfxFeatureRenderer {
 }
 
 impl TigerReadable for TfxFeatureRenderer {
-    fn read_ds_endian<R: std::io::prelude::Read + std::io::prelude::Seek>(
-        reader: &mut R,
+    fn read_ds_endian(
+        reader: &mut dyn TigerReader,
         endian: tiger_parse::Endian,
     ) -> tiger_parse::Result<Self> {
         let v = u8::read_ds_endian(reader, endian)?;
@@ -253,8 +253,8 @@ impl ShaderStage {
 }
 
 impl TigerReadable for ShaderStage {
-    fn read_ds_endian<R: std::io::prelude::Read + std::io::prelude::Seek>(
-        reader: &mut R,
+    fn read_ds_endian(
+        reader: &mut dyn TigerReader,
         endian: tiger_parse::Endian,
     ) -> tiger_parse::Result<Self> {
         let v = u8::read_ds_endian(reader, endian)?;
@@ -275,8 +275,8 @@ pub enum PrimitiveType {
 }
 
 impl TigerReadable for PrimitiveType {
-    fn read_ds_endian<R: std::io::prelude::Read + std::io::prelude::Seek>(
-        reader: &mut R,
+    fn read_ds_endian(
+        reader: &mut dyn TigerReader,
         endian: tiger_parse::Endian,
     ) -> tiger_parse::Result<Self> {
         let v = u8::read_ds_endian(reader, endian)?;
