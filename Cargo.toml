@@ -26,13 +26,12 @@ crossbeam = "0.8"
 d3d11 = { version = "0.3.3", features = ["sdl3"] }
 egui = { version = "0.33.3", default-features = false, features = ["bytemuck"] }
 egui_dock = "0.18"
-gdt-cpus = "25.5.0"
 glam = { version = "0.29", features = ["bytemuck", "fast-math"] }
-itertools = "0.14"
+itertools = "0.15.0"
 parking_lot = "0.12"
-potassium = "0.4.3"
+potassium = { git = "https://github.com/cohaereo/potassium.git" }
 profiling = "1"
-rayon = "1.11.0"
+rayon = "1.12.0"
 serde = { version = "1.0", features = ["derive"] }
 sdl3 = { version = "0.16", features = ["raw-window-handle"] }
 subsecond = "0.7.9"
@@ -99,7 +98,7 @@ egui_extras = { version = "0.33.3", features = ["image", "svg"] }
 egui_dock.workspace = true
 image = { version = "0.25", features = ["png"] }
 clap = { version = "4.5.37", features = ["derive"] }
-google_material_symbols = "0.2.9"
+google_material_symbols = "0.3"
 hecs = "0.10.5"
 rayon.workspace = true
 chroma-dbg = "0.2.1"
@@ -107,7 +106,6 @@ subsecond.workspace = true
 dioxus-devtools = "0.7.9"
 serde.workspace = true
 toml = "0.9.10"
-inline_tweak = "1.2.2"
 fastrand = "2.4.1"
 ehttp = { version = "0.7.1", features = ["json"] }
 semver = "1.0.28"
