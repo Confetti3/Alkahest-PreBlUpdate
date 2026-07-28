@@ -8,7 +8,8 @@ use alkahest_data::{
     hash::fnv1,
     pattern::SComponent,
     tfx::sequencer::{
-        SSequenceNodeBase, SUnk8080816f, SUnk80808179, SUnk808091f1, SUnk808091f1Variant,
+        NodeKind, SSequenceNodeBase, SSequenceNodeRef, SUnk8080816f, SUnk80808179, SUnk808091f1,
+        SUnk808091f1Variant,
     },
 };
 use chroma_dbg::ChromaConfig;
@@ -34,7 +35,8 @@ fn main() -> anyhow::Result<()> {
     println!("Wordlist loaded");
 
     // let data = package_manager().read_tag(0x80CFCA60)?;
-    let data = package_manager().read_tag(0x8108E30A)?;
+    let data = package_manager().read_tag(0x80D8300D)?;
+    // let data = package_manager().read_tag(0x8108E30A)?;
     // let data = package_manager().read_tag(0x80D91630)?;
     let mut f = Cursor::new(data);
     let component: SComponent = TigerReadable::read_ds(&mut f)?;
@@ -57,7 +59,10 @@ fn main() -> anyhow::Result<()> {
     print_node_recursive(
         &mut f,
         &wordlist,
-        (0, 0),
+        &SSequenceNodeRef {
+            kind: NodeKind::Flow,
+            index: 0,
+        },
         &globals.m_flow_nodes,
         &globals.m_work_nodes,
         &globals.m_channel_providers,
@@ -73,9 +78,9 @@ fn main() -> anyhow::Result<()> {
 fn print_node_recursive<F: Read + Seek>(
     f: &mut F,
     wordlist: &Wordlist,
-    index: (u16, u16),
-    first: &[SUnk808091f1],
-    second: &[SUnk808091f1],
+    node: &SSequenceNodeRef,
+    flow_nodes: &[SUnk808091f1],
+    work_nodes: &[SUnk808091f1],
     third: &[SUnk8080816f],
     indent: usize,
 ) {
@@ -85,19 +90,27 @@ fn print_node_recursive<F: Read + Seek>(
         ..Default::default()
     };
 
-    let i = index.1 as usize;
     // for (i, g) in list.iter().enumerate() {
-    let g = if index.0 == 0 {
-        &first[i]
-    } else if index.0 == 1 {
-        &second[i]
-    } else {
-        panic!("Invalid index: {}", index.0);
+    // let g = if index.0 == 0 {
+    //     &flow_nodes[i]
+    // } else if index.0 == 1 {
+    //     &work_nodes[i]
+    // } else {
+    //     panic!("Invalid index: {}", index.0);
+    // };
+    let g = match node.kind {
+        NodeKind::Flow => &flow_nodes[node.index as usize],
+        NodeKind::Work => &work_nodes[node.index as usize],
+    };
+    let i = node.index as usize;
+    let node_kind = match node.kind {
+        NodeKind::Flow => "flow",
+        NodeKind::Work => "work",
     };
 
     let print_node = |typename: &str, node: &SSequenceNodeBase| {
         println!(
-            "node {i}: {typename} [{}] start={} end={} duration={}",
+            "node {i} ({node_kind}): {typename} [{}] start={} end={} duration={}",
             get_string_fnv(wordlist, node.name),
             chroma.format(&(node.start_time)),
             chroma.format(&(node.start_time + node.duration)),
@@ -190,6 +203,9 @@ fn print_node_recursive<F: Read + Seek>(
         SUnk808091f1Variant::SSequenceLensFlare(s) => {
             print_node("LensFlare", &s.base);
         }
+        SUnk808091f1Variant::SSequenceScreenAreaFx(s) => {
+            print_node("ScreenAreaFx", &s.base);
+        }
         // dawn_data::entity::SUnk80809e6Variant::SSequenceDelay(s) => {
         //     print_node("Delay", &s.base);
         // }
@@ -208,7 +224,7 @@ fn print_node_recursive<F: Read + Seek>(
         SUnk808091f1Variant::SUnk808091e3(s) => {
             println!("Parallel {i}: [{}]", get_string_fnv(wordlist, s.base.name));
             for c in &s.children {
-                print_node_recursive(f, wordlist, *c, first, second, third, indent + 1);
+                print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);
             }
         }
         SUnk808091f1Variant::SUnk808091df(s) => {
@@ -217,7 +233,16 @@ fn print_node_recursive<F: Read + Seek>(
                 get_string_fnv(wordlist, s.base.name)
             );
             for c in &s.children {
-                print_node_recursive(f, wordlist, *c, first, second, third, indent + 1);
+                print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);
+            }
+        }
+        SUnk808091f1Variant::SUnk808091e5(s) => {
+            println!(
+                "unk_flow_808091e5 {i}: [{}]",
+                get_string_fnv(wordlist, s.base.name)
+            );
+            for c in &s.children {
+                print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);
             }
         }
         SUnk808091f1Variant::SUnk808091db(s) => {
@@ -226,7 +251,7 @@ fn print_node_recursive<F: Read + Seek>(
                 get_string_fnv(wordlist, s.base.name)
             );
             for c in &s.children {
-                print_node_recursive(f, wordlist, *c, first, second, third, indent + 1);
+                print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);
             }
         }
         SUnk808091f1Variant::SUnk808091dd(s) => {
@@ -235,7 +260,7 @@ fn print_node_recursive<F: Read + Seek>(
                 get_string_fnv(wordlist, s.base.name)
             );
             for c in &s.children {
-                print_node_recursive(f, wordlist, *c, first, second, third, indent + 1);
+                print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);
             }
         }
         // dawn_data::entity::SUnk80809e6Variant::SUnk808093d7(s) => {
@@ -258,8 +283,8 @@ fn print_node_recursive<F: Read + Seek>(
             const ANSI_RESET: &str = "\x1b[0m";
 
             println!(
-                "{ANSI_RED}unk {i}: Unknown resource type: {class:08X} @ 0x{offset:X} (name \
-                 '{}'){ANSI_RESET}",
+                "{ANSI_RED}unk {i}: Unknown resource type: {node_kind} node {class:08X} @ \
+                 0x{offset:X} (name '{}'){ANSI_RESET}",
                 get_string_fnv(wordlist, hash)
             );
         }

@@ -1,5 +1,8 @@
 use glam::Vec4;
-use tiger_parse::{tiger_type, tiger_variant_enum, FnvHash, VariantPointer};
+use int_enum::IntEnum;
+use tiger_parse::{
+    tiger_type, tiger_variant_enum, FnvHash, TigerReadable, TigerReader, VariantPointer,
+};
 use tiger_pkg::TagHash;
 
 use crate::tag::WideHash;
@@ -41,8 +44,10 @@ tiger_variant_enum! {
         SSequenceGlobalChannel,
         SUnk808091e3,
         SUnk808091df,
+        SUnk808091e5,
         SUnk808091db,
         SUnk808091dd,
+        SSequenceScreenAreaFx,
         SSequenceLight,
         SSequenceLensFlare,
         SSequenceEmbeddedParticleSystem,
@@ -67,28 +72,61 @@ pub struct SSequenceGlobalChannel {
 #[tiger_type(id = 0x808091e3, size = 0x60)]
 pub struct SUnk808091e3 {
     pub base: SSequenceNodeBase,
-    pub children: Vec<(u16, u16)>,
+    pub children: Vec<SSequenceNodeRef>,
 }
 
 #[derive(Debug, Clone)]
 #[tiger_type(id = 0x808091dd, size = 0x60)]
 pub struct SUnk808091dd {
     pub base: SSequenceNodeBase,
-    pub children: Vec<(u16, u16)>,
+    pub children: Vec<SSequenceNodeRef>,
 }
 
 #[derive(Debug, Clone)]
 #[tiger_type(id = 0x808091df, size = 0x60)]
 pub struct SUnk808091df {
     pub base: SSequenceNodeBase,
-    pub children: Vec<(u16, u16)>,
+    pub children: Vec<SSequenceNodeRef>,
+}
+
+#[derive(Debug, Clone)]
+#[tiger_type(id = 0x808091e5, size = 0x40)]
+pub struct SUnk808091e5 {
+    pub base: SSequenceNodeBase,
+    pub children: Vec<SSequenceNodeRef>,
 }
 
 #[derive(Debug, Clone)]
 #[tiger_type(id = 0x808091db, size = 0x60)]
 pub struct SUnk808091db {
     pub base: SSequenceNodeBase,
-    pub children: Vec<(u16, u16)>,
+    pub children: Vec<SSequenceNodeRef>,
+}
+
+#[derive(Debug, Clone)]
+#[tiger_type(id = 0x808091CF, size = 0x100)]
+pub struct SSequenceScreenAreaFx {
+    pub base: SSequenceNodeBase,
+
+    #[tiger(offset = 0x30)]
+    pub unk30: SUnk80809205,
+
+    #[tiger(offset = 0x70)]
+    pub unk70: SUnk80809204,
+}
+
+#[derive(Debug, Clone)]
+#[tiger_type(id = 0x80809205, size = 0x40)]
+pub struct SUnk80809205 {
+    // expression 808095CB 0x0
+    // 0x45C37927 80809F08 0x30
+}
+
+#[derive(Debug, Clone)]
+#[tiger_type(id = 0x80809204, size = 0x90)]
+pub struct SUnk80809204 {
+    // fade_in_curve 80809205 @ 0x8
+    // fade_out_curve 80809205 @ 0x50
 }
 
 #[derive(Debug, Clone)]
@@ -177,4 +215,30 @@ pub struct SExpression {
     pub bytecode_constants: Vec<Vec4>,
     pub unk20: u64,
     pub unk28: u64,
+}
+
+#[derive(Debug, Clone)]
+#[tiger_type(id = 0x808094E9, size = 4)]
+pub struct SSequenceNodeRef {
+    pub kind: NodeKind,
+    pub index: u16,
+}
+
+#[repr(u16)]
+#[derive(Debug, Clone, IntEnum)]
+pub enum NodeKind {
+    Flow = 0,
+    Work = 1,
+}
+
+impl TigerReadable for NodeKind {
+    fn read_ds_endian(
+        reader: &mut dyn TigerReader,
+        endian: tiger_parse::Endian,
+    ) -> tiger_parse::Result<Self> {
+        let v = u16::read_ds_endian(reader, endian)?;
+        Self::try_from(v).map_err(|_| tiger_parse::Error::EnumVariantOutOfRange(v as usize))
+    }
+
+    const SIZE: usize = 2;
 }
