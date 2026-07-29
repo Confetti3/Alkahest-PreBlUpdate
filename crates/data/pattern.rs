@@ -1,11 +1,7 @@
 use tiger_parse::{tiger_type, FnvHash, Padding, ResourcePointer, ResourcePointerWithClass};
 use tiger_pkg::TagHash;
 
-use crate::{
-    map::SComponentDataListPtr,
-    tag::{Tag, WideHash},
-    tfx::sequencer::SExpression,
-};
+use crate::{map::SComponentDataListPtr, tag::WideHash, tfx::sequencer::SExpression};
 
 #[tiger_type(id = 0x80809AD8, size = 0x98)]
 pub struct SPattern {

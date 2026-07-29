@@ -8,7 +8,7 @@ use alkahest_data::{
     hash::fnv1,
     pattern::SComponent,
     tfx::sequencer::{
-        NodeKind, SSequenceNodeBase, SSequenceNodeRef, SUnk8080816f, SUnk80808179, SUnk808091f1,
+        NodeKind, SSequence, SSequenceNodeBase, SSequenceNodeRef, SUnk8080816f, SUnk808091f1,
         SUnk808091f1Variant,
     },
 };
@@ -51,7 +51,7 @@ fn main() -> anyhow::Result<()> {
 
     f.seek(SeekFrom::Start(component.definition.offset))?;
 
-    let globals = SUnk80808179::read_ds(&mut f)?;
+    let globals = SSequence::read_ds(&mut f)?;
 
     println!("unk158: {}", globals.m_flow_nodes.len());
     println!("unk168: {}", globals.m_work_nodes.len());
@@ -221,7 +221,7 @@ fn print_node_recursive<F: Read + Seek>(
         // dawn_data::entity::SUnk80809e6Variant::SSequenceDamageImpulse(s) => {
         //     print_node("DamageImpulse", &s.base);
         // }
-        SUnk808091f1Variant::SUnk808091e3(s) => {
+        SUnk808091f1Variant::SSequenceFlowParallel(s) => {
             println!("Parallel {i}: [{}]", get_string_fnv(wordlist, s.base.name));
             for c in &s.children {
                 print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);

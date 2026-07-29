@@ -10,7 +10,10 @@ use super::{Tab, TabResult, entity_list::EntityListTab, map_list::MapListTab};
 use crate::{
     app::SharedState,
     ui::{
-        tabs::{activity_list::ActivityListTab, static_list::StaticListTab},
+        tabs::{
+            activity_list::ActivityListTab, sequence_list::SequenceListTab,
+            static_list::StaticListTab,
+        },
         util::UiExt,
     },
 };
@@ -77,6 +80,14 @@ impl HomeTab {
             {
                 result =
                     TabResult::Open(Tab::StaticList(Box::new(StaticListTab::new(shared_state))));
+            }
+            if uis[0]
+                .d_button(format!("{} SEQUENCES", GoogleMaterialSymbols::Theaters))
+                .clicked()
+            {
+                result = TabResult::Open(Tab::SequenceList(Box::new(SequenceListTab::new(
+                    shared_state,
+                ))));
             }
 
             // uis[1].heading("2D");

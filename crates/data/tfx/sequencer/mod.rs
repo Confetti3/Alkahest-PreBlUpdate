@@ -9,7 +9,7 @@ use crate::tag::WideHash;
 
 #[derive(Debug, Clone)]
 #[tiger_type(id = 0x80808179, size = 0x220)]
-pub struct SUnk80808179 {
+pub struct SSequence {
     #[tiger(offset = 0x1C8)]
     pub m_flow_nodes: Vec<SUnk808091f1>,
     pub m_work_nodes: Vec<SUnk808091f1>,
@@ -42,7 +42,7 @@ tiger_variant_enum! {
     [Unknown(true)]
     enum SUnk808091f1Variant {
         SSequenceGlobalChannel,
-        SUnk808091e3,
+        SSequenceFlowParallel,
         SUnk808091df,
         SUnk808091e5,
         SUnk808091db,
@@ -70,7 +70,7 @@ pub struct SSequenceGlobalChannel {
 
 #[derive(Debug, Clone)]
 #[tiger_type(id = 0x808091e3, size = 0x60)]
-pub struct SUnk808091e3 {
+pub struct SSequenceFlowParallel {
     pub base: SSequenceNodeBase,
     pub children: Vec<SSequenceNodeRef>,
 }
@@ -167,10 +167,10 @@ pub struct SSequenceAudioEvent {
 #[tiger_type(id = 0x808067b9, size = 0x110)]
 pub struct SSequenceEmbeddedParticleSystem {
     pub base: SSequenceNodeBase,
-    pub unk20: u64,
-    pub unk28: Vec<SUnk808067bb>,
+    // pub unk20: u64,
+    // pub unk28: Vec<SUnk808067bb>,
 
-    pub unk38: SUnknownEventExpressions,
+    // pub unk38: SUnknownEventExpressions,
 }
 
 #[derive(Debug, Clone)]
@@ -217,7 +217,7 @@ pub struct SExpression {
     pub unk28: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Hash)]
 #[tiger_type(id = 0x808094E9, size = 4)]
 pub struct SSequenceNodeRef {
     pub kind: NodeKind,
@@ -225,7 +225,7 @@ pub struct SSequenceNodeRef {
 }
 
 #[repr(u16)]
-#[derive(Debug, Clone, IntEnum)]
+#[derive(Debug, Clone, IntEnum, Hash)]
 pub enum NodeKind {
     Flow = 0,
     Work = 1,

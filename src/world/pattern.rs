@@ -14,7 +14,7 @@ use alkahest_data::{
         atmosphere::SUnk80808ac8Variant,
         common::AxisAlignedBBox,
         features::{dynamic::SDynamicModelComponent, statics::SUnk808082D5},
-        sequencer::{SUnk808091f1Variant, SUnk80808179},
+        sequencer::{SSequence, SUnk808091f1Variant},
     },
 };
 use alkahest_render::{
@@ -474,7 +474,7 @@ pub fn spawn_pattern_from_header(
                 let mut f = Cursor::new(package_manager().read_tag(component_ref.component)?);
                 f.seek(SeekFrom::Start(component.definition.offset))?;
 
-                let globals = SUnk80808179::read_ds(&mut f)?;
+                let globals = SSequence::read_ds(&mut f)?;
                 for g in globals
                     .m_flow_nodes
                     .iter()

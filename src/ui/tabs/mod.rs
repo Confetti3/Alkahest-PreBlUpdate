@@ -5,6 +5,7 @@ pub mod home;
 pub mod map;
 pub mod map_list;
 pub mod model_list;
+pub mod sequence_list;
 pub mod settings;
 pub mod static_list;
 pub mod tag_lookup;
@@ -22,8 +23,8 @@ use map_list::MapListTab;
 use tag_lookup::TagLookupTab;
 
 use crate::ui::tabs::{
-    activity::ActivityTab, activity_list::ActivityListTab, settings::SettingsTab,
-    static_list::StaticListTab, test_scene::TestSceneTab,
+    activity::ActivityTab, activity_list::ActivityListTab, sequence_list::SequenceListTab,
+    settings::SettingsTab, static_list::StaticListTab, test_scene::TestSceneTab,
 };
 
 pub enum Tab {
@@ -31,6 +32,7 @@ pub enum Tab {
     Settings,
     EntityList(Box<EntityListTab>),
     StaticList(Box<StaticListTab>),
+    SequenceList(Box<SequenceListTab>),
     MapList(MapListTab),
     Map(MapTab),
     ActivityList(ActivityListTab),
@@ -51,6 +53,7 @@ impl Tab {
             Tab::Settings => 0,
             Tab::EntityList(_) => 0,
             Tab::StaticList(_) => 0,
+            Tab::SequenceList(_) => 0,
             Tab::MapList(_) => 0,
             Tab::Map(tab) => tab.tag.0 as u64,
             Tab::ActivityList(_) => 0,
@@ -68,6 +71,7 @@ impl Display for Tab {
             Tab::Home => format!("{} Home", GoogleMaterialSymbols::Home),
             Tab::EntityList(_) => format!("{} Entities", GoogleMaterialSymbols::ChessPawn),
             Tab::StaticList(_) => format!("{} Statics", GoogleMaterialSymbols::Landscape),
+            Tab::SequenceList(_) => format!("{} Sequences", GoogleMaterialSymbols::Theaters),
             Tab::MapList(_) => format!("{} Maps", GoogleMaterialSymbols::Map),
             Tab::Map(tab) => format!("{} ({})", tab.name, tab.tag),
             Tab::ActivityList(_) => {
@@ -116,6 +120,10 @@ impl<'a> egui_dock::TabViewer for TabViewer<'a> {
                     }
                     Tab::StaticList(tab) => {
                         let res = tab.ui(ui, self.egui_d3d11);
+                        self.process_result(res);
+                    }
+                    Tab::SequenceList(tab) => {
+                        let res = tab.ui(ui);
                         self.process_result(res);
                     }
                     Tab::MapList(tab) => {

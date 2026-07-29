@@ -450,7 +450,7 @@ impl ActivityTreeNode {
         } else {
             match self {
                 ActivityTreeNode::Leaf { title, .. } => (
-                    icons::UNKNOWN.atom_size(Vec2::splat(32.0)),
+                    icons::director::UNKNOWN.atom_size(Vec2::splat(32.0)),
                     "",
                     title.to_string(),
                 )
@@ -497,19 +497,19 @@ enum ActivityKind {
 impl ActivityKind {
     fn icon(&self) -> ImageSource<'static> {
         match self {
-            ActivityKind::Crucible => icons::CRUCIBLE,
-            ActivityKind::Raid => icons::RAID,
-            ActivityKind::IronBanner => icons::IRON_BANNER,
-            ActivityKind::Trials => icons::OSIRIS,
-            ActivityKind::Gambit => icons::GAMBIT,
-            ActivityKind::Dungeon => icons::DUNGEON,
-            ActivityKind::Patrol => icons::PATROL,
-            ActivityKind::LostSector => icons::LOST_SECTOR,
-            ActivityKind::Strike => icons::STRIKE,
-            ActivityKind::Exotic => icons::ENGRAM,
-            ActivityKind::Quest => icons::QUEST,
-            ActivityKind::Mission => icons::QUEST,
-            ActivityKind::Cinematic => icons::CINEMATIC,
+            ActivityKind::Crucible => icons::director::CRUCIBLE,
+            ActivityKind::Raid => icons::director::RAID,
+            ActivityKind::IronBanner => icons::director::IRON_BANNER,
+            ActivityKind::Trials => icons::director::OSIRIS,
+            ActivityKind::Gambit => icons::director::GAMBIT,
+            ActivityKind::Dungeon => icons::director::DUNGEON,
+            ActivityKind::Patrol => icons::director::PATROL,
+            ActivityKind::LostSector => icons::director::LOST_SECTOR,
+            ActivityKind::Strike => icons::director::STRIKE,
+            ActivityKind::Exotic => icons::director::ENGRAM,
+            ActivityKind::Quest => icons::director::QUEST,
+            ActivityKind::Mission => icons::director::QUEST,
+            ActivityKind::Cinematic => icons::director::CINEMATIC,
         }
     }
 
