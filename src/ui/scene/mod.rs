@@ -212,19 +212,19 @@ impl Scene {
         };
 
         if self.show_surface_viewer {
-            egui::SidePanel::right("surface_viewer").show_inside(ui, |ui| {
+            egui::Panel::right("surface_viewer").show(ui, |ui| {
                 // self.show_texture_viewer(ui, egui_d3d11);
                 self.show_surface_viewer(ui, egui_d3d11);
             });
         }
 
         if self.show_channel_editor {
-            egui::SidePanel::right("channel_editor").show_inside(ui, |ui| {
+            egui::Panel::right("channel_editor").show(ui, |ui| {
                 self.show_global_channel_editor(ui);
             });
         }
 
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             let panel_rect = ui.available_rect_before_wrap();
 
             let r = ui

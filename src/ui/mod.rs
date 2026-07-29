@@ -3,7 +3,7 @@ use std::{collections::BTreeMap, mem::discriminant, rc::Rc, sync::Arc};
 use alkahest_render::{Gpu, gpu::command_list::CommandList};
 use anyhow::Context;
 use egui::{Color32, FontId, Margin, vec2};
-use egui_dock::{DockArea, DockState, TabInteractionStyle};
+use egui_dock::{DockArea, DockState, TabInteractionStyle, TabPath};
 use google_material_symbols::GoogleMaterialSymbols;
 use tabs::{DockStateExt, Tab, TabViewer};
 
@@ -114,7 +114,7 @@ impl Gui {
             egui_sdl3_platform::Platform::new(&sdl, &window, gpu.swapchain_resolution())
                 .context("Failed to initialize SDL3 Egui platform module")?;
         egui_sdl3.context().set_fonts(fonts);
-        egui_sdl3.context().style_mut(|s| {
+        egui_sdl3.context().global_style_mut(|s| {
             *s = style::gui_style();
         });
 
@@ -151,8 +151,8 @@ impl Gui {
         egui_extras::install_image_loaders(egui_sdl3.context());
 
         let mut tree = DockState::new(vec![Tab::Settings, Tab::Home]);
-        if let Some(tab_ref) = tree.find_tab(|t| matches!(t, Tab::Home)) {
-            tree.set_active_tab(tab_ref);
+        if let Some((surface, node, tab)) = tree.find_tab(|t| matches!(t, Tab::Home)) {
+            tree.set_active_tab(TabPath::new(surface, node, tab));
         }
 
         Ok(Self {
@@ -184,82 +184,84 @@ impl Gui {
     }
 
     pub fn draw(&mut self, cmd: &mut CommandList, shared_state: &Arc<SharedState>) {
-        let ctx = self
+        let (ctx, raw_input) = self
             .egui_sdl3
             .begin_frame(self.window.size(), self.window.display_scale());
-        ctx.style_mut(|s| s.visuals.panel_fill = Color32::from_black_alpha(96));
+        ctx.global_style_mut(|s| s.visuals.panel_fill = Color32::from_black_alpha(96));
 
-        DockArea::new(&mut self.tree)
-            .show_add_buttons(false)
-            .style({
-                let mut style = egui_dock::Style::from_egui(ctx.style().as_ref());
-                // style.tab_bar.fill_tab_bar = true;
-                style.tab_bar.height = 32.0;
-                style.tab_bar.bg_fill = Color32::from_gray(4);
+        let output = ctx.run_ui(raw_input, |ui| {
+            DockArea::new(&mut self.tree)
+                .show_add_buttons(false)
+                .style({
+                    let mut style = egui_dock::Style::from_egui(ctx.global_style().as_ref());
+                    // style.tab_bar.fill_tab_bar = true;
+                    style.tab_bar.height = 32.0;
+                    style.tab_bar.bg_fill = Color32::from_gray(4);
 
-                let inactive = TabInteractionStyle {
-                    outline_color: Color32::TRANSPARENT,
-                    corner_radius: egui::CornerRadius::ZERO,
-                    bg_fill: Color32::BLACK,
-                    text_color: Color32::WHITE,
-                };
+                    let inactive = TabInteractionStyle {
+                        outline_color: Color32::TRANSPARENT,
+                        corner_radius: egui::CornerRadius::ZERO,
+                        bg_fill: Color32::BLACK,
+                        text_color: Color32::WHITE,
+                    };
 
-                let hovered = TabInteractionStyle {
-                    outline_color: Color32::from_gray(127),
-                    bg_fill: ctx.style().visuals.window_fill().gamma_multiply(0.5),
-                    ..inactive.clone()
-                };
+                    let hovered = TabInteractionStyle {
+                        outline_color: Color32::from_gray(127),
+                        bg_fill: ctx.global_style().visuals.window_fill().gamma_multiply(0.5),
+                        ..inactive.clone()
+                    };
 
-                let active = TabInteractionStyle {
-                    bg_fill: ctx.style().visuals.window_fill(),
-                    ..hovered.clone()
-                };
+                    let active = TabInteractionStyle {
+                        bg_fill: ctx.global_style().visuals.window_fill(),
+                        ..hovered.clone()
+                    };
 
-                let focused = TabInteractionStyle {
-                    outline_color: Color32::WHITE,
-                    bg_fill: ctx.style().visuals.window_fill(),
-                    ..inactive.clone()
-                };
+                    let focused = TabInteractionStyle {
+                        outline_color: Color32::WHITE,
+                        bg_fill: ctx.global_style().visuals.window_fill(),
+                        ..inactive.clone()
+                    };
 
-                style.tab = egui_dock::TabStyle {
-                    active: active.clone(),
-                    inactive: inactive.clone(),
-                    focused: focused.clone(),
-                    hovered: hovered.clone(),
-                    inactive_with_kb_focus: inactive.clone(),
-                    active_with_kb_focus: active.clone(),
-                    focused_with_kb_focus: focused.clone(),
-                    tab_body: egui_dock::TabBodyStyle {
-                        inner_margin: ctx.style().spacing.window_margin,
-                        stroke: ctx.style().visuals.widgets.noninteractive.bg_stroke,
-                        corner_radius: ctx.style().visuals.widgets.active.corner_radius,
-                        bg_fill: ctx.style().visuals.window_fill(),
-                        // bg_fill: Color32::from_black_alpha(128),
+                    style.tab = egui_dock::TabStyle {
+                        active: active.clone(),
+                        inactive: inactive.clone(),
+                        focused: focused.clone(),
+                        hovered: hovered.clone(),
+                        inactive_with_kb_focus: inactive.clone(),
+                        active_with_kb_focus: active.clone(),
+                        focused_with_kb_focus: focused.clone(),
+                        tab_body: egui_dock::TabBodyStyle {
+                            inner_margin: ctx.global_style().spacing.window_margin,
+                            stroke: ctx.global_style().visuals.widgets.noninteractive.bg_stroke,
+                            corner_radius: ctx.global_style().visuals.widgets.active.corner_radius,
+                            bg_fill: ctx.global_style().visuals.window_fill(),
+                            // bg_fill: Color32::from_black_alpha(128),
+                        },
+                        hline_below_active_tab_name: false,
+                        ..Default::default()
+                    };
+                    style
+                })
+                .show_leaf_collapse_buttons(false)
+                .show_leaf_close_all_buttons(false)
+                .draggable_tabs(false)
+                .show_inside(
+                    ui,
+                    &mut TabViewer {
+                        added_nodes: &mut self.added_nodes,
+                        egui_d3d11: &mut self.egui_d3d11,
+                        shared_state,
                     },
-                    hline_below_active_tab_name: false,
-                    ..Default::default()
-                };
-                style
-            })
-            .show_leaf_collapse_buttons(false)
-            .show_leaf_close_all_buttons(false)
-            .draggable_tabs(false)
-            .show(
-                &ctx,
-                &mut TabViewer {
-                    added_nodes: &mut self.added_nodes,
-                    egui_d3d11: &mut self.egui_d3d11,
-                    shared_state,
-                },
-            );
+                );
+        });
 
         for tab in self.added_nodes.drain(..) {
             // Is the tab unique and does it already exist? Then switch to it instead of adding it again.
-            if let Some(tab_ref) = self
+            if let Some((surface, node, tab)) = self
                 .tree
                 .find_tab(|t| discriminant(t) == discriminant(&tab) && t.key() == tab.key())
             {
-                self.tree.set_active_tab(tab_ref);
+                self.tree.set_active_tab(TabPath { surface, node, tab });
             } else {
                 self.tree.push_to_focused_leaf(tab);
             }
@@ -279,7 +281,9 @@ impl Gui {
         let mut close_update_window = false;
         if let Some(update) = self.available_update.as_ref() {
             egui::Modal::new("update_available".into())
-                .frame(egui::Frame::popup(&ctx.style()).inner_margin(Margin::symmetric(64, 48)))
+                .frame(
+                    egui::Frame::popup(&ctx.global_style()).inner_margin(Margin::symmetric(64, 48)),
+                )
                 .show(&ctx, |ui| {
                     ui.heading("Update available!");
                     ui.label(format!(
@@ -345,7 +349,7 @@ impl Gui {
 
         let output = self
             .egui_sdl3
-            .end_frame(&mut self.sdl.video().unwrap())
+            .end_frame(&mut self.sdl.video().unwrap(), output)
             .unwrap();
         if let Err(e) = self.egui_d3d11.paint(cmd, output, &ctx) {
             error!("Failed to paint gui: {}", e);

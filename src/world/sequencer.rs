@@ -1,5 +1,5 @@
+use ahash::HashSet;
 use alkahest_render::{Renderer, tfx::sequencer_vm::global_channel::GlobalChannelExpression};
-use egui::ahash::HashSet;
 
 pub fn s_evaluate_global_channel_expressions(world: &hecs::World) {
     for (_entity, gce) in world.query::<&mut GlobalChannelExpression>().iter() {

@@ -89,7 +89,7 @@ impl Platform {
                         modifiers: self.modifiers,
                     });
                 }
-                self.egui_ctx.wants_pointer_input();
+                self.egui_ctx.egui_wants_pointer_input();
             }
             // Handle the mouse button being released
             Event::MouseButtonUp { mouse_btn, .. } => {
@@ -107,7 +107,7 @@ impl Platform {
                         modifiers: self.modifiers,
                     });
                 }
-                self.egui_ctx.wants_pointer_input();
+                self.egui_ctx.egui_wants_pointer_input();
             }
             // Handle mouse motion
             Event::MouseMotion { x, y, .. } => {
@@ -116,7 +116,7 @@ impl Platform {
                 self.raw_input
                     .events
                     .push(egui::Event::PointerMoved(self.pointer_pos));
-                self.egui_ctx.wants_pointer_input();
+                self.egui_ctx.egui_wants_pointer_input();
             }
             // Handle the mouse scrolling
             Event::MouseWheel { x, y, .. } => {
@@ -127,8 +127,9 @@ impl Platform {
                     unit: egui::MouseWheelUnit::Point,
                     delta,
                     modifiers: egui::Modifiers::NONE,
+                    phase: egui::TouchPhase::Move,
                 });
-                self.egui_ctx.wants_pointer_input();
+                self.egui_ctx.egui_wants_pointer_input();
             }
 
             // Handle a key being pressed
@@ -182,7 +183,7 @@ impl Platform {
                         });
                     }
                 }
-                self.egui_ctx.wants_keyboard_input();
+                self.egui_ctx.egui_wants_keyboard_input();
             }
             // Handle a key being released
             Event::KeyUp {
@@ -219,12 +220,12 @@ impl Platform {
                         });
                     }
                 }
-                self.egui_ctx.wants_keyboard_input();
+                self.egui_ctx.egui_wants_keyboard_input();
             }
             // Handle text input
             Event::TextInput { text, .. } => {
                 self.raw_input.events.push(egui::Event::Text(text.clone()));
-                self.egui_ctx.wants_keyboard_input();
+                self.egui_ctx.egui_wants_keyboard_input();
             }
 
             _ => {}
@@ -236,7 +237,11 @@ impl Platform {
     }
 
     /// Return the processed context
-    pub fn begin_frame(&mut self, screen_size: (u32, u32), ppt: f32) -> egui::Context {
+    pub fn begin_frame(
+        &mut self,
+        screen_size: (u32, u32),
+        ppt: f32,
+    ) -> (egui::Context, egui::RawInput) {
         self.pixels_per_point = ppt;
         // Set the pixels per point
         self.egui_ctx.set_pixels_per_point(ppt);
@@ -246,20 +251,16 @@ impl Platform {
         ));
         self.raw_input.time = Some(self.start_time.elapsed().as_secs_f64());
 
-        // Begin the frame
-        self.egui_ctx.begin_pass(self.raw_input.take());
         // Return the ctx
-        self.egui_ctx.clone()
+        (self.egui_ctx.clone(), self.raw_input.take())
     }
 
     /// Stop drawing the egui frame and return the full output
     pub fn end_frame(
         &mut self,
         video: &mut sdl3::VideoSubsystem,
+        output: egui::FullOutput,
     ) -> anyhow::Result<egui::FullOutput> {
-        // Get the egui output
-        let output = self.egui_ctx.end_pass();
-
         for c in &output.platform_output.commands {
             match c {
                 egui::OutputCommand::CopyText(text) => {

@@ -1,7 +1,7 @@
-use std::{mem::size_of, slice::from_raw_parts_mut};
+use std::{collections::HashMap, mem::size_of, slice::from_raw_parts_mut};
 
 use d3d11::{dxgi, D3D11_SUBRESOURCE_DATA};
-use egui::{epaint::ahash::HashMap, Color32, ImageData, TextureId, TexturesDelta};
+use egui::{Color32, ImageData, TextureId, TexturesDelta};
 
 use crate::RenderError;
 

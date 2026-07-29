@@ -83,7 +83,7 @@ impl SequenceListTab {
             Err(_) => (None, false),
         };
 
-        egui::SidePanel::left("sequence_packages_list").show_inside(ui, |ui| {
+        egui::Panel::left("sequence_packages_list").show(ui, |ui| {
             if let Some(status) = self.provider.load_status() {
                 ui.horizontal(|ui| {
                     ui.spinner();
@@ -189,9 +189,9 @@ impl SequenceListTab {
                 });
         });
 
-        egui::SidePanel::right("sequence_viewer")
-            .default_width(ui.ctx().content_rect().width() * 0.5)
-            .show_inside(ui, |ui| {
+        egui::Panel::right("sequence_viewer")
+            // .default_width(ui.ctx().content_rect().width() * 0.5)
+            .show(ui, |ui| {
                 self.draw_sequence_node_tree(
                     ui,
                     &self.tmp_sequence,

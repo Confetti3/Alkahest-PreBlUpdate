@@ -97,7 +97,7 @@ impl ActivityTab {
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui, egui_d3d11: &mut egui_d3d11::D3D11Renderer) {
-        egui::SidePanel::left(format!("activity_{}_map_list", self.tag)).show_inside(ui, |ui| {
+        egui::Panel::left(format!("activity_{}_map_list", self.tag)).show(ui, |ui| {
             egui::ScrollArea::vertical()
                 .auto_shrink([true, false])
                 .id_salt("map_list_packages")

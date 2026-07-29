@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
+use ahash::HashMap;
 use alkahest_data::map::{SBubbleParent, SBubbleParentShallow};
-use egui::{Margin, Ui, ahash::HashMap, vec2};
+use egui::{Margin, Ui, vec2};
 use tiger_parse::{PackageManagerExt, TigerReadable};
 use tiger_pkg::{TagHash, package_manager};
 

@@ -46,7 +46,7 @@ impl HomeTab {
         ui.add_space(32.0);
         ui.columns(1, |uis| {
             uis[0].style_mut().text_styles.insert(
-                TextStyle::Button,
+                TextStyle::Body,
                 FontId::new(32.0, egui::FontFamily::Name("Medium".into())),
             );
             // uis[0].heading("3D");
@@ -97,11 +97,11 @@ impl HomeTab {
             // let _ = uis[1].d_button(format!("{} UI", GoogleMaterialSymbols::DesktopWindows));
         });
 
-        egui::TopBottomPanel::bottom("home_links")
+        egui::Panel::bottom("home_links")
             .frame(egui::Frame::NONE)
             .show_separator_line(false)
             .resizable(false)
-            .show_inside(ui, |ui| {
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     egui::Image::new(egui::include_image!("../../../assets/alkahest_256.png"))
                         .fit_to_exact_size(vec2(96.0, 96.0))
