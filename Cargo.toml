@@ -94,10 +94,9 @@ sdl3.workspace = true
 
 # UI
 egui.workspace = true
-egui_commonmark = { version = "0.24.0", default-features = false }
 egui_extras = { version = "0.35", features = ["image", "svg"] }
 egui_dock.workspace = true
-image = { version = "0.25", features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 clap = { version = "4.5.37", features = ["derive"] }
 google_material_symbols = "0.3"
 hecs = "0.10.5"

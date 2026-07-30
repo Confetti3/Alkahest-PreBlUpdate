@@ -33,7 +33,6 @@ pub struct Gui {
 
     update_check: Task<Option<AvailableUpdate>>,
     available_update: Option<AvailableUpdate>,
-    commonmark_cache: egui_commonmark::CommonMarkCache,
 }
 
 impl Gui {
@@ -175,7 +174,6 @@ impl Gui {
                 }
             }),
             available_update: None,
-            commonmark_cache: egui_commonmark::CommonMarkCache::default(),
         })
     }
 
@@ -294,11 +292,7 @@ impl Gui {
                     egui::ScrollArea::vertical()
                         .max_height(ui.ctx().viewport_rect().height() * 0.6)
                         .show(ui, |ui| {
-                            egui_commonmark::CommonMarkViewer::new().show(
-                                ui,
-                                &mut self.commonmark_cache,
-                                update.changelog.as_str(),
-                            );
+                            ui.label(&update.changelog);
                         });
 
                     ui.add_space(32.0);

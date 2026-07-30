@@ -20,7 +20,7 @@ fn github_get<P: AsRef<str>>(path: P) -> ehttp::Request {
     ehttp::Request::get(url)
         .with_header("User-Agent", "alkahest")
         .with_header("Accept", "application/vnd.github.v3+json")
-        .with_header("X-GitHub-Api-Version", "2022-11-28")
+        .with_header("X-GitHub-Api-Version", "2026-03-10")
         .with_timeout(Some(std::time::Duration::from_secs(10)))
 }
 
