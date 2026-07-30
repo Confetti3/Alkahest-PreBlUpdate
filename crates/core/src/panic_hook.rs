@@ -14,8 +14,6 @@ lazy_static! {
     static ref PANIC_LOCK: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
     static ref PANIC_HEADER: OnceLock<String> = OnceLock::new();
     // static ref BREAKPAD_HANDLER: OnceLock<BreakpadHandler> = OnceLock::new();
-    static ref PANIC_HOOK: color_eyre::config::PanicHook =
-        color_eyre::config::HookBuilder::new().into_hooks().0;
 }
 
 pub fn setup_panic_hook() {
@@ -30,7 +28,7 @@ pub fn setup_panic_hook() {
                 .name()
                 .map(|name| name.to_string())
                 .unwrap_or(format!("{:?}", this_thread.id())),
-            PANIC_HOOK.panic_report(info)
+            info
         );
 
         // Write a panic file
