@@ -15,7 +15,6 @@ potassium.workspace = true
 regex = "1.12.2"
 serde.workspace = true
 tiger-pkg.workspace = true
-toml = "0.8"
 tracing.workspace = true
 
 [features]

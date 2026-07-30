@@ -12,8 +12,7 @@ use alkahest_data::{
 };
 use anyhow::Result;
 use egui::{
-    AtomExt, Color32, FontId, ImageSource, RichText, TextStyle, Ui, Vec2, Widget, WidgetText,
-    include_image, scroll_area::ScrollSource,
+    Color32, FontId, RichText, TextStyle, Ui, Vec2, Widget, scroll_area::ScrollSource,
 };
 use egui_ltreeview::{NodeBuilder, TreeView, TreeViewBuilder};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};

@@ -4,7 +4,7 @@
 
 use std::{
     collections::hash_map::Entry,
-    io::{BufReader, Cursor, Seek},
+    io::{Cursor, Seek},
     rc::Rc,
     str::FromStr,
     sync::Arc,
