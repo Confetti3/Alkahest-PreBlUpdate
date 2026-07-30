@@ -125,6 +125,7 @@ dependencies = [
  "egui_commonmark",
  "egui_dock",
  "egui_extras",
+ "egui_ltreeview",
  "ehttp",
  "embed-resource",
  "env_logger",
@@ -1510,6 +1511,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_ltreeview"
+version = "0.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac61e806d7926406d92cc34b755b8589cad658c0662d7a457499eeb2cfa3d8aa"
+dependencies = [
+ "egui",
+]
+
+[[package]]
 name = "ehttp"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1627,6 +1637,7 @@ dependencies = [
  "bytemuck",
  "ecolor",
  "emath",
+ "epaint_default_fonts",
  "font-types",
  "harfrust",
  "log",
@@ -1640,6 +1651,12 @@ dependencies = [
  "unicode-segmentation",
  "vello_cpu",
 ]
+
+[[package]]
+name = "epaint_default_fonts"
+version = "0.35.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13ee4e1f553a3584c301f3a56ff1a775f1384781396cea301c8d952e9b93f560"
 
 [[package]]
 name = "equator"

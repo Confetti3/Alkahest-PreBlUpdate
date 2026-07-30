@@ -6,6 +6,7 @@ use std::{
 };
 
 use alkahest_data::{
+    hash::FNV1_BASE,
     pattern::{SComponent, SPattern},
     tfx::sequencer::{NodeKind, SSequence, SSequenceNodeRef, SUnk808091f1Variant},
 };
@@ -14,6 +15,7 @@ use egui::{
     AtomExt, Color32, FontId, ImageSource, RichText, TextStyle, Ui, Vec2, Widget, WidgetText,
     include_image, scroll_area::ScrollSource,
 };
+use egui_ltreeview::{NodeBuilder, TreeView, TreeViewBuilder};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tiger_parse::{PackageManagerExt, TigerReadable};
 use tiger_pkg::{TagHash, package_manager};
@@ -37,10 +39,12 @@ pub struct SequenceListTab {
     loaded_sequences: BTreeMap<TagHash, Result<SSequence>>,
 
     tmp_sequence: SSequence,
+
+    shared: Arc<SharedState>,
 }
 
 impl SequenceListTab {
-    pub fn new(shared: &SharedState) -> Self {
+    pub fn new(shared: Arc<SharedState>) -> Self {
         let package_sorting = PackageSorting::Name;
         let provider = SequenceProvider::new();
         let mut package_ids = provider.package_keys().to_vec();
@@ -56,7 +60,9 @@ impl SequenceListTab {
             provider,
             loaded_sequences: BTreeMap::default(),
 
-            tmp_sequence: load_sequence(0x80D8300D.into()).expect("asdf"),
+            tmp_sequence: load_sequence(0x80C02107.into()).expect("asdf"),
+
+            shared,
         }
     }
 
@@ -192,17 +198,23 @@ impl SequenceListTab {
         egui::Panel::right("sequence_viewer")
             // .default_width(ui.ctx().content_rect().width() * 0.5)
             .show(ui, |ui| {
-                self.draw_sequence_node_tree(
-                    ui,
-                    &self.tmp_sequence,
-                    &SSequenceNodeRef {
-                        kind: NodeKind::Flow,
-                        index: 0,
-                    },
-                );
+                egui::ScrollArea::vertical().auto_shrink([false; 2]).show(ui, |ui| {
+                    TreeView::new("sequence nodes".into()).override_striped(Some(true)).show(ui, |builder| {
+                        builder.dir(SSequenceNodeRef { kind: NodeKind::Flow, index: u16::MAX }, RichText::new("NODES").underline());
+                        self.draw_sequence_node_tree(
+                            builder,
+                            &self.tmp_sequence,
+                            &SSequenceNodeRef {
+                                kind: NodeKind::Flow,
+                                index: 0,
+                            },
+                        );
+                        builder.close_dir();
+                    });
+                });
             });
 
-        egui::CentralPanel::default().show_inside(ui, |ui| {
+        egui::CentralPanel::default().show(ui, |ui| {
             egui::ScrollArea::vertical()
                 .auto_shrink([false; 2])
                 .scroll_source(ScrollSource::MOUSE_WHEEL | ScrollSource::SCROLL_BAR)
@@ -218,11 +230,34 @@ impl SequenceListTab {
                             continue;
                         }
 
-                        if ui
-                            .selectable_label(r.pattern == self.current_tag, r.pattern.to_string())
-                            .clicked()
-                        {
+                        let label = if let Some(Ok(seq)) = self.loaded_sequences.get(&r.pattern) {
+                            format!(
+                                "{} ({}f{}w)",
+                                r.pattern,
+                                seq.m_flow_nodes.len(),
+                                seq.m_work_nodes.len()
+                            )
+                        } else {
+                            r.pattern.to_string()
+                        };
+
+                        let label = ui.selectable_label(r.pattern == self.current_tag, label);
+
+                        label.context_menu(|ui| {
+                            ui.style_mut()
+                                .text_styles
+                                .insert(TextStyle::Button, FontId::proportional(16.0));
+                            if ui.button("Copy tag").clicked() {
+                                ui.ctx().copy_text(r.pattern.to_string());
+                                ui.close();
+                            }
+                        });
+
+                        if label.clicked() {
                             self.current_tag = r.pattern;
+                            if let Some(Ok(seq)) = self.loaded_sequences.get(&r.pattern) {
+                                self.tmp_sequence = seq.clone();
+                            }
                         }
                     }
                 });
@@ -231,58 +266,138 @@ impl SequenceListTab {
         TabResult::Continue
     }
 
-    fn draw_sequence_node_tree(&self, ui: &mut Ui, seq: &SSequence, node_ref: &SSequenceNodeRef) {
+    fn draw_sequence_node_tree(
+        &self,
+        tree: &mut TreeViewBuilder<SSequenceNodeRef>,
+        seq: &SSequence,
+        node_ref: &SSequenceNodeRef,
+    ) {
         let node = match node_ref.kind {
             NodeKind::Flow => &seq.m_flow_nodes[node_ref.index as usize],
             NodeKind::Work => &seq.m_work_nodes[node_ref.index as usize],
         };
 
-        match &*node.unk18 {
+        macro_rules! node {
+            ($kind:ident, $label:expr, $icon:expr) => {
+                tree.node(NodeBuilder::$kind(*node_ref).label_ui(|ui| {
+                    ui.spacing_mut().item_spacing.x = 4.0;
+                    egui::Image::new($icon)
+                        .fit_to_exact_size(Vec2::splat(24.0))
+                        .ui(ui);
+
+                    if let Some(base) = node.owner_pointer.base()
+                        && base.name != FNV1_BASE
+                    {
+                        ui.label(self.shared.get_wordlist_string(base.name));
+                        ui.weak(RichText::new($label).italics());
+                    } else {
+                        ui.label($label);
+                    }
+                }));
+            };
+        }
+
+        match &*node.owner_pointer {
             SUnk808091f1Variant::SSequenceGlobalChannel(_) => {
-                ui.label("[TODO: SSequenceGlobalChannel]");
+                node!(
+                    leaf,
+                    "[TODO: SSequenceGlobalChannel]",
+                    icons::sequencer::UNKNOWN
+                );
             }
             SUnk808091f1Variant::SSequenceFlowParallel(p) => {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 0.0);
-                    egui::Image::new(icons::sequencer::FLOW_PARALLEL)
-                        .fit_to_exact_size(Vec2::splat(32.0))
-                        .ui(ui);
-                    ui.label("Parallel");
-                });
-
+                node!(dir, "Parallel", icons::sequencer::FLOW_PARALLEL);
                 for child in &p.children {
-                    self.draw_sequence_node_tree(ui, seq, child);
+                    self.draw_sequence_node_tree(tree, seq, child);
                 }
+                tree.close_dir();
             }
-            SUnk808091f1Variant::SUnk808091df(_) => {
-                ui.label("[TODO: SUnk808091df]");
+            SUnk808091f1Variant::SUnk808091df(f) => {
+                node!(dir, "[TODO: SUnk808091df]", icons::sequencer::FLOW_UNKNOWN);
+                for child in &f.children {
+                    self.draw_sequence_node_tree(tree, seq, child);
+                }
+                tree.close_dir();
             }
-            SUnk808091f1Variant::SUnk808091e5(_) => {
-                ui.label("[TODO: SUnk808091e5]");
+            SUnk808091f1Variant::SUnk808091e1(f) => {
+                node!(dir, "[TODO: SUnk808091e1]", icons::sequencer::FLOW_UNKNOWN);
+                for child in &f.children {
+                    self.draw_sequence_node_tree(tree, seq, child);
+                }
+                tree.close_dir();
             }
-            SUnk808091f1Variant::SUnk808091db(_) => {
-                ui.label("[TODO: SUnk808091db]");
+            SUnk808091f1Variant::SUnk808091e5(f) => {
+                node!(dir, "[TODO: SUnk808091e5]", icons::sequencer::FLOW_SERIAL);
+                for child in &f.children {
+                    self.draw_sequence_node_tree(tree, seq, child);
+                }
+                tree.close_dir();
             }
-            SUnk808091f1Variant::SUnk808091dd(_) => {
-                ui.label("[TODO: SUnk808091dd]");
+            SUnk808091f1Variant::SUnk808091db(f) => {
+                node!(dir, "[TODO: SUnk808091db]", icons::sequencer::FLOW_UNKNOWN);
+                for child in &f.children {
+                    self.draw_sequence_node_tree(tree, seq, child);
+                }
+                tree.close_dir();
+            }
+            SUnk808091f1Variant::SUnk808091dd(f) => {
+                node!(dir, "[TODO: SUnk808091dd]", icons::sequencer::FLOW_UNKNOWN);
+                for child in &f.children {
+                    self.draw_sequence_node_tree(tree, seq, child);
+                }
+                tree.close_dir();
+            }
+            SUnk808091f1Variant::SUnk808091d9(f) => {
+                node!(dir, "[TODO: SUnk808091d9]", icons::sequencer::FLOW_UNKNOWN);
+                for child in &f.children {
+                    self.draw_sequence_node_tree(tree, seq, child);
+                }
+                tree.close_dir();
+            }
+            SUnk808091f1Variant::SSequenceDelay(_) => {
+                node!(leaf, "Delay", icons::sequencer::DELAY);
             }
             SUnk808091f1Variant::SSequenceScreenAreaFx(_) => {
-                ui.label("[TODO: SSequenceScreenAreaFx]");
+                node!(leaf, "ScreenAreaFx", icons::sequencer::FX);
             }
             SUnk808091f1Variant::SSequenceLight(_) => {
-                ui.label("[TODO: SSequenceLight]");
+                node!(leaf, "Light", icons::sequencer::LIGHT);
             }
             SUnk808091f1Variant::SSequenceLensFlare(_) => {
-                ui.label("[TODO: SSequenceLensFlare]");
+                node!(leaf, "SSequenceLensFlare", icons::sequencer::UNKNOWN);
             }
-            SUnk808091f1Variant::SSequenceEmbeddedParticleSystem(_) => {
-                ui.label("[TODO: SSequenceEmbeddedParticleSystem]");
+            SUnk808091f1Variant::SSequenceEmbeddedParticleSystem(p) => {
+                if p.unk28
+                    .iter()
+                    .any(|u| u.particle_system.as_ref().map_or_default(|s| s.is_gpu()))
+                {
+                    node!(
+                        leaf,
+                        "ParticleSystemGpu",
+                        icons::sequencer::PARTICLE_SYSTEM_GPU
+                    );
+                } else {
+                    node!(leaf, "ParticleSystem", icons::sequencer::PARTICLE_SYSTEM);
+                }
             }
             SUnk808091f1Variant::SSequenceAudioEvent(_) => {
-                ui.label("[TODO: SSequenceAudioEvent]");
+                node!(leaf, "AudioEvent", icons::sequencer::AUDIO);
+            }
+            SUnk808091f1Variant::SUnk80802636Animation(_) => {
+                node!(leaf, "(Unknown)Animation", icons::sequencer::ANIMATION);
+            }
+            SUnk808091f1Variant::SSequenceDamageImpulse(_) => {
+                node!(leaf, "DamageImpulse", icons::sequencer::DAMAGE_IMPULSE);
+            }
+            SUnk808091f1Variant::SSequenceAreaImpulse(_) => {
+                node!(leaf, "AreaImpulse", icons::sequencer::AREA_IMPULSE);
             }
             SUnk808091f1Variant::Unknown { class, .. } => {
-                ui.label(format!("[TODO: 0x{class:08X}]"));
+                node!(
+                    leaf,
+                    format!("[TODO: 0x{class:08X}]"),
+                    icons::sequencer::UNKNOWN
+                );
             }
         }
     }

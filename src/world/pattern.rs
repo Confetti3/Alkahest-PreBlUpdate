@@ -480,7 +480,7 @@ pub fn spawn_pattern_from_header(
                     .iter()
                     .chain(globals.m_work_nodes.iter())
                 {
-                    match &*g.unk18 {
+                    match &*g.owner_pointer {
                         SUnk808091f1Variant::SSequenceGlobalChannel(c) => {
                             let r = &globals.m_channel_providers[c.other_index as usize];
                             world.spawn((GlobalChannelExpression {

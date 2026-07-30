@@ -4,7 +4,7 @@
 
 use std::{
     collections::hash_map::Entry,
-    io::{Cursor, Seek},
+    io::{BufReader, Cursor, Seek},
     rc::Rc,
     str::FromStr,
     sync::Arc,
@@ -188,6 +188,8 @@ pub struct SharedState {
 
     /// Activity name hash (eg. mission_sentient) -> Investment hash
     pub activity_hash_to_investment: HashMap<u32, u32>,
+
+    pub wordlist: HashMap<u32, String>,
 }
 
 impl SharedState {
@@ -223,12 +225,19 @@ impl SharedState {
         const ACTIVITY_TO_INVESTENT_DATA: &str =
             include_str!("../assets/data/activity_to_investment.json");
 
+        let mut wordlist = HashMap::default();
+        let wordlist_file = std::fs::read_to_string("wordlist.txt").unwrap_or_default();
+        for line in wordlist_file.lines() {
+            wordlist.insert(fnv1(line), line.to_string());
+        }
+
         let mut s = Self {
             strings: StringContainer::load_all_global().into(),
             strings_by_activity,
             config: RwLock::new(AppConfig::default()),
             activity_names: serde_json::from_str(ACTIVITY_NAME_DATA)?,
             activity_hash_to_investment: serde_json::from_str(ACTIVITY_TO_INVESTENT_DATA)?,
+            wordlist,
         };
 
         s.activity_names
@@ -292,5 +301,12 @@ impl SharedState {
             .and_then(|investment_hash| {
                 self.activity_names.get(investment_hash).map(|s| s.as_str())
             })
+    }
+
+    pub fn get_wordlist_string(&self, hash: u32) -> String {
+        self.wordlist
+            .get(&hash)
+            .cloned()
+            .unwrap_or_else(|| format!("unk{hash:08X}"))
     }
 }

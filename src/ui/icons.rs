@@ -22,7 +22,10 @@ pub mod director {
 }
 
 pub mod sequencer {
+    include_icon!(AREA_IMPULSE, "sequencer/area_impulse.png");
     include_icon!(AUDIO, "sequencer/audio.png");
+    include_icon!(ANIMATION, "sequencer/animation.png");
+    include_icon!(DAMAGE_IMPULSE, "sequencer/damage_impulse.png");
     include_icon!(DELAY, "sequencer/delay.png");
     include_icon!(FLOW_PARALLEL, "sequencer/flow_parallel.png");
     include_icon!(FLOW_RANDOM, "sequencer/flow_random.png");

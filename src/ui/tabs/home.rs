@@ -86,7 +86,7 @@ impl HomeTab {
                 .clicked()
             {
                 result = TabResult::Open(Tab::SequenceList(Box::new(SequenceListTab::new(
-                    shared_state,
+                    shared_state.clone(),
                 ))));
             }
 

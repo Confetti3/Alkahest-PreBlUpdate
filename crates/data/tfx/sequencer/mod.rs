@@ -5,7 +5,7 @@ use tiger_parse::{
 };
 use tiger_pkg::TagHash;
 
-use crate::tag::WideHash;
+use crate::tag::{OptionalTag, Tag, WideHash};
 
 #[derive(Debug, Clone)]
 #[tiger_type(id = 0x80808179, size = 0x220)]
@@ -34,7 +34,7 @@ pub struct SUnk8080816f {
 #[tiger_type(id = 0x808091f1, size = 0x18)]
 pub struct SUnk808091f1 {
     #[tiger(offset = 0x10)]
-    pub unk18: VariantPointer<SUnk808091f1Variant>,
+    pub owner_pointer: VariantPointer<SUnk808091f1Variant>,
 }
 
 tiger_variant_enum! {
@@ -43,15 +43,46 @@ tiger_variant_enum! {
     enum SUnk808091f1Variant {
         SSequenceGlobalChannel,
         SSequenceFlowParallel,
-        SUnk808091df,
-        SUnk808091e5,
+        SUnk808091d9,
         SUnk808091db,
         SUnk808091dd,
+        SUnk808091df,
+        SUnk808091e1,
+        SUnk808091e5,
+        SSequenceDelay,
+        SSequenceDamageImpulse,
+        SSequenceAreaImpulse,
         SSequenceScreenAreaFx,
         SSequenceLight,
         SSequenceLensFlare,
         SSequenceEmbeddedParticleSystem,
-        SSequenceAudioEvent
+        SSequenceAudioEvent,
+        SUnk80802636Animation
+    }
+}
+
+impl SUnk808091f1Variant {
+    pub fn base(&self) -> Option<&SSequenceNodeBase> {
+        match self {
+            SUnk808091f1Variant::SSequenceGlobalChannel(n) => Some(&n.base),
+            SUnk808091f1Variant::SSequenceFlowParallel(n) => Some(&n.base),
+            SUnk808091f1Variant::SUnk808091d9(n) => Some(&n.base),
+            SUnk808091f1Variant::SUnk808091db(n) => Some(&n.base),
+            SUnk808091f1Variant::SUnk808091dd(n) => Some(&n.base),
+            SUnk808091f1Variant::SUnk808091df(n) => Some(&n.base),
+            SUnk808091f1Variant::SUnk808091e1(n) => Some(&n.base),
+            SUnk808091f1Variant::SUnk808091e5(n) => Some(&n.base),
+            SUnk808091f1Variant::SSequenceDelay(n) => Some(&n.base),
+            SUnk808091f1Variant::SSequenceDamageImpulse(n) => Some(&n.base),
+            SUnk808091f1Variant::SSequenceAreaImpulse(n) => Some(&n.base),
+            SUnk808091f1Variant::SSequenceScreenAreaFx(n) => Some(&n.base),
+            SUnk808091f1Variant::SSequenceLight(n) => Some(&n.base),
+            SUnk808091f1Variant::SSequenceLensFlare(n) => Some(&n.base),
+            SUnk808091f1Variant::SSequenceEmbeddedParticleSystem(n) => Some(&n.base),
+            SUnk808091f1Variant::SSequenceAudioEvent(n) => Some(&n.base),
+            SUnk808091f1Variant::SUnk80802636Animation(n) => Some(&n.base),
+            SUnk808091f1Variant::Unknown { .. } => None,
+        }
     }
 }
 
@@ -83,6 +114,13 @@ pub struct SUnk808091dd {
 }
 
 #[derive(Debug, Clone)]
+#[tiger_type(id = 0x808091d9, size = 0x58)]
+pub struct SUnk808091d9 {
+    pub base: SSequenceNodeBase,
+    pub children: Vec<SSequenceNodeRef>,
+}
+
+#[derive(Debug, Clone)]
 #[tiger_type(id = 0x808091df, size = 0x60)]
 pub struct SUnk808091df {
     pub base: SSequenceNodeBase,
@@ -101,6 +139,77 @@ pub struct SUnk808091e5 {
 pub struct SUnk808091db {
     pub base: SSequenceNodeBase,
     pub children: Vec<SSequenceNodeRef>,
+}
+
+#[derive(Debug, Clone)]
+#[tiger_type(id = 0x808091e1, size = 0x50)]
+pub struct SUnk808091e1 {
+    pub base: SSequenceNodeBase,
+    pub children: Vec<SSequenceNodeRef>,
+}
+
+#[derive(Debug, Clone)]
+#[tiger_type(id = 0x80802636, size = 0x1A0)]
+pub struct SUnk80802636Animation {
+    pub base: SSequenceNodeBase,
+
+    #[tiger(offset = 0x28)]
+    pub layer_weight: Vec<()>,
+
+    #[tiger(offset = 0x68)]
+    pub unk68: SUnk80809205,
+}
+
+#[derive(Debug, Clone)]
+#[tiger_type(id = 0x808091D7, size = 0x20)]
+pub struct SSequenceDelay {
+    pub base: SSequenceNodeBase,
+}
+
+#[derive(Debug, Clone)]
+#[tiger_type(id = 0x80803F2F, size = 0x190)]
+pub struct SSequenceDamageImpulse {
+    pub base: SSequenceNodeBase,
+
+    #[tiger(offset = 0x40)]
+    pub unk_3692abc1: SUnk80809205,
+    #[tiger(offset = 0x80)]
+    pub unk_832a631d: SUnk80809205,
+    #[tiger(offset = 0xC0)]
+    pub unk_c2983c91: SUnk80809205,
+    #[tiger(offset = 0x100)]
+    pub unk_6843cbea: SUnk80809205,
+    #[tiger(offset = 0x140)]
+    pub unk_69060ef6: SUnk80809205,
+}
+
+#[derive(Debug, Clone)]
+#[tiger_type(id = 0x80803F24, size = 0x510)]
+pub struct SSequenceAreaImpulse {
+    pub base: SSequenceNodeBase,
+
+    // #[tiger(offset = 0x28)]
+    // pub area_shape_query: SUnk8080913D,
+    // #[tiger(offset = 0x90)]
+    // pub unk0x1B8FE84B: SUnk80809080,
+    #[tiger(offset = 0xC0)]
+    pub unk0x1cf4038f: SUnk80809205,
+    #[tiger(offset = 0x100)]
+    pub unk0x98ddb465: SUnk80809205,
+    // #[tiger(offset = 0x140)]
+    // pub unk0x1E06BDA4: SUnk80803F26,
+    // #[tiger(offset = 0x148)]
+    // pub unk0x3B2FE65F: SUnk8080849A,
+    // #[tiger(offset = 0x158)]
+    // pub unk0x3969DEA0: SUnk80803F25,
+    // #[tiger(offset = 0x178)]
+    // pub unk0xE2A451E9: SUnk80809080,
+    // #[tiger(offset = 0x1C0)]
+    // pub attacker_responses: SUnk80803F79,
+    // #[tiger(offset = 0x1D0)]
+    // pub unk0xA57C803A: SUnk80802FFF,
+    #[tiger(offset = 0x4C8)]
+    pub unk0x1d974d72: SUnk80809205,
 }
 
 #[derive(Debug, Clone)]
@@ -167,17 +276,18 @@ pub struct SSequenceAudioEvent {
 #[tiger_type(id = 0x808067b9, size = 0x110)]
 pub struct SSequenceEmbeddedParticleSystem {
     pub base: SSequenceNodeBase,
-    // pub unk20: u64,
-    // pub unk28: Vec<SUnk808067bb>,
 
-    // pub unk38: SUnknownEventExpressions,
+    #[tiger(offset = 0x28)]
+    pub unk28: Vec<SUnk808067bb>,
+    pub unk38: SUnk80809205,
+    pub unk78: SUnk80809204,
 }
 
 #[derive(Debug, Clone)]
-#[tiger_type(id = 0x808067bb, size = 0x20)]
+#[tiger_type(id = 0x808067bb, size = 0x18)]
 pub struct SUnk808067bb {
     pub unk0: Vec<u8>,
-    pub particle_system: TagHash,
+    pub particle_system: OptionalTag<SUnk80806920>,
     pub unk14: TagHash,
 }
 
@@ -217,7 +327,7 @@ pub struct SExpression {
     pub unk28: u64,
 }
 
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
 #[tiger_type(id = 0x808094E9, size = 4)]
 pub struct SSequenceNodeRef {
     pub kind: NodeKind,
@@ -225,7 +335,7 @@ pub struct SSequenceNodeRef {
 }
 
 #[repr(u16)]
-#[derive(Debug, Clone, IntEnum, Hash)]
+#[derive(Debug, Clone, Copy, IntEnum, Hash, PartialEq, Eq)]
 pub enum NodeKind {
     Flow = 0,
     Work = 1,
@@ -241,4 +351,24 @@ impl TigerReadable for NodeKind {
     }
 
     const SIZE: usize = 2;
+}
+
+#[derive(Debug, Clone)]
+#[tiger_type(id = 0x80806920, size = 0x48)]
+pub struct SUnk80806920 {
+    pub unk0: TagHash,
+    pub unk4: TagHash,
+    pub unk8_compute_technique: TagHash,
+    pub unkc_compute_technique: TagHash,
+    pub unk10: u32,
+    pub unk14_compute_technique: TagHash,
+    pub unk18_raster_technique: TagHash,
+}
+
+impl SUnk80806920 {
+    pub fn is_gpu(&self) -> bool {
+        self.unk8_compute_technique.is_some()
+            || self.unkc_compute_technique.is_some()
+            || self.unk14_compute_technique.is_some()
+    }
 }

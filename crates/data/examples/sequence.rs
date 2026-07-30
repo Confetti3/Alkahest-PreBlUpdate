@@ -35,7 +35,8 @@ fn main() -> anyhow::Result<()> {
     println!("Wordlist loaded");
 
     // let data = package_manager().read_tag(0x80CFCA60)?;
-    let data = package_manager().read_tag(0x80D8300D)?;
+    let data = package_manager().read_tag(0x80D9A888)?;
+    // let data = package_manager().read_tag(0x80D8300D)?;
     // let data = package_manager().read_tag(0x8108E30A)?;
     // let data = package_manager().read_tag(0x80D91630)?;
     let mut f = Cursor::new(data);
@@ -120,7 +121,7 @@ fn print_node_recursive<F: Read + Seek>(
 
     let indent_str = "    ".repeat(indent);
     print!("{indent_str}");
-    match &*g.unk18 {
+    match &*g.owner_pointer {
         SUnk808091f1Variant::SSequenceGlobalChannel(s) => {
             print_node("GlobalChannel", &s.base);
             // println!("{}", s.dbg_chroma());
@@ -197,6 +198,9 @@ fn print_node_recursive<F: Read + Seek>(
         // dawn_data::entity::SUnk80809e6Variant::SSequenceEmbeddedScreenAreaFx(s) => {
         //     print_node("EmbeddedScreenAreaFx", &s.base);
         // }
+        SUnk808091f1Variant::SSequenceDelay(s) => {
+            print_node("Delay", &s.base);
+        }
         SUnk808091f1Variant::SSequenceLight(s) => {
             print_node("Light", &s.base);
         }
@@ -205,6 +209,15 @@ fn print_node_recursive<F: Read + Seek>(
         }
         SUnk808091f1Variant::SSequenceScreenAreaFx(s) => {
             print_node("ScreenAreaFx", &s.base);
+        }
+        SUnk808091f1Variant::SUnk80802636Animation(s) => {
+            print_node("(Unk)Animation", &s.base);
+        }
+        SUnk808091f1Variant::SSequenceDamageImpulse(s) => {
+            print_node("DamageImpulse", &s.base);
+        }
+        SUnk808091f1Variant::SSequenceAreaImpulse(s) => {
+            print_node("AreaImpulse", &s.base);
         }
         // dawn_data::entity::SUnk80809e6Variant::SSequenceDelay(s) => {
         //     print_node("Delay", &s.base);
@@ -222,43 +235,49 @@ fn print_node_recursive<F: Read + Seek>(
         //     print_node("DamageImpulse", &s.base);
         // }
         SUnk808091f1Variant::SSequenceFlowParallel(s) => {
-            println!("Parallel {i}: [{}]", get_string_fnv(wordlist, s.base.name));
+            print_node("Parallel", &s.base);
             for c in &s.children {
                 print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);
             }
         }
         SUnk808091f1Variant::SUnk808091df(s) => {
-            println!(
-                "unk_flow_808091df {i}: [{}]",
-                get_string_fnv(wordlist, s.base.name)
-            );
+            print_node("unk_flow_808091df", &s.base);
+            for c in &s.children {
+                print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);
+            }
+        }
+        SUnk808091f1Variant::SUnk808091e1(s) => {
+            print_node("unk_flow_808091e1", &s.base);
             for c in &s.children {
                 print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);
             }
         }
         SUnk808091f1Variant::SUnk808091e5(s) => {
-            println!(
-                "unk_flow_808091e5 {i}: [{}]",
-                get_string_fnv(wordlist, s.base.name)
-            );
+            print_node("unk_flow_808091e5", &s.base);
             for c in &s.children {
                 print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);
             }
         }
         SUnk808091f1Variant::SUnk808091db(s) => {
-            println!(
-                "unk_flow_808091db {i}: [{}]",
-                get_string_fnv(wordlist, s.base.name)
+            print_node(
+                &format!(
+                    "unk_flow_808091db {i}: [{}]",
+                    get_string_fnv(wordlist, s.base.name)
+                ),
+                &s.base,
             );
             for c in &s.children {
                 print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);
             }
         }
         SUnk808091f1Variant::SUnk808091dd(s) => {
-            println!(
-                "unk_flow_808091dd {i}: [{}]",
-                get_string_fnv(wordlist, s.base.name)
-            );
+            print_node("unk_flow_808091dd", &s.base);
+            for c in &s.children {
+                print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);
+            }
+        }
+        SUnk808091f1Variant::SUnk808091d9(s) => {
+            print_node("unk_flow_808091d9", &s.base);
             for c in &s.children {
                 print_node_recursive(f, wordlist, c, flow_nodes, work_nodes, third, indent + 1);
             }
@@ -277,15 +296,17 @@ fn print_node_recursive<F: Read + Seek>(
         // }
         SUnk808091f1Variant::Unknown { class, offset } => {
             f.seek(SeekFrom::Start(*offset)).unwrap();
-            let hash = u32::read_ds(f).unwrap();
+            let base = SSequenceNodeBase::read_ds(f).unwrap();
 
             const ANSI_RED: &str = "\x1b[31m";
             const ANSI_RESET: &str = "\x1b[0m";
 
-            println!(
-                "{ANSI_RED}unk {i}: Unknown resource type: {node_kind} node {class:08X} @ \
-                 0x{offset:X} (name '{}'){ANSI_RESET}",
-                get_string_fnv(wordlist, hash)
+            print_node(
+                &format!(
+                    "{ANSI_RED}unk {i}: Unknown {node_kind} node type {class:08X} @ \
+                     0x{offset:X}{ANSI_RESET}",
+                ),
+                &base,
             );
         }
     }

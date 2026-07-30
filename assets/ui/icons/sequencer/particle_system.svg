@@ -3,7 +3,7 @@
 <svg width="100%" height="100%" viewBox="0 0 128 128" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linecap:round;stroke-linejoin:round;stroke-miterlimit:1.5;">
     <g id="Particle-System--CPU-" serif:id="Particle System (CPU)">
         <g transform="matrix(0.915044,0,0,0.927116,6.585664,-33.139847)">
-            <g opacity="0.2">
+            <g opacity="0.5">
                 <g transform="matrix(1.092843,-0,-0,1.078614,-7.197099,35.745108)">
                     <use xlink:href="#_Image1" x="13" y="6" width="74px" height="74px"/>
                 </g>
@@ -18,7 +18,7 @@
             </g>
         </g>
         <g transform="matrix(0.915044,0,0,0.927116,41.012262,-15.654435)">
-            <g opacity="0.5">
+            <g opacity="0.7">
                 <g transform="matrix(1.092843,-0,-0,1.078614,-44.819977,16.885095)">
                     <use xlink:href="#_Image2" x="46.677" y="22.74" width="74px" height="74px"/>
                 </g>

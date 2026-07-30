@@ -112,6 +112,7 @@ ehttp = { version = "0.7.1", features = ["json"] }
 semver = "1.0.28"
 build-time = "0.1.3"
 directories = "6.0.0"
+egui_ltreeview = "0.8.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = "0.2"
