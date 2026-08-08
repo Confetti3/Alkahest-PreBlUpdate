@@ -286,22 +286,17 @@ fn main() -> Result<()> {
 
     for (tag, _) in manager.get_all_by_reference(SShadowkeepStaticMesh::ID.unwrap()) {
         scan.statics += 1;
-        scan.check(
+        let mut max_layout = 0;
+        let result =
             (|| -> Result<()> {
                 let model: SShadowkeepStaticMesh = manager.read_tag_struct(tag)?;
-                scan.max_layout = scan.max_layout.max(
-                    model
-                        .opaque_meshes
-                        .mesh_groups
-                        .iter()
-                        .map(|group| group.input_layout_index as u16)
-                        .max()
-                        .unwrap_or(0),
-                );
+                max_layout = model.opaque_meshes.mesh_groups.iter()
+                    .map(|group| group.input_layout_index as u16).max().unwrap_or(0);
                 validate_static(tag, &model, bootstrap.input_layout_count)
             })()
-            .with_context(|| format!("static {tag}")),
-        );
+            .with_context(|| format!("static {tag}"));
+        if result.is_ok() { scan.max_layout = scan.max_layout.max(max_layout); }
+        scan.check(result);
     }
     for (tag, _) in manager.get_all_by_reference(SShadowkeepStaticMeshInstances::ID.unwrap()) {
         scan.instances += 1;
@@ -325,21 +320,18 @@ fn main() -> Result<()> {
     }
     for (tag, _) in manager.get_all_by_reference(SShadowkeepDynamicModel::ID.unwrap()) {
         scan.dynamics += 1;
-        scan.check(
+        let mut max_layout = 0;
+        let result =
             (|| -> Result<()> {
                 let dynamic: SShadowkeepDynamicModel = manager.read_tag_struct(tag)?;
-                scan.max_layout = scan.max_layout.max(
-                    dynamic
-                        .meshes
-                        .iter()
-                        .flat_map(|mesh| mesh.input_layout_per_render_stage)
-                        .max()
-                        .unwrap_or(0),
-                );
+                max_layout = dynamic.meshes.iter()
+                    .flat_map(|mesh| mesh.input_layout_per_render_stage)
+                    .max().unwrap_or(0);
                 validate_dynamic(tag, &dynamic, bootstrap.input_layout_count)
             })()
-            .with_context(|| format!("dynamic {tag}")),
-        );
+            .with_context(|| format!("dynamic {tag}"));
+        if result.is_ok() { scan.max_layout = scan.max_layout.max(max_layout); }
+        scan.check(result);
     }
 
     scan.finish()

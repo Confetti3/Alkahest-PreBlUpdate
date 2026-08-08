@@ -5,7 +5,7 @@ use tiger_parse::PackageManagerExt;
 use tiger_pkg::package_manager;
 
 fn main() -> anyhow::Result<()> {
-    alkahest_core::initialize_package_manager(None)?;
+    alkahest_core::initialize_package_manager(None, None)?;
 
     let strings = StringContainer::load(0x80A687EC)?;
     let p: S808096BF = package_manager().read_tag_struct(0x80BB313E)?;

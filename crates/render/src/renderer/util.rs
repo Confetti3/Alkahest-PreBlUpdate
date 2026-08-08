@@ -59,8 +59,8 @@ impl Renderer {
         }
 
         {
-            cmd.pixel_set_shader_resources(0, &[srv.into()]);
             cmd.output_merger_set_render_targets(&[rtv.into()], None);
+            cmd.pixel_set_shader_resources(0, &[srv.into()]);
         }
 
         cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));

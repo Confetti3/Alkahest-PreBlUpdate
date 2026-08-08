@@ -10,6 +10,10 @@ use alkahest_data::tfx::{
         SDynamicModel,
     },
 };
+use alkahest_data::shadowkeep::{
+    SShadowkeepDynamicMaterialVariant, SShadowkeepDynamicModel,
+    lod_category_from_legacy, primitive_type_from_legacy,
+};
 use anyhow::Context;
 use glam::{Mat4, Vec4, Vec4Swizzles};
 use itertools::{Itertools, multizip};
@@ -140,6 +144,120 @@ impl DynamicModel {
         }))
     }
 
+    /// Normalize the Shadowkeep dynamic-model layout.  The 24th (compute
+    /// skinning) stage is explicitly kept empty because it does not exist in
+    /// the Arrivals format.
+    pub fn load_shadowkeep(
+        hash: TagHash,
+        technique_map: Vec<SShadowkeepDynamicMaterialVariant>,
+        techniques: Vec<TagHash>,
+    ) -> anyhow::Result<Box<Self>> {
+        let legacy = package_manager().read_tag_struct::<SShadowkeepDynamicModel>(hash)?;
+        let model = SDynamicModel {
+            file_size: legacy.file_size,
+            unk8: legacy.unk8,
+            meshes: legacy
+                .meshes
+                .iter()
+                .map(|mesh| {
+                    let mut part_ranges = [0u16; RenderStage::COUNT + 1];
+                    part_ranges[..mesh.part_range_per_render_stage.len()]
+                        .copy_from_slice(&mesh.part_range_per_render_stage);
+                    part_ranges[RenderStage::COUNT] = mesh.part_range_per_render_stage[23];
+                    let mut layouts = [0u8; RenderStage::COUNT];
+                    for (index, layout) in mesh.input_layout_per_render_stage.iter().enumerate() {
+                        layouts[index] = u8::try_from(*layout).context(
+                            "Shadowkeep dynamic input-layout index exceeds u8",
+                        )?;
+                    }
+                    Ok(SDynamicMesh {
+                        vertex0_buffer: mesh.vertex0_buffer,
+                        vertex1_buffer: mesh.vertex1_buffer,
+                        buffer2: mesh.buffer2,
+                        buffer3: mesh.buffer3,
+                        index_buffer: mesh.index_buffer,
+                        // The preserved dynamic renderer binds only vertex0,
+                        // vertex1, and index data; no later color stream is
+                        // implied by the two legacy auxiliary buffers.
+                        color_buffer: TagHash::NONE,
+                        skinning_buffer: TagHash::NONE,
+                        unk1c: mesh.unk14,
+                        parts: mesh.parts.iter().map(|part| {
+                            Ok(SDynamicMeshPart {
+                                technique: part.technique,
+                                variant_shader_index: part.variant_shader_index,
+                                primitive_type: primitive_type_from_legacy(part.primitive_type).context(
+                                    "Shadowkeep dynamic part has an unsupported primitive topology",
+                                )?,
+                                unk7: part.unk7,
+                                index_start: part.index_start,
+                                index_count: part.index_count,
+                                unk10: part.unk10,
+                                external_identifier: part.external_identifier,
+                                unk16: part.unk16,
+                                flags: 0,
+                                gear_dye_change_color_index: 0,
+                                lod_category: lod_category_from_legacy(part.lod_category).context(
+                                    "Shadowkeep dynamic part has an unsupported LOD category",
+                                )?,
+                                unk1e: 0,
+                                lod_run: 0,
+                                unk20: part.unk1c,
+                            })
+                        }).collect::<anyhow::Result<_>>()?,
+                        part_range_per_render_stage: part_ranges,
+                        input_layout_per_render_stage: layouts,
+                        _pad7a: [0; 3],
+                    })
+                })
+                .collect::<anyhow::Result<_>>()?,
+            unk20: legacy.unk20,
+            model_scale: legacy.model_scale,
+            model_offset: legacy.model_offset,
+            texcoord_scale: legacy.texcoord_scale,
+            texcoord_offset: legacy.texcoord_offset,
+        };
+        let technique_map = technique_map.into_iter().map(|variant| SDynamicMeshMaterialVariants {
+            technique_count: variant.technique_count,
+            technique_start: variant.technique_start,
+            unk8: variant.unk8,
+        }).collect_vec();
+        let loaded_techniques = techniques.iter().map(|&tag| Renderer::instance().asset_manager.load(tag)).collect_vec();
+        let mesh_buffers = model.meshes.iter().map(|mesh| {
+            ModelBuffers::load(mesh.vertex0_buffer, mesh.vertex1_buffer, mesh.color_buffer, mesh.index_buffer)
+                .context("Failed to load Shadowkeep rigid-model buffers")
+        }).collect::<anyhow::Result<_>>()?;
+        let mesh_stages = model.meshes.iter().map(|mesh| {
+            RenderStageSubscription::from_partrange_list(&mesh.part_range_per_render_stage)
+        }).collect_vec();
+        let part_techniques = model.meshes.iter().map(|mesh| {
+            mesh.parts.iter().map(|part| Renderer::instance().asset_manager.load(part.technique)).collect_vec()
+        }).collect_vec();
+        let permutation_count = technique_map.iter().filter(|variant| variant.unk8 == 0)
+            .map(|variant| variant.technique_count as usize).next().unwrap_or(1).max(1);
+        let identifier_count = model.meshes.iter().flat_map(|mesh| mesh.parts.iter().map(|part| part.external_identifier))
+            .max().unwrap_or(0) as usize + 1;
+        let subscribed_stages = mesh_stages.iter().fold(RenderStageSubscription::empty(), |stages, stage| stages | *stage);
+        Ok(Box::new(Self {
+            mesh_buffers,
+            technique_map,
+            techniques: loaded_techniques,
+            model,
+            mesh_stages,
+            subscribed_stages,
+            part_techniques,
+            permutation: permutation_count - 1,
+            permutation_count,
+            identifier_count,
+            identifier_mask: u128::MAX,
+            hash,
+            cb: ConstantBuffer::create(&Renderer::instance().gpu, None)
+                .context("Failed to create Shadowkeep rigid-model constant buffer")?,
+            channels: AHashMap::default(),
+            transform: Mat4::IDENTITY,
+        }))
+    }
+
     pub fn mesh_count(&self) -> usize {
         self.model.meshes.len()
     }
@@ -218,7 +336,12 @@ impl DynamicModel {
             self.cb.bind(cmd, ShaderStage::Vertex, 1);
             self.cb.bind(cmd, ShaderStage::Pixel, 1);
 
-            cmd.set_input_layout(mesh.get_input_layout_for_stage(stage) as usize);
+            if Renderer::instance()
+                .set_input_layout(cmd, mesh.get_input_layout_for_stage(stage) as usize)
+                .is_err()
+            {
+                continue;
+            }
             mesh_buffers.bind(cmd);
             for part_index in mesh.get_range_for_stage(stage) {
                 let part = &mesh.parts[part_index];

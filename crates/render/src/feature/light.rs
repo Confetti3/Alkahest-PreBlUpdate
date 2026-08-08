@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use alkahest_core::job::{SCHEDULER, potassium::Priority};
 use alkahest_data::tfx::{
@@ -26,6 +29,18 @@ use crate::{
     util::{geometry, threading::CommandListSetId},
 };
 
+static SHADOWKEEP_DEFERRED_LIGHT_DRAW_REPORTED: AtomicBool = AtomicBool::new(false);
+static SHADOWKEEP_LIGHT_BINDING_REPORTED: AtomicBool = AtomicBool::new(false);
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LightSubmissionPath {
+    Current,
+    Shadowkeep { shadowing: bool },
+}
+const SHADOWKEEP_LIGHT_DEBUG_PS: &str =
+    "float4 mainPS() : SV_TARGET0 { return float4(1.0, 0.0, 1.0, 1.0); }";
+
+
+
 struct LightRendererData {
     technique_lighting_apply: Technique,
     technique_lighting_apply_shadowing: Option<Technique>,
@@ -36,10 +51,12 @@ struct LightRendererData {
     // TODO(cohae): This should be a shared resource (eg. a struct in the renderer that we can use instead of recreating it for every light/cubemap)
     vb: d3d11::Buffer,
     ib: d3d11::Buffer,
+    debug_pixel_shader: Option<d3d11::PixelShader>,
 }
 
 pub struct LightRenderer {
     data: Arc<LightRendererData>,
+    submission_path: LightSubmissionPath,
 
     local_to_world: glam::Mat4,
     light_space_transform: glam::Mat4,
@@ -50,6 +67,52 @@ pub struct LightRenderer {
 }
 
 impl LightRenderer {
+    /// Construct a light from the preserved Shadowkeep layout without
+    /// normalizing it through a later-era `SLight` structure.
+    pub fn new_shadowkeep(
+        renderer: &Renderer,
+        technique_shading: TagHash,
+        technique_volumetrics: TagHash,
+        light_space_transform: Mat4,
+        bounds: Option<AxisAlignedBBox>,
+    ) -> anyhow::Result<Box<Self>> {
+        Self::new_impl(
+            renderer,
+            technique_shading,
+            TagHash::NONE,
+            technique_volumetrics,
+            TagHash::NONE,
+            light_space_transform,
+            Mat4::IDENTITY,
+            bounds,
+            LightSubmissionPath::Shadowkeep { shadowing: false },
+        )
+    }
+
+    /// Construct a preserved Shadowkeep shadowing light.  The shadow view is
+    /// attached by the map loader when that optional resource is available.
+    pub fn new_shadowkeep_shadowing(
+        renderer: &Renderer,
+        technique_shading: TagHash,
+        technique_shading_shadowing: TagHash,
+        technique_volumetrics: TagHash,
+        technique_volumetrics_shadowing: TagHash,
+        light_space_transform: Mat4,
+        shadowmap_projection: Mat4,
+    ) -> anyhow::Result<Box<Self>> {
+        Self::new_impl(
+            renderer,
+            technique_shading,
+            technique_shading_shadowing,
+            technique_volumetrics,
+            technique_volumetrics_shadowing,
+            light_space_transform,
+            shadowmap_projection,
+            None,
+            LightSubmissionPath::Shadowkeep { shadowing: true },
+        )
+    }
+
     pub fn new(
         renderer: &Renderer,
         light: &SLight,
@@ -65,6 +128,7 @@ impl LightRenderer {
             light.light_space_transform,
             Mat4::IDENTITY,
             Some(bounds),
+            LightSubmissionPath::Current,
         )
     }
 
@@ -82,6 +146,7 @@ impl LightRenderer {
             light.light_space_transform,
             shadowmap_projection,
             None,
+            LightSubmissionPath::Current,
         )
     }
 
@@ -96,6 +161,7 @@ impl LightRenderer {
         light_space_transform: Mat4,
         shadowmap_projection: Mat4,
         bounds: Option<AxisAlignedBBox>,
+        submission_path: LightSubmissionPath,
     ) -> anyhow::Result<Box<Self>> {
         let vb = renderer.gpu.create_buffer(
             &d3d11::BufferDesc::builder()
@@ -115,25 +181,48 @@ impl LightRenderer {
             Some(bytemuck::cast_slice(geometry::CUBE_INDICES)),
         )?;
 
+        let load_technique = |hash| {
+            if matches!(submission_path, LightSubmissionPath::Shadowkeep { .. }) {
+                Technique::load_shadowkeep(&renderer.gpu, &renderer.asset_manager, hash)
+            } else {
+                Technique::load(&renderer.gpu, &renderer.asset_manager, hash)
+            }
+        };
+        let debug_pixel_shader = if matches!(submission_path, LightSubmissionPath::Shadowkeep { .. }) {
+            let blob = d3d11::fxc::compile(
+                SHADOWKEEP_LIGHT_DEBUG_PS.as_bytes(),
+                Some("shadowkeep_light_debug"),
+                &[],
+                "mainPS",
+                d3d11::fxc::ShaderTarget::Pixel,
+            )?;
+            Some(renderer.gpu.create_pixel_shader(&blob)?)
+        } else {
+            None
+        };
+
+
         Ok(Box::new(Self {
             data: Arc::new(LightRendererData {
-                technique_lighting_apply: Technique::load(&renderer.gpu, &renderer.asset_manager, technique_shading)?,
+                technique_lighting_apply: load_technique(technique_shading)?,
                 technique_lighting_apply_shadowing: technique_shading_shadowing
                     .is_some()
-                    .then(|| Technique::load(&renderer.gpu, &renderer.asset_manager, technique_shading_shadowing))
+                    .then(|| load_technique(technique_shading_shadowing))
                     .transpose()?,
                 technique_volumetrics: technique_volumetrics
                     .is_some()
-                    .then(|| Technique::load(&renderer.gpu, &renderer.asset_manager, technique_volumetrics))
+                    .then(|| load_technique(technique_volumetrics))
                     .transpose()?,
                 technique_volumetrics_shadowing: technique_volumetrics_shadowing
                     .is_some()
-                    .then(|| Technique::load(&renderer.gpu, &renderer.asset_manager, technique_volumetrics_shadowing))
+                    .then(|| load_technique(technique_volumetrics_shadowing))
                     .transpose()?,
                 // technique_light_probe_apply: Technique::load(&renderer.gpu, technique_light_probe)?,
                 vb,
                 ib,
+                debug_pixel_shader,
             }),
+            submission_path,
             local_to_world: Mat4::IDENTITY,
             light_space_transform,
             shadowmap_projection,
@@ -141,15 +230,144 @@ impl LightRenderer {
             shadow_view: None,
         }))
     }
+    fn submit_shadowkeep_lighting(
+        &self,
+        cmd: &mut crate::gpu::command_list::CommandList,
+    ) {
+        let renderer = Renderer::instance();
+        let global_externs = renderer.externs.get();
+        let view_position = global_externs.view.position();
+        let volume = self.local_to_world * self.light_space_transform;
+
+        cmd.externs.simple_geometry = Some(Box::new(SimpleGeometry {
+            local_to_world: if self.data.debug_pixel_shader.is_some() {
+                Mat4::IDENTITY
+            } else {
+                global_externs.view.world_to_projective * volume
+            },
+        }));
+
+        let node_relative = Mat4::from_translation(-view_position) * self.local_to_world;
+        let shadowing = matches!(
+            self.submission_path,
+            LightSubmissionPath::Shadowkeep { shadowing: true }
+        );
+        let existing_deferred_light = cmd
+            .externs
+            .deferred_light
+            .as_ref()
+            .cloned()
+            .unwrap_or_default();
+        cmd.externs.deferred_light = Some(Box::new(DeferredLight {
+            legacy_unk40: Mat4::IDENTITY,
+            unk40: if shadowing {
+                Mat4::from_translation(view_position)
+            } else {
+                Mat4::IDENTITY
+            },
+            unk80: node_relative,
+            ..*existing_deferred_light
+        }));
+
+        let (_, transform_rot, transform_translation) =
+            self.local_to_world.to_scale_rotation_translation();
+        let forward = transform_rot * Vec3::X;
+        let up = transform_rot * Vec3::Z;
+        let transform_translation = transform_translation - view_position;
+        let transform_relative =
+            Mat4::look_at_rh(transform_translation, transform_translation + forward, up);
+
+        let has_shadow_view = renderer.settings().shadows && self.shadow_view.is_some();
+        if has_shadow_view
+            && let Some((shadowmap, shadowmap_srv)) = self.shadow_view.as_ref()
+        {
+            renderer
+                .common
+                .shadowmap_vs_t2
+                .bind(cmd, 2, ShaderStage::Vertex);
+            let existing_shadowmap = cmd
+                .externs
+                .deferred_shadow
+                .as_ref()
+                .cloned()
+                .unwrap_or_default();
+            let shadowmap_desc = shadowmap.get_desc();
+            cmd.externs.deferred_shadow = Some(
+                externs::DeferredShadow {
+                    shadow_depthmap: shadowmap_srv.clone().into(),
+                    resolution_width: shadowmap_desc.width as f32,
+                    resolution_height: shadowmap_desc.height as f32,
+                    unkc0: self.shadowmap_projection * transform_relative,
+                    unk180: 2.0,
+                    ..*existing_shadowmap
+                }
+                .into(),
+            );
+        }
+
+        if let Err(error) = renderer.set_input_layout(cmd, 1) {
+            tracing::error!(error = %error, "Failed to bind Shadowkeep light input layout");
+            return;
+        }
+        cmd.set_input_topology(PrimitiveType::Triangles);
+        cmd.input_assembler_set_vertex_buffers(0, &[Some(&self.data.vb)], Some(&[12]), Some(&[0]))
+            .unwrap();
+        cmd.state = cmd
+            .state
+            .select(&PipelineState::new(Some(8), Some(0), Some(2), Some(2)));
+        let technique = if has_shadow_view {
+            self.data
+                .technique_lighting_apply_shadowing
+                .as_ref()
+                .unwrap_or(&self.data.technique_lighting_apply)
+        } else {
+            &self.data.technique_lighting_apply
+        };
+        cmd.set_override_pixel_shader(self.data.debug_pixel_shader.clone());
+        technique.bind(cmd).unwrap();
+        if let Some(shader) = self.data.debug_pixel_shader.as_ref() {
+            cmd.pixel_set_shader(shader);
+        }
+        if SHADOWKEEP_LIGHT_BINDING_REPORTED
+            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+        {
+            tracing::warn!(
+                local_to_world = ?self.local_to_world,
+                light_space_transform = ?self.light_space_transform,
+                volume = ?volume,
+                world_to_projective = ?global_externs.view.world_to_projective,
+                node_relative = ?node_relative,
+                state = format_args!("0x{:08X}", cmd.state.raw()),
+                "Shadowkeep light binding diagnostic"
+            );
+        }
+
+        cmd.input_assembler_set_index_buffer(&self.data.ib, dxgi::Format::R16Uint, 0);
+        cmd.draw_indexed(geometry::CUBE_INDICES.len() as u32, 0, 0);
+        cmd.set_override_pixel_shader(None);
+        if SHADOWKEEP_DEFERRED_LIGHT_DRAW_REPORTED
+            .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
+            .is_ok()
+        {
+            tracing::warn!(
+                stage = ?RenderStage::LightingApply,
+                technique = %technique.hash,
+                index_count = geometry::CUBE_INDICES.len(),
+                "Shadowkeep DeferredLights reached LightingApply and issued DrawIndexed"
+            );
+        }
+        cmd.flush_states();
+    }
 }
+
 
 #[profiling::all_functions]
 impl FeatureRenderer for LightRenderer {
     fn visibility_test(&mut self, _view_index: usize, view: &dyn OpaqueView) -> bool {
-        if let Some(ref bounds) = self.bounds {
-            view.is_visible(bounds)
-        } else {
-            true
+        match self.submission_path {
+            LightSubmissionPath::Shadowkeep { .. } => true,
+            LightSubmissionPath::Current => self.bounds.as_ref().is_none_or(|bounds| view.is_visible(bounds)),
         }
     }
 
@@ -183,6 +401,12 @@ impl FeatureRenderer for LightRenderer {
         stage: RenderStage,
     ) {
         if stage == RenderStage::LightProbeApply {
+            return;
+        }
+        if stage == RenderStage::LightingApply
+            && matches!(self.submission_path, LightSubmissionPath::Shadowkeep { .. })
+        {
+            self.submit_shadowkeep_lighting(cmd);
             return;
         }
 
@@ -234,8 +458,13 @@ impl FeatureRenderer for LightRenderer {
             let light_local_to_world = compute_light_local_to_world(self.local_to_world, min, max);
 
             cmd.externs.deferred_light = Some(Box::new(DeferredLight {
-                // unk40: local_to_world_relative.inverse().transpose(),
-                unk40: (view_translation_inverse_mat4 * light_local_to_world).inverse(),
+                // Preserve the Arrivals light ABI: the 0x80 matrix is the
+                // view-relative node transform and the 0xC0 matrix is its
+                // volume transform.  The earlier normalized inverse placed
+                // the wrong matrix in both slots and produced an empty light
+                // buffer despite valid light draws.
+                legacy_unk40: Mat4::IDENTITY,
+                unk40: Mat4::IDENTITY,
                 unk80: local_to_world_relative,
 
                 ..Default::default()
@@ -343,7 +572,10 @@ impl FeatureRenderer for LightRenderer {
         }
 
         cmd.set_input_topology(PrimitiveType::Triangles);
-        cmd.set_input_layout(1); // float3 v0 : POSITION0, // Format DXGI_FORMAT_R32G32B32_FLOAT size 12
+        if let Err(error) = Renderer::instance().set_input_layout(cmd, 1) {
+            tracing::error!(error = %error, "Failed to bind light input layout");
+            return;
+        }
 
         cmd.input_assembler_set_index_buffer(&self.data.ib, dxgi::Format::R16Uint, 0);
         cmd.input_assembler_set_vertex_buffers(0, &[Some(&self.data.vb)], Some(&[12]), Some(&[0]))
@@ -424,8 +656,8 @@ impl FeatureRenderer for LightRenderer {
                         compute_light_local_to_world(local_to_world, min, max);
 
                     cmd.externs.deferred_light = Some(Box::new(DeferredLight {
-                        // unk40: local_to_world_relative.inverse().transpose(),
-                        unk40: (view_translation_inverse_mat4 * light_local_to_world).inverse(),
+                        legacy_unk40: Mat4::IDENTITY,
+                        unk40: Mat4::IDENTITY,
                         unk80: local_to_world_relative,
 
                         ..Default::default()
@@ -495,7 +727,10 @@ impl FeatureRenderer for LightRenderer {
                 }
 
                 cmd.set_input_topology(PrimitiveType::Triangles);
-                cmd.set_input_layout(1); // float3 v0 : POSITION0, // Format DXGI_FORMAT_R32G32B32_FLOAT size 12
+                if let Err(error) = Renderer::instance().set_input_layout(cmd, 1) {
+                    tracing::error!(error = %error, "Failed to bind light input layout");
+                    return;
+                }
 
                 cmd.input_assembler_set_index_buffer(&data.ib, dxgi::Format::R16Uint, 0);
                 cmd.input_assembler_set_vertex_buffers(

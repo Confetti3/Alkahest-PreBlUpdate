@@ -43,7 +43,9 @@ pub struct SDynamicMesh {
     ///     - End = part_range_per_render_stage[stage + 1]
     pub part_range_per_render_stage: [u16; RenderStage::COUNT + 1],
     pub input_layout_per_render_stage: [u8; RenderStage::COUNT],
-    _pad7a: [u16; 3],
+    /// Reserved serialized words. Public so era-specific normalizers can
+    /// construct the shared runtime draw description without reparsing bytes.
+    pub _pad7a: [u16; 3],
 }
 
 impl SDynamicMesh {

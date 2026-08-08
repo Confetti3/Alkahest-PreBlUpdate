@@ -54,6 +54,8 @@ const HZB_DOWNSAMPLE_SHADER: &str = include_str!("../builtin/shaders/hzb_downsam
 pub struct Renderer {
     pub gpu: Arc<Gpu>,
     pub asset_manager: AssetManager,
+    era: RendererEra,
+    shadowkeep_input_layouts: Option<Arc<shadowkeep::ShadowkeepInputLayouts>>,
     // pub timestamps: TimestampManager,
     pub immediate: Mutex<ImmediateShapeRenderer>,
     pub debug_text: Mutex<DebugTextRenderer>,
@@ -94,25 +96,42 @@ pub struct Renderer {
     pub settings: RwLock<RenderSettings>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RendererEra {
+    Current,
+    Shadowkeep,
+}
+
 unsafe impl Send for Renderer {}
 unsafe impl Sync for Renderer {}
 
 static RENDERER_GLOBAL: OnceLock<Arc<Renderer>> = OnceLock::new();
 impl Renderer {
     pub fn new(gpu: Arc<Gpu>) -> anyhow::Result<Self> {
-        Self::new_with_globals(gpu, RenderGlobals::load)
+        Self::new_with_globals(gpu, RendererEra::Current, None, RenderGlobals::load)
     }
 
     pub fn new_shadowkeep(
         gpu: Arc<Gpu>,
         bootstrap: crate::renderer::shadowkeep::ShadowkeepRendererBootstrap,
     ) -> anyhow::Result<Self> {
-        Self::new_with_globals(gpu, move |gpu, asset_manager| {
-            RenderGlobals::load_shadowkeep(gpu, asset_manager, &bootstrap.bootstrap)
-        })
+        let input_layouts = Arc::new(bootstrap.input_layouts);
+        Self::new_with_globals(
+            gpu,
+            RendererEra::Shadowkeep,
+            Some(input_layouts),
+            move |gpu, asset_manager| {
+                RenderGlobals::load_shadowkeep(gpu, asset_manager, &bootstrap.bootstrap)
+            },
+        )
     }
 
-    fn new_with_globals<F>(gpu: Arc<Gpu>, load_globals: F) -> anyhow::Result<Self>
+    fn new_with_globals<F>(
+        gpu: Arc<Gpu>,
+        era: RendererEra,
+        shadowkeep_input_layouts: Option<Arc<shadowkeep::ShadowkeepInputLayouts>>,
+        load_globals: F,
+    ) -> anyhow::Result<Self>
     where
         F: FnOnce(&Arc<Gpu>, &AssetManager) -> anyhow::Result<RenderGlobals>,
     {
@@ -161,11 +180,16 @@ impl Renderer {
         let hzb_downsample_cs =
             gpu.compile_shader_cs("hzb_downsample", HZB_DOWNSAMPLE_SHADER, "main")?;
 
-        let asset_manager = AssetManager::new(&gpu);
+        let asset_manager = match era {
+            RendererEra::Current => AssetManager::new(&gpu),
+            RendererEra::Shadowkeep => AssetManager::new_shadowkeep(&gpu),
+        };
         let globals = load_globals(&gpu, &asset_manager).context("Failed to load render globals")?;
         Ok(Self {
             externs: ThreadMutCell::new(Externs::new(&globals)),
             globals,
+            era,
+            shadowkeep_input_layouts,
             // timestamps: TimestampManager::new(&gpu.device)?,
             asset_manager,
             debug_text: Mutex::new(DebugTextRenderer::create(&gpu)?),
@@ -217,6 +241,25 @@ impl Renderer {
 
     pub fn instance() -> &'static Arc<Renderer> {
         RENDERER_GLOBAL.get().expect("GPU is not yet initialized!")
+    }
+
+    pub fn era(&self) -> RendererEra {
+        self.era
+    }
+
+    /// Binds an era-local vertex layout.  Shadowkeep layouts are generated
+    /// from its bootstrap and intentionally never leak into `Gpu`.
+    pub fn set_input_layout(
+        &self,
+        cmd: &mut crate::gpu::command_list::CommandList,
+        index: usize,
+    ) -> anyhow::Result<()> {
+        if let Some(layouts) = &self.shadowkeep_input_layouts {
+            cmd.set_input_layout_custom(layouts.get(index)?);
+        } else {
+            cmd.set_input_layout(index);
+        }
+        Ok(())
     }
 
     pub fn add_object(&self, object: RenderObject) -> RenderObjectHandle {

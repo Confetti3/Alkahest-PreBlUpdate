@@ -126,6 +126,7 @@ impl View {
 
         // TODO(cohae): Fairly sure this is the same as tptow_no_proj_w but for NDC instead of viewport space
         self.unk2c0 = ptow_no_proj_w * Self::VIEWSPACE_UNORM_TO_SNORM;
+
     }
 
     pub fn position(&self) -> Vec3 {
@@ -159,17 +160,18 @@ extern_struct! {
 
 extern_struct! {
     struct DeferredLight("deferred_light") {
-        0x40 => unk40: Mat4,
-        0x80 => unk80: Mat4,
-        0xc0 => unkc0: Vec4 > default(Vec4::W),
-        0xd0 => unkd0: Vec4 > default(Vec4::W),
-        0xe0 => unke0: Vec4 > default(Vec4::W),
-        0xf0 => unkf0: Vec4 > default(Vec4::W),
-        0x100 => unk100: Vec4,
+        // Arrivals keeps the deferred-light matrices at 0x80/0xC0.  The
+        // later renderer moved these fields down by 0x40; using that layout
+        // for Shadowkeep makes every light expression read a Vec4 where the
+        // shipped bytecode expects a Mat4 and aborts the draw.
+        // A small number of imported Shadowkeep light techniques still carry
+        // the normalized 0x40 read. Keep an identity alias at that address;
+        // the preserved matrices remain authoritative at 0x80/0xC0.
+        0x40 => legacy_unk40: Mat4 > default(Mat4::IDENTITY),
+        0x80 => unk40: Mat4,
+        0xc0 => unk80: Mat4,
+        0x100 => unk100: f32 > default(1.0),
         0x110 => unk110: f32,
-        0x114 => unk114: f32 > default(1.0),
-        0x118 => unk118: f32,
-        0x11c => unk11c: f32,
         0x120 => unk120: f32 > default(1.0),
     }
 }
@@ -222,8 +224,17 @@ extern_struct! {
         0x08 => unk08: TextureView,
         0x10 => unk10: TextureView,
         0x18 => unk18: TextureView,
+        // These early fields are present in the preserved Arrivals layout.
+        // Keep them addressable even though the later renderer only filled a
+        // subset; Shadowkeep expression bytecode still reads them directly.
+        0x20 => unk20: TextureView,
+        0x30 => unk30: TextureView,
+        0x38 => unk38: TextureView,
         0x40 => unk40: TextureView,
+        0x48 => unk48: TextureView,
+        0x50 => unk50: f32 > default(0.5),
         0x58 => unk58: TextureView,
+        0x60 => unk60: TextureView,
         0x70 => time_of_day_normalized: f32,
         0x74 => unk74: f32,
         0x78 => unk78: f32,

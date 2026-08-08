@@ -47,6 +47,32 @@ impl ExternAccessorExt for &dyn ExternAccessor {
         index: ExternIndex,
         offset: usize,
     ) -> Option<U> {
+        // The preserved Arrivals extern table contains a scalar atmosphere
+        // value at 0x50.  A handful of its shipped expression records issue
+        // a vec4 read for that slot; the legacy accessor treated the typed
+        // mismatch as an absent optional field and supplied Vec4::ZERO.  Keep
+        // that narrow compatibility rule so one atmosphere expression does
+        // not abort the complete material update in the normalized table.
+        if TypeId::of::<U>() == TypeId::of::<Vec4>()
+            && index == ExternIndex::Atmosphere
+            && offset == 0x50
+        {
+            let zero = Vec4::ZERO;
+            // TypeId equality above makes this a Vec4 -> Vec4 copy while
+            // preserving the generic accessor signature.
+            return Some(unsafe { std::mem::transmute_copy(&zero) });
+        }
+        // The preserved Arrivals renderer did not expose typed ObjectEffect
+        // texture fields. Reads at these two offsets deliberately fell
+        // through to its generated extern placeholder. Preserve that behavior
+        // without treating the post-BL scalar/vector fields as corrupt
+        // textures or emitting one error per draw.
+        if TypeId::of::<U>() == TypeId::of::<TextureView>()
+            && index == ExternIndex::ObjectEffect
+            && matches!(offset, 0x00 | 0x10)
+        {
+            return None;
+        }
         let (ptr, typeid) = self.get_value_ptr(index, offset)?;
         if TypeId::of::<U>() != typeid {
             error!(

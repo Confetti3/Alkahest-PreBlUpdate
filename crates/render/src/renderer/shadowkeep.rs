@@ -15,6 +15,7 @@ use crate::{
     Gpu,
     asset::AssetManager,
     gpu::global_state::{INPUT_FORMATS, INPUT_SEMANTICS, RenderStates, TigerInputLayoutElement},
+    renderer::globals::GlobalPipelines,
     tfx::{scope::Scope, technique::Technique},
 };
 
@@ -50,8 +51,8 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
         },
         CapabilityRecord {
             name: "Core geometry submission",
-            state: CapabilityState::Blocked,
-            evidence: "map, static, terrain, dynamic, and rigid resource families are not yet normalized into the modern submitter".into(),
+            state: CapabilityState::Degraded,
+            evidence: "static placements, terrain patches, and map-contained rigid models normalize into the modern submitter; visual-family parity is still incomplete".into(),
         },
         CapabilityRecord {
             name: "Lighting, atmosphere, shadows, cubemaps, and post-processing",
@@ -121,9 +122,74 @@ pub struct ShadowkeepInputLayouts {
     pub layouts: Vec<Option<d3d11::InputLayout>>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShadowkeepPassState {
+    Ready,
+    Degraded,
+    DisabledAsAbsent,
+    Failed,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShadowkeepPassRecord {
+    pub name: &'static str,
+    pub state: ShadowkeepPassState,
+    pub evidence: &'static str,
+}
+
+/// Runtime pass ledger for the admitted Shadowkeep path.  A present legacy
+/// technique is not promoted to parity merely because it binds successfully:
+/// the fullscreen lighting stages remain degraded until a non-trivial capture
+/// proves their output.  Explicitly null bootstrap entries are reported as
+/// absent instead of being filled with a post-BL substitute.
+pub fn pass_status_ledger(pipelines: &GlobalPipelines) -> Vec<ShadowkeepPassRecord> {
+    let lighting_state = if pipelines.global_lighting.is_available() {
+        ShadowkeepPassState::Degraded
+    } else {
+        ShadowkeepPassState::DisabledAsAbsent
+    };
+    let deferred_state = if pipelines.deferred_shading_no_atm.is_available() {
+        ShadowkeepPassState::Degraded
+    } else {
+        ShadowkeepPassState::DisabledAsAbsent
+    };
+    vec![
+        ShadowkeepPassRecord {
+            name: "opaque / G-buffer",
+            state: ShadowkeepPassState::Ready,
+            evidence: "Shadowkeep static, terrain, and rigid submissions produce non-empty depth and material targets",
+        },
+        ShadowkeepPassRecord {
+            name: "global lighting",
+            state: lighting_state,
+            evidence: "legacy fullscreen technique binds and evaluates constants; a non-trivial light-target capture is still required",
+        },
+        ShadowkeepPassRecord {
+            name: "deferred shading",
+            state: deferred_state,
+            evidence: "legacy deferred technique is loaded only when its bootstrap entry is present; output capture gate is pending",
+        },
+        ShadowkeepPassRecord {
+            name: "transparent / decal / water / atmosphere",
+            state: ShadowkeepPassState::DisabledAsAbsent,
+            evidence: "not admitted until an era-specific producer and pass-order capture is available",
+        },
+    ]
+}
+
 impl ShadowkeepInputLayouts {
     pub fn load(gpu: &Gpu, input_layouts: &SShadowkeepVertexInputLayouts) -> anyhow::Result<Self> {
         let mut layouts = std::iter::repeat_with(|| None).take(255).collect::<Vec<_>>();
+        for index in 0..7 {
+            let d3d_layout = RenderStates::create_base_input_layout(&gpu.device, index)
+                .with_context(|| format!("Failed to create Shadowkeep built-in input layout {index}"))?;
+            d3d_layout.set_debug_name(format!("Shadowkeep Built-in Input Layout {index}"));
+            layouts[index] = Some(d3d_layout);
+        }
+        tracing::warn!(
+            mapping_layouts = ?input_layouts.mapping.layouts.iter().map(|layout| layout.index).collect::<Vec<_>>(),
+            "Shadowkeep serialized input layout indices"
+        );
         for layout in &input_layouts.mapping.layouts {
             let index = layout.index as usize;
             ensure!(index < layouts.len(), "Shadowkeep input layout index {index} exceeds 254");
@@ -159,12 +225,41 @@ impl ShadowkeepInputLayouts {
                     });
                 }
             }
+            if index == 1 {
+                let signature = elements
+                    .iter()
+                    .map(|element| {
+                        format!(
+                            "{}{} {:?} slot{}",
+                            element.semantic_name,
+                            element.semantic_index,
+                            element.format,
+                            element.buffer_index
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                tracing::warn!(?signature, "Shadowkeep layout 1 signature diagnostic");
+            }
             let d3d_layout = RenderStates::create_input_layout(&gpu.device, &elements)
                 .with_context(|| format!("Failed to create Shadowkeep input layout {index}"))?;
             d3d_layout.set_debug_name(format!("Shadowkeep Dynamic Input Layout {index}"));
             layouts[index] = Some(d3d_layout);
         }
+        tracing::warn!(
+            available_layouts = layouts.iter().filter(|layout| layout.is_some()).count(),
+            layout_0 = layouts[0].is_some(),
+            layout_1 = layouts[1].is_some(),
+            layout_6 = layouts[6].is_some(),
+            "Shadowkeep input layout availability diagnostic"
+        );
         Ok(Self { layouts })
+    }
+
+    pub fn get(&self, index: usize) -> anyhow::Result<&d3d11::InputLayout> {
+        self.layouts
+            .get(index)
+            .and_then(Option::as_ref)
+            .with_context(|| format!("Shadowkeep input layout {index} is unavailable"))
     }
 }
 
@@ -186,7 +281,7 @@ impl ShadowkeepRendererBootstrap {
             .read_tag_struct::<SShadowkeepVertexInputLayouts>(bootstrap.input_layouts)
             .context("Failed to read Shadowkeep input-layout resource")?;
         let input_layouts = ShadowkeepInputLayouts::load(&gpu, &raw_input_layouts)?;
-        let asset_manager = AssetManager::new(&gpu);
+        let asset_manager = AssetManager::new_shadowkeep(&gpu);
         let techniques = ShadowkeepTechniqueRegistry::new(gpu, asset_manager, &bootstrap);
         Ok(Self { profile, bootstrap, input_layouts, techniques })
     }

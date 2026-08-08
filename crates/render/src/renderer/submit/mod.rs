@@ -25,7 +25,7 @@ use crate::{
     tfx::{
         externs::{self, GlobalLighting, ScreenArea, TextureView, UberDepth},
         scope::FrameScope,
-        technique::ShaderModule,
+        technique::{ShaderModule, Technique},
         view::{MainView, ShadowView, View, ViewKind},
     },
 };
@@ -107,13 +107,26 @@ impl Renderer {
         view: &MainView,
         debug_pipeline: Option<DebugPipeline>,
     ) {
-        let geo = if view.settings.multithreading {
+        // The preserved Arrivals renderer submits geometry directly on its
+        // immediate context. Its scopes and techniques mutate shared binding
+        // state, so routing that work through the post-BL deferred-command
+        // path can produce an empty G-buffer even when every asset is ready.
+        let geo = if self.era() == crate::renderer::RendererEra::Current && view.settings.multithreading {
             Some(self.submit_geometry_command_lists(cmd, view))
         } else {
             None
         };
 
         self.submit_gbuffer_generation(cmd, view, geo.as_ref());
+
+        // Shadowkeep owns a different deferred/light/postprocess graph. The
+        // modern post-BL sequence below references several explicitly-null
+        // legacy pipelines. Run the admitted preserved opaque/light/shading
+        // slice without entering the later-era atmosphere/transparent graph.
+        if self.era() == crate::renderer::RendererEra::Shadowkeep {
+            self.submit_shadowkeep_shaded(cmd, view, debug_pipeline);
+            return;
+        }
 
         if matches!(
             debug_pipeline,
@@ -391,6 +404,197 @@ impl Renderer {
         // );
     }
 
+    fn submit_shadowkeep_shaded(
+        &self,
+        cmd: &mut CommandList,
+        view: &MainView,
+        debug_pipeline: Option<DebugPipeline>,
+    ) {
+        // Preserve direct G-buffer inspection while the later Shadowkeep
+        // passes are admitted one at a time. These modes must not depend on
+        // lighting or post-processing being available.
+        if let Some(pipeline) = debug_pipeline.filter(|pipeline| !pipeline.is_shaded()) {
+            match pipeline {
+                DebugPipeline::Albedo => self.blit_surface(
+                    cmd,
+                    view.gbuffers.albedo,
+                    view.output,
+                    true,
+                    "shadowkeep/debug_albedo",
+                ),
+                DebugPipeline::WorldNormal => self.blit_surface(
+                    cmd,
+                    view.gbuffers.normal,
+                    view.output,
+                    false,
+                    "shadowkeep/debug_normal",
+                ),
+                DebugPipeline::Smoothness
+                | DebugPipeline::Metalness
+                | DebugPipeline::AmbientOcclusion
+                | DebugPipeline::Emission
+                | DebugPipeline::EmissionIntensity
+                | DebugPipeline::Transmission
+                | DebugPipeline::Overcoat => self.blit_surface(
+                    cmd,
+                    view.gbuffers.third,
+                    view.output,
+                    false,
+                    "shadowkeep/debug_material",
+                ),
+                DebugPipeline::DepthEdges => self.blit_srv(
+                    cmd,
+                    &view.gbuffers.depth_proxy.lock().srv,
+                    &view.surfaces.get(view.output).rtv,
+                    false,
+                    "shadowkeep/debug_depth",
+                ),
+                DebugPipeline::LightDiffuse | DebugPipeline::LightSpecular => {
+                    // These need the lighting slice below and are selected
+                    // after it has populated the corresponding targets.
+                }
+                DebugPipeline::Overdraw => self.submit_shadowkeep_geometry_preview(cmd, view),
+                _ => unreachable!(),
+            }
+            if !matches!(pipeline, DebugPipeline::LightDiffuse | DebugPipeline::LightSpecular) {
+                return;
+            }
+        }
+
+        // Shaded modes are the preserved renderer's normal path, not a
+        // request for the temporary G-buffer lookdev composite.  The old
+        // Arrivals renderer always ran opaque -> lighting -> deferred
+        // shading before its final presentation.  Keep the preview only as
+        // the explicit fallback when a required legacy producer is absent.
+        let wants_global_lighting = ConVars::get_flag("render.global_lighting")
+            && debug_pipeline.is_none_or(|pipeline| pipeline.has_sun());
+        let pipelines = &self.globals.pipelines;
+        if !pipelines.deferred_shading_no_atm.is_available()
+            || (wants_global_lighting && !pipelines.global_lighting.is_available())
+        {
+            error!(
+                global_lighting = pipelines.global_lighting.is_available(),
+                deferred_shading_no_atm = pipelines.deferred_shading_no_atm.is_available(),
+                "Shadowkeep shaded pass is unavailable; retaining G-buffer preview"
+            );
+            self.submit_shadowkeep_geometry_preview(cmd, view);
+            return;
+        }
+
+        // The preserved renderer starts these buffers at a small non-zero
+        // diffuse floor before applying its global-lighting fullscreen pass.
+        self.clear_surface(cmd, view.lighting.light_diffuse, [0.001, 0.001, 0.001, 0.0]);
+        self.clear_surface(cmd, view.lighting.light_specular, [0.0; 4]);
+        self.clear_surface(cmd, view.lighting.light_specular_ibl, [0.0; 4]);
+        self.clear_surface(cmd, view.shadow_mask, [1.0; 4]);
+
+        // Arrivals fills the diffuse/specular targets with local/deferred
+        // lights before the optional fullscreen global-lighting technique.
+        // Keep that producer in the Shadowkeep path instead of presenting a
+        // zero light buffer to deferred shading.
+        view.lighting
+            .bind_diffuse_specular(cmd, &view.surfaces, &view.gbuffers);
+        let diffuse = view.surfaces.get(view.lighting.light_diffuse);
+        let specular = view.surfaces.get(view.lighting.light_specular);
+        cmd.rasterizer_set_viewports(&[diffuse.viewport()]);
+        cmd.output_merger_set_render_targets(
+            &[diffuse.rtv.as_ref(), specular.rtv.as_ref()],
+            None,
+        );
+        cmd.state = PipelineState::new(Some(8), Some(0), Some(2), Some(2));
+        cmd.flush_states();
+        self.submit_stage(
+            cmd,
+            View::MAIN,
+            RenderStage::LightingApply,
+            FeatureRendererSubscription::all(),
+        );
+
+        let diffuse = view.surfaces.get(view.lighting.light_diffuse);
+        let specular = view.surfaces.get(view.lighting.light_specular);
+        cmd.output_merger_set_render_targets(
+            &[diffuse.rtv.as_ref(), specular.rtv.as_ref()],
+            None,
+        );
+        if wants_global_lighting {
+            cmd.state = PipelineState::new(Some(8), Some(0), Some(0), Some(0));
+            self.execute_shadowkeep_global_pipeline(
+                cmd,
+                &pipelines.global_lighting,
+                "shadowkeep/global_lighting",
+            );
+        }
+
+        if matches!(debug_pipeline, Some(DebugPipeline::LightDiffuse | DebugPipeline::LightSpecular)) {
+            let source = if matches!(debug_pipeline, Some(DebugPipeline::LightDiffuse)) {
+                view.lighting.light_diffuse
+            } else {
+                view.lighting.light_specular
+            };
+            self.blit_surface(cmd, source, view.output, true, "shadowkeep/debug_light");
+            return;
+        }
+
+        self.clear_surface(cmd, view.shading_result, [0.0, 0.0, 0.0, 1.0]);
+        self.bind_surfaces(cmd, &[view.shading_result], None);
+        cmd.output_merger_set_depth_stencil_state(None, 0);
+        cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+        self.execute_shadowkeep_global_pipeline(
+            cmd,
+            &pipelines.deferred_shading_no_atm,
+            "shadowkeep/deferred_shading_no_atm",
+        );
+
+        self.blit_surface(
+            cmd,
+            view.shading_result,
+            view.output,
+            true,
+            "shadowkeep/final_shading",
+        );
+    }
+
+    /// Arrivals fullscreen techniques use a six-vertex strip. The shared
+    /// post-BL helper emits four vertices, which binds successfully but leaves
+    /// these legacy passes with incomplete or empty screen coverage.
+    fn execute_shadowkeep_global_pipeline(
+        &self,
+        cmd: &mut CommandList,
+        pipeline: &Technique,
+        name: &str,
+    ) {
+        cmd_event_span!(cmd, &format!("[{name}]"));
+        if let Err(error) = pipeline.bind(cmd) {
+            error!("Failed to run {name}: {error}");
+            return;
+        }
+        cmd.flush_states();
+        cmd.set_input_topology(PrimitiveType::TriangleStrip);
+        cmd.draw(6, 0);
+    }
+
+    fn submit_shadowkeep_geometry_preview(&self, cmd: &mut CommandList, view: &MainView) {
+        let output = view.surfaces.get(view.output);
+        cmd.clear_render_target_view(output.rtv.as_ref().unwrap(), &[0.0, 0.0, 0.0, 1.0]);
+        output.bind_single(cmd);
+        cmd.output_merger_set_depth_stencil_state(None, 0);
+        cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+        cmd.flush_states();
+        cmd.vertex_set_shader(Some(&self.debug_vs));
+        cmd.pixel_set_shader(Some(&self.debug_ps));
+        cmd.set_input_topology(PrimitiveType::TriangleStrip);
+        cmd.pixel_set_shader_resources(
+            0,
+            &[
+                view.surfaces.get(view.gbuffers.albedo).srv(0),
+                view.surfaces.get(view.gbuffers.normal).srv(0),
+                view.surfaces.get(view.gbuffers.third).srv(0),
+                Some(&view.gbuffers.depth_proxy.lock().srv),
+            ],
+        );
+        cmd.draw(4, 0);
+    }
+
     fn submit_view_overdraw(self: &Arc<Self>, cmd: &mut CommandList, view: &MainView) {
         self.submit_gbuffer_generation(cmd, view, None);
 
@@ -573,10 +777,15 @@ impl Renderer {
         // ext.atmosphere.unk1f0 = ext.get_global_channel_by_id(0x63d92f7).x;
         // ext.atmosphere.unk1f4 = ext.get_global_channel_by_id(0x49864a42).x;
 
-        self.globals
-            .scopes
-            .transparent_advanced
-            .write_initial_constants(
+        // The current fixed 37-register transparent setup belongs to the
+        // post-BL scope layout. Shadowkeep owns a shorter, differently laid
+        // out scope; leave its serializer-provided defaults intact until its
+        // dedicated transparent pass is installed.
+        if self.era() == crate::renderer::RendererEra::Current {
+            self.globals
+                .scopes
+                .transparent_advanced
+                .write_initial_constants(
                 cmd,
                 &[
                     vec4(0.00227, 0.00896, 0.32782, 0.6419),
@@ -617,8 +826,9 @@ impl Renderer {
                     vec4(0.00, 0.00, 0.00, 0.00),
                     vec4(1.00, 0.00, 0.00, 0.00),
                 ],
-            )
-            .expect("Failed to write transparent_advanced initial constants");
+                )
+                .expect("Failed to write transparent_advanced initial constants");
+        }
 
         let _ = self.globals.scopes.frame.write_initial_constants(
             cmd,
@@ -682,10 +892,23 @@ impl Renderer {
         ext.decal.depth_constants = ext.deferred.depth_constants;
         ext.decal.unk30 = vec4(fb_res.0 as f32, fb_res.1 as f32, 0.0, 0.0);
 
-        ext.shadow_mask.unk00 = view.shadow_mask.into();
-        // ext.shadow_mask.unk08 = view.lighting.ssao.into();
-        ext.shadow_mask.unk10 = view.gbuffers.uber_depth_half.into();
-        ext.shadow_mask.unk20 = view.surfaces.get(view.shadow_mask).resolution_with_recip();
+        if self.era() == crate::renderer::RendererEra::Shadowkeep {
+            // The preserved Arrivals lighting pass seeds all three shadow
+            // inputs with white until its optional shadow/SSAO producers run.
+            // Do the same for the admitted fullscreen pass; binding the
+            // modern mask/depth surfaces here makes a null legacy input look
+            // like a valid but empty light buffer.
+            let white: TextureView = self.gpu.placeholder_white.view.clone().into();
+            ext.shadow_mask.unk00 = white.clone();
+            ext.shadow_mask.unk08 = white.clone();
+            ext.shadow_mask.unk10 = white;
+            ext.shadow_mask.unk20 = view.surfaces.get(view.shadow_mask).resolution_with_recip();
+        } else {
+            ext.shadow_mask.unk00 = view.shadow_mask.into();
+            // ext.shadow_mask.unk08 = view.lighting.ssao.into();
+            ext.shadow_mask.unk10 = view.gbuffers.uber_depth_half.into();
+            ext.shadow_mask.unk20 = view.surfaces.get(view.shadow_mask).resolution_with_recip();
+        }
 
         *ext.atmosphere = externs::Atmosphere {
             time_of_day_normalized: misc.time_of_day,

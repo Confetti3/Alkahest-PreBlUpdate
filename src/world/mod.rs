@@ -9,6 +9,7 @@ pub mod map;
 pub mod object;
 pub mod pattern;
 pub mod render_objects;
+pub mod shadowkeep_map;
 pub mod sequencer;
 pub mod shadowmap;
 pub mod transform;

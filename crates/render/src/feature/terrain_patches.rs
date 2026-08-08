@@ -10,6 +10,7 @@ use alkahest_data::tfx::{
         terrain::{STerrain, TerrainDetailLevel},
     },
 };
+use alkahest_data::shadowkeep::SShadowkeepTerrain;
 use glam::Vec4;
 use tiger_parse::PackageManagerExt;
 use tiger_pkg::{TagHash, package_manager};
@@ -106,6 +107,89 @@ impl TerrainPatchesRenderer {
         }))
     }
 
+    /// Normalize an Arrivals terrain record for the common terrain submitter.
+    /// Arrivals does not contain the later per-group bounds/thumbnail streams;
+    /// the conservative bounds keep decoded terrain visible until that data is
+    /// recovered, while all draw-affecting buffers, techniques, and texture
+    /// transforms are copied from the preserved layout.
+    pub fn load_shadowkeep(
+        gpu: &Arc<Gpu>,
+        hash: TagHash,
+        identifier: u64,
+    ) -> anyhow::Result<Box<Self>> {
+        let legacy = package_manager().read_tag_struct::<SShadowkeepTerrain>(hash)?;
+        let coverage = Vec4::splat(10_000_000.0);
+        let terrain = STerrain {
+            file_size: legacy.file_size,
+            unk8: legacy.unk8,
+            bounds: AxisAlignedBBox::from_center_extents(legacy.unk10.truncate(), coverage.truncate()),
+            unk30: legacy.position_offset,
+            mesh_groups: legacy.mesh_groups.iter().map(|group| alkahest_data::tfx::features::terrain::STerrainMeshGroup {
+                center: group.unk0,
+                extents: coverage,
+                // The legacy renderer binds this exact vector as the texture
+                // coordinate transform for scope_terrain.
+                unk20: group.texcoord_transform,
+                unk30: group.unk1c,
+                unk34: 0,
+                unk38: 0,
+                unk3c: 0,
+                unk40: 0,
+                unk44: 0,
+                unk48: 0,
+                unk4c: 0,
+                dyemap: group.dyemap,
+                unk54: 0,
+                unk58: 0,
+                unk5c: 0,
+            }).collect(),
+            vertex0_buffer: legacy.vertex0_buffer,
+            vertex1_buffer: legacy.vertex1_buffer,
+            index_buffer: legacy.index_buffer,
+            unk_technique1: legacy.unk_technique1,
+            unk_technique2: legacy.unk_technique2,
+            mesh_parts: legacy.mesh_parts.iter().map(|part| {
+                Ok(alkahest_data::tfx::features::terrain::STerrainMeshPart {
+                    technique: part.technique,
+                    index_start: part.index_start,
+                    index_count: part.index_count,
+                    group_index: part.group_index,
+                    detail_level: TerrainDetailLevel::try_from(part.detail_level)
+                        .map_err(|_| anyhow::anyhow!("Shadowkeep terrain has unsupported detail level {}", part.detail_level))?,
+                })
+            }).collect::<anyhow::Result<_>>()?,
+            thumb_vertex0_buffer: TagHash::NONE,
+            thumb_vertex1_buffer: TagHash::NONE,
+            thumb_index_buffer: TagHash::NONE,
+        };
+        let assets = &Renderer::instance().asset_manager;
+        let dyemaps = terrain.mesh_groups.iter().map(|group| assets.load(group.dyemap)).collect();
+        let techniques = terrain.mesh_parts.iter().map(|part| assets.load(part.technique)).collect();
+        let groups = terrain.mesh_groups.iter().map(|group| {
+            Ok((
+                ConstantBuffer::create(gpu, None)?,
+                group.aabb(),
+                VisibilityMask::default(),
+            ))
+        }).collect::<anyhow::Result<_>>()?;
+        Ok(Box::new(Self {
+            vertex0_buffer: assets.load(terrain.vertex0_buffer),
+            vertex1_buffer: assets.load(terrain.vertex1_buffer),
+            index_buffer: assets.load(terrain.index_buffer),
+            thumb_vertex0_buffer: assets.load(terrain.thumb_vertex0_buffer),
+            thumb_vertex1_buffer: assets.load(terrain.thumb_vertex1_buffer),
+            thumb_index_buffer: assets.load(terrain.thumb_index_buffer),
+            constants_dirty: true,
+            detail_level: TerrainDetailLevel::High,
+            terrain,
+            techniques,
+            dyemaps,
+            groups,
+            hash,
+            identifier,
+        }))
+    }
+
     #[profiling::function]
     pub fn render(&self, cmd: &mut CommandList, view_index: usize, _render_stage: RenderStage) {
         // gpu_event!(renderer.gpu, format!("terrain_patch {}", self.hash));
@@ -115,7 +199,14 @@ impl TerrainPatchesRenderer {
         //  - int4 v0 : POSITION0, // Format DXGI_FORMAT_R16G16B16A16_SINT size 8
         //  - float4 v1 : NORMAL0, // Format DXGI_FORMAT_R16G16B16A16_SNORM size 8
         //  - float2 v2 : TEXCOORD1, // Format DXGI_FORMAT_R16G16_FLOAT size 4
-        cmd.set_input_layout(22);
+        let layout = if Renderer::instance().era() == crate::renderer::RendererEra::Shadowkeep {
+            60
+        } else {
+            22
+        };
+        if Renderer::instance().set_input_layout(cmd, layout).is_err() {
+            return;
+        }
         cmd.set_input_topology(alkahest_data::tfx::PrimitiveType::TriangleStrip);
 
         if let (Some(vertex0), Some(vertex1), Some(index)) =
@@ -157,15 +248,18 @@ impl TerrainPatchesRenderer {
                 continue;
             }
 
-            cb11.bind(cmd, ShaderStage::Vertex, 11);
-            if let Some(dyemap) = self.dyemaps[part.group_index as usize].get() {
-                dyemap.bind(cmd, 14, alkahest_data::tfx::ShaderStage::Pixel);
-            }
-
+            // Match the preserved renderer's resource order: technique first,
+            // then the group constants and dyemap.  Binding the dyemap before
+            // the technique lets an absent/material texture assignment clear
+            // slot 14 and leaves terrain with an apparently missing texture.
             if let Some(technique) = self.techniques[i].get() {
                 technique.bind(cmd).expect("Failed to bind technique");
             } else {
                 continue;
+            }
+            cb11.bind(cmd, ShaderStage::Vertex, 11);
+            if let Some(dyemap) = self.dyemaps[part.group_index as usize].get() {
+                dyemap.bind(cmd, 14, alkahest_data::tfx::ShaderStage::Pixel);
             }
 
             cmd.draw_indexed(part.index_count as _, part.index_start as _, 0);

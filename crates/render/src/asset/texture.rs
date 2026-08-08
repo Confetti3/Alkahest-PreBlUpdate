@@ -4,6 +4,7 @@ use std::{
 };
 
 use alkahest_data::{
+    shadowkeep::SShadowkeepTextureHeader,
     tag::WideHash,
     tfx::{
         ShaderStage,
@@ -45,6 +46,110 @@ pub struct Texture {
     pub height: u32,
 }
 
+/// The GPU creation path is shared by both package eras.  Only the serialized
+/// texture header differs.
+#[derive(Debug, Clone, Copy)]
+struct TextureInfo {
+    format: DxgiFormat,
+    width: u16,
+    height: u16,
+    depth: u16,
+    array_size: u16,
+    mip_count: u8,
+    large_buffer: TagHash,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TextureDimension {
+    Texture2D,
+    TextureCube,
+    Texture3D,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct TextureUploadRequirement {
+    dimension: TextureDimension,
+    mip_count: u8,
+    subresources: usize,
+    required_bytes: usize,
+}
+
+fn upload_requirement(texture: TextureInfo) -> anyhow::Result<TextureUploadRequirement> {
+    ensure!(texture.width > 0 && texture.height > 0, "texture has zero dimensions");
+    ensure!(texture.mip_count > 0, "texture has zero mips");
+
+    let dimension = if texture.depth > 1 {
+        TextureDimension::Texture3D
+    } else if texture.array_size > 1 {
+        TextureDimension::TextureCube
+    } else {
+        TextureDimension::Texture2D
+    };
+    let mip_count = match dimension {
+        TextureDimension::Texture3D => 1,
+        TextureDimension::TextureCube => texture.mip_count,
+        TextureDimension::Texture2D if texture.large_buffer.is_some() => texture.mip_count,
+        TextureDimension::Texture2D => 1,
+    };
+    let array_size = match dimension {
+        TextureDimension::TextureCube => texture.array_size as usize,
+        _ => 1,
+    };
+    let mut required_bytes = 0usize;
+    for mip in 0..mip_count {
+        let width = (texture.width >> mip).max(1) as u32;
+        let height = (texture.height >> mip).max(1) as u32;
+        let (_, slice_pitch) = texture.format.calculate_pitch(width, height);
+        ensure!(slice_pitch > 0, "texture mip {mip} has zero slice pitch");
+        let depth = if dimension == TextureDimension::Texture3D {
+            texture.depth.max(1) as usize
+        } else {
+            1
+        };
+        let bytes = (slice_pitch as usize)
+            .checked_mul(depth)
+            .and_then(|value| value.checked_mul(array_size))
+            .context("texture upload byte count overflow")?;
+        required_bytes = required_bytes
+            .checked_add(bytes)
+            .context("texture upload byte count overflow")?;
+    }
+    Ok(TextureUploadRequirement {
+        dimension,
+        mip_count,
+        subresources: mip_count as usize * array_size,
+        required_bytes,
+    })
+}
+
+impl From<STextureHeader> for TextureInfo {
+    fn from(header: STextureHeader) -> Self {
+        Self {
+            format: header.format,
+            width: header.width,
+            height: header.height,
+            depth: header.depth,
+            array_size: header.array_size,
+            mip_count: header.mip_count,
+            large_buffer: header.large_buffer,
+        }
+    }
+}
+
+impl From<SShadowkeepTextureHeader> for TextureInfo {
+    fn from(header: SShadowkeepTextureHeader) -> Self {
+        Self {
+            format: header.format,
+            width: header.width,
+            height: header.height,
+            depth: header.depth,
+            array_size: header.array_size,
+            mip_count: header.mip_count,
+            large_buffer: header.large_buffer,
+        }
+    }
+}
+
 impl Texture {
     #[profiling::function]
     pub fn load_data(
@@ -81,10 +186,89 @@ impl Texture {
     }
 
     #[profiling::function]
+    pub fn load_shadowkeep_data(
+        hash: WideHash,
+        load_full_mip: bool,
+    ) -> anyhow::Result<(SShadowkeepTextureHeader, Vec<u8>)> {
+        let texture_header_ref = package_manager()
+            .get_entry(hash)
+            .with_context(|| format!("Texture header entry for {hash} not found"))?
+            .reference;
+
+        let texture: SShadowkeepTextureHeader = package_manager().read_tag_struct(hash)?;
+        let mut texture_data = if texture.large_buffer.is_some() {
+            package_manager()
+                .read_tag(texture.large_buffer)
+                .context("Failed to read texture data")?
+        } else {
+            package_manager()
+                .read_tag(texture_header_ref)
+                .context("Failed to read texture data")?
+                .to_vec()
+        };
+
+        if load_full_mip && texture.large_buffer.is_some() {
+            texture_data.extend(
+                package_manager()
+                    .read_tag(texture_header_ref)
+                    .context("Failed to read large texture buffer")?
+                    .to_vec(),
+            );
+        }
+
+        Ok((texture, texture_data))
+    }
+
+    #[profiling::function]
     pub fn load<H: Into<WideHash>>(device: &d3d11::Device, hash: H) -> anyhow::Result<Texture> {
         let hash = hash.into();
         let _span = debug_span!("Load texture", ?hash).entered();
         let (texture, texture_data) = Self::load_data(hash, true)?;
+
+        Self::load_decoded(device, hash, texture.into(), texture_data)
+    }
+
+    #[profiling::function]
+    pub fn load_shadowkeep<H: Into<WideHash>>(
+        device: &d3d11::Device,
+        hash: H,
+    ) -> anyhow::Result<Texture> {
+        let hash = hash.into();
+        let _span = debug_span!("Load Shadowkeep texture", ?hash).entered();
+        let (texture, texture_data) = Self::load_shadowkeep_data(hash, true)?;
+
+        Self::load_decoded(device, hash, texture.into(), texture_data)
+    }
+
+    fn load_decoded(
+        device: &d3d11::Device,
+        hash: WideHash,
+        texture: TextureInfo,
+        texture_data: Vec<u8>,
+    ) -> anyhow::Result<Texture> {
+        let requirement = upload_requirement(texture)
+            .with_context(|| format!("Texture {hash} has an invalid upload layout"))?;
+        ensure!(
+            texture_data.len() >= requirement.required_bytes,
+            "Texture {hash} {:?} upload requires {} bytes for {} subresources but package data contains {}",
+            requirement.dimension,
+            requirement.required_bytes,
+            requirement.subresources,
+            texture_data.len(),
+        );
+        debug!(
+            texture = %hash,
+            dimension = ?requirement.dimension,
+            width = texture.width,
+            height = texture.height,
+            depth = texture.depth,
+            array_size = texture.array_size,
+            declared_mips = texture.mip_count,
+            uploaded_mips = requirement.mip_count,
+            package_bytes = texture_data.len(),
+            required_bytes = requirement.required_bytes,
+            "validated texture upload"
+        );
 
         let (tex, view) = unsafe {
             if texture.depth > 1 {
@@ -481,6 +665,44 @@ impl Texture {
 
     pub fn resolution(&self) -> (u32, u32) {
         (self.width, self.height)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn info(width: u16, height: u16, depth: u16, array_size: u16, mip_count: u8) -> TextureInfo {
+        TextureInfo {
+            format: dxgi::Format::R8g8b8a8Unorm.into(),
+            width,
+            height,
+            depth,
+            array_size,
+            mip_count,
+            large_buffer: TagHash::NONE,
+        }
+    }
+
+    #[test]
+    fn shadowkeep_upload_classifies_2d_cube_and_3d() {
+        assert_eq!(upload_requirement(info(8, 8, 1, 1, 4)).unwrap().dimension, TextureDimension::Texture2D);
+        assert_eq!(upload_requirement(info(8, 8, 1, 6, 4)).unwrap().dimension, TextureDimension::TextureCube);
+        assert_eq!(upload_requirement(info(8, 8, 4, 1, 4)).unwrap().dimension, TextureDimension::Texture3D);
+    }
+
+    #[test]
+    fn package_local_2d_uses_only_the_resident_mip() {
+        let requirement = upload_requirement(info(8, 8, 1, 1, 4)).unwrap();
+        assert_eq!(requirement.mip_count, 1);
+        assert_eq!(requirement.required_bytes, 8 * 8 * 4);
+    }
+
+    #[test]
+    fn cube_upload_accounts_for_every_face_and_mip() {
+        let requirement = upload_requirement(info(4, 4, 1, 6, 3)).unwrap();
+        assert_eq!(requirement.subresources, 18);
+        assert_eq!(requirement.required_bytes, (4 * 4 + 2 * 2 + 1) * 4 * 6);
     }
 }
 

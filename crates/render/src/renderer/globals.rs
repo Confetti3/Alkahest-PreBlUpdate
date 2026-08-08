@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, ops::{Deref, DerefMut}, sync::Arc};
 
 use alkahest_data::tfx::{
     features::cubemap::CubemapShape,
@@ -11,7 +11,7 @@ use tiger_pkg::{TagHash, package_manager};
 
 use crate::{
     Gpu,
-    asset::{AssetManager, texture::Texture},
+    asset::{AssetManager, manager::TextureFallback, texture::Texture},
     tfx::{scope::Scope, technique::Technique},
 };
 
@@ -22,6 +22,45 @@ pub struct RenderGlobals {
     pub textures: GlobalTextures,
     pub channels: GlobalChannels,
     // pub unk34: SUnk8080822d,
+}
+
+/// Shadowkeep serializes explicit null render-global entries.  They are
+/// retained as unavailable slots so unrelated later-era globals cannot block
+/// an otherwise valid legacy renderer startup.
+pub struct ScopeSlot(Option<Box<Scope>>);
+
+impl ScopeSlot {
+    fn present(value: Scope) -> Self { Self(Some(Box::new(value))) }
+    fn absent() -> Self { Self(None) }
+    pub fn is_available(&self) -> bool { self.0.is_some() }
+}
+
+impl Deref for ScopeSlot {
+    type Target = Scope;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_deref().expect("attempted to bind an unavailable Shadowkeep scope")
+    }
+}
+
+impl DerefMut for ScopeSlot {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_deref_mut().expect("attempted to mutate an unavailable Shadowkeep scope")
+    }
+}
+
+pub struct PipelineSlot(Option<Box<Technique>>);
+
+impl PipelineSlot {
+    fn present(value: Technique) -> Self { Self(Some(Box::new(value))) }
+    fn absent() -> Self { Self(None) }
+    pub fn is_available(&self) -> bool { self.0.is_some() }
+}
+
+impl Deref for PipelineSlot {
+    type Target = Technique;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_deref().expect("attempted to bind an unavailable Shadowkeep pipeline")
+    }
 }
 
 impl RenderGlobals {
@@ -48,7 +87,7 @@ impl RenderGlobals {
         Ok(Self {
             scopes: GlobalScopes::load_shadowkeep(gpu, asset_manager, bootstrap)?,
             pipelines: GlobalPipelines::load_shadowkeep(gpu, asset_manager, bootstrap)?,
-            textures: GlobalTextures::load_shadowkeep(gpu, bootstrap.lookup_textures)?,
+            textures: GlobalTextures::load_shadowkeep(gpu, asset_manager, bootstrap.lookup_textures)?,
             channels: GlobalChannels {
                 channel_ids: Vec::new(),
                 default_values: alkahest_data::tfx::shadowkeep::global_channel_defaults().to_vec(),
@@ -95,18 +134,57 @@ impl GlobalTextures {
         })
     }
 
-    fn load_shadowkeep(gpu: &Gpu, tag: TagHash) -> anyhow::Result<Self> {
+    fn load_shadowkeep(gpu: &Gpu, asset_manager: &AssetManager, tag: TagHash) -> anyhow::Result<Self> {
         let data: SShadowkeepLookupTextures = package_manager().read_tag_struct(tag)?;
         Ok(Self {
-            specular_tint_lookup: Texture::load(gpu, data.specular_tint_lookup_texture)?,
-            specular_lobe_lookup: Texture::load(gpu, data.specular_lobe_lookup_texture)?,
-            specular_lobe_3d_lookup: Texture::load(gpu, data.specular_lobe_3d_lookup_texture)?,
-            iridescence_lookup: Texture::load(gpu, data.iridescence_lookup_texture)?,
-            // These later-era water globals are not used by the core opaque
-            // path. Keep construction total without claiming a legacy match.
-            water_displacement_unk00: Texture::load(gpu, data.iridescence_lookup_texture)?,
-            water_displacement_unk08: Texture::load(gpu, data.iridescence_lookup_texture)?,
+            specular_tint_lookup: Self::load_shadowkeep_lookup(
+                gpu, asset_manager,
+                data.specular_tint_lookup_texture,
+                "specular_tint_lookup",
+            )?,
+            specular_lobe_lookup: Self::load_shadowkeep_lookup(
+                gpu, asset_manager,
+                data.specular_lobe_lookup_texture,
+                "specular_lobe_lookup",
+            )?,
+            specular_lobe_3d_lookup: Self::load_shadowkeep_lookup(
+                gpu, asset_manager,
+                data.specular_lobe_3d_lookup_texture,
+                "specular_lobe_3d_lookup",
+            )?,
+            iridescence_lookup: Self::load_shadowkeep_lookup(
+                gpu, asset_manager,
+                data.iridescence_lookup_texture,
+                "iridescence_lookup",
+            )?,
+            // These water slots are later-era globals. Do not attempt to
+            // reinterpret a legacy texture as their serialized resource.
+            water_displacement_unk00: Self::neutral_shadowkeep_lookup(gpu, "water_displacement_unk00")?,
+            water_displacement_unk08: Self::neutral_shadowkeep_lookup(gpu, "water_displacement_unk08")?,
         })
+    }
+
+    fn load_shadowkeep_lookup(gpu: &Gpu, asset_manager: &AssetManager, tag: TagHash, name: &str) -> anyhow::Result<Texture> {
+        match Texture::load_shadowkeep(gpu, tag) {
+            Ok(texture) => Ok(texture),
+            Err(error) => {
+                warn!(%tag, %name, "Shadowkeep lookup texture could not be decoded; using neutral fallback: {error:#}");
+                asset_manager.record_fallback(tag, TextureFallback::NeutralLookup, format!("{name}: {error:#}"));
+                Self::neutral_shadowkeep_lookup(gpu, name)
+            }
+        }
+    }
+
+    fn neutral_shadowkeep_lookup(gpu: &Gpu, name: &str) -> anyhow::Result<Texture> {
+        Texture::load_2d_raw(
+            &gpu.device,
+            1,
+            1,
+            &[128, 128, 128, 255],
+            d3d11::dxgi::Format::R8g8b8a8Unorm,
+            Some(&format!("Shadowkeep neutral lookup {name}")),
+            false,
+        )
     }
 }
 
@@ -114,7 +192,7 @@ macro_rules! tfx_global_scopes {
     ($($name:ident),*) => {
         pub struct GlobalScopes {
             $(
-                pub $name: Box<Scope>,
+                pub $name: ScopeSlot,
             )*
         }
 
@@ -125,7 +203,7 @@ macro_rules! tfx_global_scopes {
 
                 Self {
                     $(
-                        $name: Box::new(Scope::load(
+                        $name: ScopeSlot::present(Scope::load(
                             gpu, asset_manager,
                             *scopes.get(stringify!($name))
                                 .expect(&format!("Scope {} does not exist", stringify!($name))),
@@ -137,12 +215,12 @@ macro_rules! tfx_global_scopes {
 
             fn load_shadowkeep(gpu: &Arc<Gpu>, asset_manager: &AssetManager, bootstrap: &ShadowkeepRenderBootstrap) -> anyhow::Result<Self> {
                 Ok(Self {
-                    $($name: Box::new(Scope::load_shadowkeep(
-                        gpu,
-                        asset_manager,
-                        *bootstrap.scopes.get(stringify!($name))
-                            .with_context(|| format!("Shadowkeep render globals has no scope {}", stringify!($name)))?,
-                    ).with_context(|| format!("Failed to load Shadowkeep scope {}", stringify!($name)))?),)*
+                    $($name: match bootstrap.scopes.get(stringify!($name)).copied().filter(|tag| tag.is_some()) {
+                        Some(tag) => ScopeSlot::present(Scope::load_shadowkeep(
+                            gpu, asset_manager, tag,
+                        ).with_context(|| format!("Failed to load Shadowkeep scope {}", stringify!($name)))?),
+                        None => ScopeSlot::absent(),
+                    },)*
                 })
             }
         }
@@ -164,7 +242,7 @@ macro_rules! tfx_global_pipelines {
         #[allow(non_snake_case)]
         pub struct GlobalPipelines {
             $(
-                pub $name: Box<Technique>,
+                pub $name: PipelineSlot,
             )*
         }
 
@@ -175,7 +253,7 @@ macro_rules! tfx_global_pipelines {
 
                 Self {
                     $(
-                        $name: Box::new(
+                        $name: PipelineSlot::present(
                             Technique::load(
                             gpu, asset_manager,
                                 *techniques.get(stringify!($name))
@@ -189,12 +267,12 @@ macro_rules! tfx_global_pipelines {
 
             fn load_shadowkeep(gpu: &Arc<Gpu>, asset_manager: &AssetManager, bootstrap: &ShadowkeepRenderBootstrap) -> anyhow::Result<Self> {
                 Ok(Self {
-                    $($name: Box::new(Technique::load_shadowkeep(
-                        gpu,
-                        asset_manager,
-                        *bootstrap.pipelines.get(stringify!($name))
-                            .with_context(|| format!("Shadowkeep render globals has no pipeline {}", stringify!($name)))?,
-                    ).with_context(|| format!("Failed to load Shadowkeep pipeline {}", stringify!($name)))?),)*
+                    $($name: match bootstrap.pipelines.get(stringify!($name)).copied().filter(|tag| tag.is_some()) {
+                        Some(tag) => PipelineSlot::present(Technique::load_shadowkeep(
+                            gpu, asset_manager, tag,
+                        ).with_context(|| format!("Failed to load Shadowkeep pipeline {}", stringify!($name)))?),
+                        None => PipelineSlot::absent(),
+                    },)*
                 })
             }
         }

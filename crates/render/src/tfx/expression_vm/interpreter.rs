@@ -2,7 +2,7 @@ use core::f32;
 use std::ops::{Add, Mul, Sub};
 
 use ahash::AHashMap;
-use alkahest_data::tfx::ShaderStage;
+use alkahest_data::tfx::{ExternIndex, ShaderStage};
 use anyhow::{Context, ensure};
 use d3d11::SamplerState;
 use glam::{Mat4, Vec4, Vec4Swizzles};
@@ -638,15 +638,23 @@ impl<'a> InterpreterState<'a> {
                         .context("Invalid extern index")?;
                     let offset = ptr[2];
 
-                    let val = externs
-                        .get_extern_value::<Vec4>(extern_id, offset as usize * 16)
-                        .with_context(|| {
-                            format!(
-                                "Failed to get vec4 extern value for {:?} @ 0x{:X}",
-                                extern_id,
-                                offset as usize * 16
-                            )
-                        })?;
+                    let val = match externs.get_extern_value::<Vec4>(
+                        extern_id,
+                        offset as usize * 16,
+                    ) {
+                        Some(value) => value,
+                        // VbCopyCompute was introduced after the preserved
+                        // Shadowkeep renderer and has no legacy storage. The
+                        // preserved VM returns its typed zero default for an
+                        // absent optional field; keep that behavior without
+                        // hiding failures for any other extern.
+                        None if extern_id == ExternIndex::VbCopyCompute => Vec4::ZERO,
+                        None => anyhow::bail!(
+                            "Failed to get vec4 extern value for {:?} @ 0x{:X}",
+                            extern_id,
+                            offset as usize * 16
+                        ),
+                    };
 
                     cached_top = self.push(val)?;
                 }

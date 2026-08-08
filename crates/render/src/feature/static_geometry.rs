@@ -12,9 +12,17 @@ use alkahest_data::tfx::{
         ao::SStaticAmbientOcclusion,
         dynamic::RenderStageSubscription,
         statics::{
-            SStaticInstanceTransform, SStaticMesh, SStaticMeshInstances, SStaticSpecialMesh,
+            SStaticInstanceTransform, SStaticMesh, SStaticMeshData, SStaticMeshInstances,
+            SStaticSpecialMesh,
         },
     },
+};
+use alkahest_data::{
+    shadowkeep::{
+        SShadowkeepStaticMesh, SShadowkeepStaticMeshInstances,
+        lod_category_from_legacy, primitive_type_from_legacy, render_stage_from_legacy,
+    },
+    tag::Tag,
 };
 use anyhow::Context;
 use bytemuck::{Pod, Zeroable};
@@ -127,6 +135,148 @@ impl StaticMesh {
         })
     }
 
+    /// Load the Arrivals static-mesh layout into the feature renderer's
+    /// normalized runtime form.  The source structs deliberately remain in
+    /// `data::shadowkeep`; only the common draw description is shared.
+    pub fn load_shadowkeep(hash: TagHash) -> anyhow::Result<Self> {
+        let legacy = package_manager().read_tag_struct::<SShadowkeepStaticMesh>(hash)?;
+        let opaque_meshes = SStaticMeshData {
+            file_size: legacy.opaque_meshes.file_size,
+            mesh_groups: legacy
+                .opaque_meshes
+                .mesh_groups
+                .iter()
+                .map(|group| {
+                    Ok(alkahest_data::tfx::features::statics::SStaticMeshGroup {
+                        part_index: group.part_index,
+                        render_stage: render_stage_from_legacy(group.render_stage).context(
+                            "Shadowkeep static group has a stage outside the 23-stage graph",
+                        )?,
+                        input_layout_index: group.input_layout_index,
+                        unk5: group.unk5,
+                        // The later resource narrowed this field.  It is a
+                        // feature flag in the draw path, so retain its low
+                        // byte instead of reinterpreting its meaning.
+                        unk6: group.unk6 as u8,
+                    })
+                })
+                .collect::<anyhow::Result<_>>()?,
+            parts: legacy
+                .opaque_meshes
+                .parts
+                .iter()
+                .map(|part| {
+                    Ok(alkahest_data::tfx::features::statics::SStaticMeshPart {
+                        index_start: part.index_start,
+                        index_count: part.index_count,
+                        buffer_index: part.buffer_index,
+                        unk9: part.unk9,
+                        lod_category: lod_category_from_legacy(part.lod_category).context(
+                            "Shadowkeep static part has an unsupported LOD category",
+                        )?,
+                        primitive_type: primitive_type_from_legacy(part.primitive_type).context(
+                            "Shadowkeep static part has an unsupported primitive topology",
+                        )?,
+                    })
+                })
+                .collect::<anyhow::Result<_>>()?,
+            buffers: legacy.opaque_meshes.buffers.clone(),
+            unk38: 0,
+            mesh_offset: legacy.mesh_offset,
+            mesh_scale: legacy.mesh_scale,
+            // Arrivals stores two scale components. The preserved renderer
+            // consumed the first scalar in this shared static cbuffer.
+            texture_coordinate_scale: legacy.texture_coordinate_scale.x,
+            texture_coordinate_offset: legacy.texture_coordinate_offset,
+            max_color_index: 0,
+        };
+        let special_meshes = legacy
+            .special_meshes
+            .iter()
+            .map(|mesh| {
+                Ok(alkahest_data::tfx::features::statics::SStaticSpecialMesh {
+                    render_stage: render_stage_from_legacy(mesh.render_stage).context(
+                        "Shadowkeep static special mesh has a stage outside the 23-stage graph",
+                    )?,
+                    input_layout_index: mesh.input_layout_index,
+                    lod: lod_category_from_legacy(mesh.lod_category).context(
+                        "Shadowkeep static special mesh has an unsupported LOD category",
+                    )?,
+                    unk3: mesh.unk5,
+                    primitive_type: primitive_type_from_legacy(mesh.primitive_type).context(
+                        "Shadowkeep static special mesh has an unsupported primitive topology",
+                    )?,
+                    unk5: mesh.unk7,
+                    unk6: mesh.unk2,
+                    index_buffer: mesh.index_buffer,
+                    vertex0_buffer: mesh.vertex0_buffer,
+                    vertex1_buffer: mesh.vertex1_buffer,
+                    // This buffer did not exist in the Arrivals record.
+                    color_buffer: TagHash::NONE,
+                    index_start: mesh.index_start,
+                    index_count: mesh.index_count,
+                    technique: mesh.technique,
+                })
+            })
+            .collect::<anyhow::Result<_>>()?;
+        let model = SStaticMesh {
+            file_size: legacy.file_size,
+            opaque_meshes: Tag::with_hash(opaque_meshes, legacy.opaque_meshes.taghash()),
+            unkc: legacy.unkc,
+            techniques: legacy.techniques,
+            special_meshes,
+            unk30: legacy.unk30,
+            unk38: legacy.unk38,
+            unk50: [0; 4],
+            unk60: [0; 4],
+        };
+        let materials = model
+            .techniques
+            .iter()
+            .map(|&tag| Renderer::instance().asset_manager.load::<Technique>(tag))
+            .collect();
+        let buffers = model
+            .opaque_meshes
+            .buffers
+            .iter()
+            .map(|&(index, vertex0, vertex1, color)| {
+                ModelBuffers::load(vertex0, vertex1, color, index)
+                    .context("Failed to load Shadowkeep static model buffers")
+            })
+            .collect::<anyhow::Result<_>>()?;
+        let mut subscribed_stages = model
+            .opaque_meshes
+            .mesh_groups
+            .iter()
+            .fold(RenderStageSubscription::empty(), |stages, group| stages | group.render_stage);
+        let special_meshes = model
+            .special_meshes
+            .iter()
+            .map(|mesh| {
+                subscribed_stages |= mesh.render_stage;
+                Ok(SpecialMesh {
+                    mesh: mesh.clone(),
+                    buffers: ModelBuffers::load(
+                        mesh.vertex0_buffer,
+                        mesh.vertex1_buffer,
+                        mesh.color_buffer,
+                        mesh.index_buffer,
+                    )
+                    .context("Failed to load Shadowkeep static special-mesh buffers")?,
+                    technique: Renderer::instance().asset_manager.load(mesh.technique),
+                })
+            })
+            .collect::<anyhow::Result<_>>()?;
+        Ok(Self {
+            model,
+            materials,
+            hash,
+            subscribed_stages,
+            buffers,
+            special_meshes,
+        })
+    }
+
     #[profiling::function]
     pub fn render_all(&self, cmd: &mut CommandList, stage: RenderStage, instance_count: u32) {
         if !self.subscribed_stages.is_subscribed(stage) {
@@ -166,7 +316,12 @@ impl StaticMesh {
                     continue;
                 }
 
-                cmd.set_input_layout(group.input_layout_index as usize);
+                if renderer
+                    .set_input_layout(cmd, group.input_layout_index as usize)
+                    .is_err()
+                {
+                    continue;
+                }
                 cmd.set_input_topology(part.primitive_type);
 
                 cmd.draw_indexed_instanced(
@@ -194,7 +349,12 @@ impl StaticMesh {
                 } else {
                     continue;
                 }
-                cmd.set_input_layout(mesh.input_layout_index as usize);
+                if renderer
+                    .set_input_layout(cmd, mesh.input_layout_index as usize)
+                    .is_err()
+                {
+                    continue;
+                }
                 cmd.set_input_topology(mesh.primitive_type);
 
                 cmd.draw_indexed_instanced(
@@ -255,7 +415,12 @@ impl StaticMesh {
             return;
         }
 
-        cmd.set_input_layout(group.input_layout_index as usize);
+        if Renderer::instance()
+            .set_input_layout(cmd, group.input_layout_index as usize)
+            .is_err()
+        {
+            return;
+        }
         cmd.set_input_topology(part.primitive_type);
 
         // cmd.draw_indexed_instanced(part.index_count, instance_count, part.index_start, 0, 0);
@@ -281,30 +446,32 @@ impl StaticInstanceGroup {
         model: &StaticMesh,
         vao_identifier: u64,
         ao: Option<&SStaticAmbientOcclusion>,
+        shadowkeep_layout: bool,
     ) {
         let mut data = vec![];
         let model = &model.model.opaque_meshes;
-
         let vao_base = ao.and_then(|ao| ao.get_offset_by_identifier(vao_identifier));
 
-        data.write_all(bytemuck::cast_slice(&[
-            model.mesh_offset.x,
-            model.mesh_offset.y,
-            model.mesh_offset.z,
-            model.mesh_scale,
-            model.texture_coordinate_scale,
-            model.texture_coordinate_offset.x,
-            model.texture_coordinate_offset.y,
-            f32::from_bits(model.max_color_index),
-        ]))
-        .unwrap();
+        if !shadowkeep_layout {
+            data.write_all(bytemuck::cast_slice(&[
+                model.mesh_offset.x,
+                model.mesh_offset.y,
+                model.mesh_offset.z,
+                model.mesh_scale,
+                model.texture_coordinate_scale,
+                model.texture_coordinate_offset.x,
+                model.texture_coordinate_offset.y,
+                f32::from_bits(model.max_color_index),
+            ]))
+            .unwrap();
+        }
 
-        // let model_transform = Mat4::from_cols_array_2d(&[
-        //     [model.mesh_scale, 0.0, 0.0, model.mesh_offset.x],
-        //     [0.0, model.mesh_scale, 0.0, model.mesh_offset.y],
-        //     [0.0, 0.0, model.mesh_scale, model.mesh_offset.z],
-        //     [0.0, 0.0, 0.0, 1.0],
-        // ]);
+        let model_transform = Mat4::from_cols(
+            Vec4::new(model.mesh_scale, 0.0, 0.0, model.mesh_offset.x),
+            Vec4::new(0.0, model.mesh_scale, 0.0, model.mesh_offset.y),
+            Vec4::new(0.0, 0.0, model.mesh_scale, model.mesh_offset.z),
+            Vec4::W,
+        );
         for transform in self.transforms.iter() {
             let instance_transform = Mat4::from_scale_rotation_translation(
                 Vec3::splat(transform.scale),
@@ -312,7 +479,11 @@ impl StaticInstanceGroup {
                 transform.translation,
             )
             .transpose();
-            // let instance_transform = Mat4::IDENTITY;
+            let instance_transform = if shadowkeep_layout {
+                model_transform * instance_transform
+            } else {
+                instance_transform
+            };
 
             let vertex_ao_offset = if let Some(vao_base) = vao_base {
                 (transform.vertex_ao_offset + vao_base) >> 2
@@ -321,13 +492,19 @@ impl StaticInstanceGroup {
                 0xFFFF_FFFF
             };
 
+            let params = if shadowkeep_layout {
+                Vec4::new(
+                    model.texture_coordinate_scale,
+                    model.texture_coordinate_offset.x,
+                    model.texture_coordinate_offset.y,
+                    f32::from_bits(model.max_color_index),
+                )
+            } else {
+                Vec4::new(1.0, 1.0, 1.0, f32::from_bits(vertex_ao_offset))
+            };
             data.write_all(bytemuck::cast_slice(&[InstanceTransformBlock {
-                transform: [
-                    instance_transform.x_axis,
-                    instance_transform.y_axis,
-                    instance_transform.z_axis,
-                ],
-                params: Vec4::new(1.0, 1.0, 1.0, f32::from_bits(vertex_ao_offset)),
+                transform: [instance_transform.x_axis, instance_transform.y_axis, instance_transform.z_axis],
+                params,
             }]))
             .unwrap();
         }
@@ -345,12 +522,20 @@ pub struct StaticInstancesRenderer {
     groups: Vec<StaticInstanceGroup>,
 
     constants_dirty: bool,
+    shadowkeep_layout: bool,
     vao_identifier: u64,
     groups_by_stage_sorted_by_technique: HashMap<RenderStage, Arc<Vec<SortedModel>>>,
     bounds: AxisAlignedBBox,
 }
 
 impl StaticInstancesRenderer {
+    /// World-space bounds reconstructed from the legacy instance placements.
+    /// Shadowkeep collections do not carry the post-BL occlusion table, so
+    /// callers use this conservative value for framing and diagnostics only.
+    pub fn bounds(&self) -> AxisAlignedBBox {
+        self.bounds
+    }
+
     pub fn load(gpu: &Arc<Gpu>, instances_hash: TagHash) -> anyhow::Result<Self> {
         let instances: SStaticMeshInstances = package_manager().read_tag_struct(instances_hash)?;
         let mut static_models = Vec::with_capacity(instances.statics.len());
@@ -464,9 +649,95 @@ impl StaticInstancesRenderer {
             static_models,
             groups,
             constants_dirty: true,
+            shadowkeep_layout: false,
             vao_identifier: instances.vertex_ao_identifier,
             groups_by_stage_sorted_by_technique,
             bounds: instances.bounds,
+        })
+    }
+
+    /// Resolve the legacy static-instance collection without routing it
+    /// through a post-BL serialized type. Bounds are derived from placements
+    /// because Arrivals collections do not carry the newer occlusion table.
+    pub fn load_shadowkeep(gpu: &Arc<Gpu>, instances_hash: TagHash) -> anyhow::Result<Self> {
+        let instances: SShadowkeepStaticMeshInstances = package_manager().read_tag_struct(instances_hash)?;
+        let static_models = instances
+            .statics
+            .iter()
+            .map(|&hash| StaticMesh::load_shadowkeep(hash))
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let mut model_to_instance_groups: HashMap<u16, SmallVec<[usize; 4]>> = HashMap::default();
+        let mut groups = Vec::with_capacity(instances.instance_groups.len());
+        for (index, group) in instances.instance_groups.iter().enumerate() {
+            let range = group.transform_range();
+            let legacy_transforms = instances
+                .transforms
+                .get(range)
+                .context("Invalid Shadowkeep static instance transform range")?;
+            let transforms = legacy_transforms
+                .iter()
+                .map(|transform| SStaticInstanceTransform {
+                    rotation: transform.rotation,
+                    translation: transform.translation,
+                    // Reference static submission uses the X component.
+                    scale: transform.scale.x,
+                    unk20: [transform.unk28, transform.unk2c],
+                    vertex_ao_offset: 0,
+                    unk2c: 0.0,
+                    unk30: [0; 4],
+                })
+                .collect_vec();
+            let bounds = transforms
+                .iter()
+                .map(|transform| AxisAlignedBBox::from_center_extents(transform.translation, Vec3::splat(transform.scale.abs())))
+                .collect_vec();
+            let group_bounds = bounds.iter().copied().sum();
+            let cbuffer = ConstantBuffer::create_raw_cb(
+                gpu,
+                transforms.len() * size_of::<InstanceTransformBlock>(),
+            )?;
+            groups.push(StaticInstanceGroup {
+                num_instances: transforms.len() as u32,
+                transforms,
+                bounds,
+                group_bounds,
+                static_index: group.static_index,
+                cbuffer,
+                visible: VisibilityMask::default(),
+            });
+            model_to_instance_groups.entry(group.static_index).or_default().push(index);
+        }
+        let mut by_stage: HashMap<RenderStage, Vec<SortedModel>> = HashMap::default();
+        for (model_index, model) in static_models.iter().enumerate() {
+            for (group_index, (group, technique)) in model.model.opaque_meshes.mesh_groups.iter().zip(&model.materials).enumerate() {
+                let part = &model.model.opaque_meshes.parts[group.part_index as usize];
+                if part.lod_category.is_highest_detail() {
+                    by_stage.entry(group.render_stage).or_default().push(SortedModel {
+                        technique: technique.hash(),
+                        model_index,
+                        group_index,
+                        instance_groups: model_to_instance_groups.get(&(model_index as u16)).cloned().unwrap_or_default(),
+                    });
+                }
+            }
+        }
+        for models in by_stage.values_mut() {
+            models.sort_unstable_by_key(|model| model.technique);
+        }
+        let groups_by_stage_sorted_by_technique = by_stage
+            .into_iter()
+            .map(|(stage, models)| (stage, Arc::new(models)))
+            .collect();
+        let bounds = groups.iter().map(|group| group.group_bounds).sum();
+        Ok(Self {
+            subscribed_stages: static_models.iter().fold(RenderStageSubscription::empty(), |stages, model| stages | model.subscribed_stages),
+            static_models,
+            groups,
+            constants_dirty: true,
+            shadowkeep_layout: true,
+            vao_identifier: 0,
+            groups_by_stage_sorted_by_technique,
+            bounds,
         })
     }
 }
@@ -502,12 +773,13 @@ impl FeatureRenderer for StaticInstancesRenderer {
         if self.constants_dirty {
             for group in &self.groups {
                 let model = &self.static_models[group.static_index as usize];
-                group.update_constants(
-                    &renderer.gpu.context(),
-                    model,
-                    self.vao_identifier,
-                    renderer.ao.read().as_ref(),
-                );
+                    group.update_constants(
+                        &renderer.gpu.context(),
+                        model,
+                        self.vao_identifier,
+                        renderer.ao.read().as_ref(),
+                        self.shadowkeep_layout,
+                    );
             }
             self.constants_dirty = false;
         }
@@ -520,7 +792,11 @@ impl FeatureRenderer for StaticInstancesRenderer {
             g.visible.get(view_index) && model.subscribed_stages.is_subscribed(stage)
         }) {
             let model = &self.static_models[group.static_index as usize];
-            group.cbuffer.bind_cbuffer(cmd, ShaderStage::Vertex, 1);
+            group.cbuffer.bind_cbuffer(
+                cmd,
+                ShaderStage::Vertex,
+                Renderer::instance().globals.scopes.chunk_model.vertex_slot() as u32,
+            );
             model.render_all(cmd, stage, group.num_instances);
         }
     }
@@ -567,7 +843,11 @@ impl FeatureRenderer for StaticInstancesRenderer {
                         let groups = unsafe { &*p_groups };
                         let group = &groups[i];
                         let model = &models[group.static_index as usize];
-                        group.cbuffer.bind_cbuffer(cmd, ShaderStage::Vertex, 1);
+                        group.cbuffer.bind_cbuffer(
+                            cmd,
+                            ShaderStage::Vertex,
+                            renderer.globals.scopes.chunk_model.vertex_slot() as u32,
+                        );
                         model.render_all(cmd, stage, group.num_instances);
                     });
 
@@ -630,7 +910,11 @@ impl FeatureRenderer for StaticInstancesRenderer {
                             |cmd, index_count, index_start| {
                                 for group_index in &range.instance_groups {
                                     let group = &groups[*group_index];
-                                    group.cbuffer.bind_cbuffer(cmd, ShaderStage::Vertex, 1);
+                                    group.cbuffer.bind_cbuffer(
+                                        cmd,
+                                        ShaderStage::Vertex,
+                                        renderer.globals.scopes.chunk_model.vertex_slot() as u32,
+                                    );
                                     if group.visible.get(view_index) {
                                         cmd.draw_indexed_instanced(
                                             index_count,
@@ -845,11 +1129,15 @@ impl FeatureRenderer for StaticModelRenderer {
         transform.scale = scale.x;
 
         self.group
-            .update_constants(&renderer.gpu.context(), &self.model, 0, None);
+            .update_constants(&renderer.gpu.context(), &self.model, 0, None, false);
     }
 
     fn submit(&self, cmd: &mut CommandList, _view_index: usize, stage: RenderStage) {
-        self.group.cbuffer.bind_cbuffer(cmd, ShaderStage::Vertex, 1);
+        self.group.cbuffer.bind_cbuffer(
+            cmd,
+            ShaderStage::Vertex,
+            Renderer::instance().globals.scopes.chunk_model.vertex_slot() as u32,
+        );
         self.model.render_all(cmd, stage, 1);
     }
 
@@ -863,13 +1151,18 @@ impl FeatureRenderer for StaticModelRenderer {
     ) {
         let self_p = &raw const *self as u64;
         let pool = renderer.cmd_pool.clone();
+        let renderer = renderer.clone();
         let job = SCHEDULER.job_builder("rigid_model").spawn(move || {
             let self_ref = unsafe { &*(self_p as *const Self) };
             let cmd = pool.get_command_list(set);
             self_ref
                 .group
                 .cbuffer
-                .bind_cbuffer(cmd, ShaderStage::Vertex, 1);
+                .bind_cbuffer(
+                    cmd,
+                    ShaderStage::Vertex,
+                    renderer.globals.scopes.chunk_model.vertex_slot() as u32,
+                );
             self_ref.model.render_all(cmd, stage, 1);
         });
         jobs.push(job);

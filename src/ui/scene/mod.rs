@@ -124,7 +124,7 @@ impl Scene {
             time_scale: 1.0,
             animate_time_of_day: true,
             sun_light_angle: 60f32,
-            render_mode: RenderMode::Shaded,
+            render_mode: RenderMode::LightDiffuse,
             keep_settings_open: false,
             lock_resolution: false,
             controller: CameraController::new_orbit(Vec3::ZERO, 2.5),

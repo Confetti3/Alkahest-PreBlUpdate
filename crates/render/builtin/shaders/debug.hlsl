@@ -145,7 +145,12 @@ float4 mainPS(VSOutput input) : SV_TARGET {
   // return float4(linearToSrgb(vertexAo.xxx), 1.0f);
 
   // // float aoFactor = saturate(textureAo * vertexAo);
-  float ao = saturate(textureAo) * rt2.a;
+  // Shadowkeep terrain and several static material variants leave the legacy
+  // vertex-AO channel at zero even when their albedo/normal data is valid.
+  // Keep the diagnostic composite visible until the era-specific deferred
+  // light families are submitted; this is a floor, not a replacement
+  // material or modern lighting pipeline.
+  float ao = max(saturate(textureAo) * rt2.a, 0.35);
 
   float3 F0 = float(0.04).xxx;
   F0 = lerp(F0, albedo, metallic);
@@ -175,9 +180,9 @@ float4 mainPS(VSOutput input) : SV_TARGET {
   float3 radiance = 4.4f;
   float3 Lo = (kD * albedo / PI + specular) * radiance * NdotL;
 
-  float3 ambient = float(0.04).xxx * albedo * ao;
+  float3 ambient = float(0.18).xxx * albedo * ao;
 
-  float3 color = ambient + Lo;
+  float3 color = max(ambient + Lo, albedo * 0.30);
 
-  return float4(color * ao, 1.0f);
+  return float4(linearToSrgb(saturate(color)), 1.0f);
 }

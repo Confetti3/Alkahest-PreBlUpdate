@@ -26,6 +26,13 @@ impl<T: TigerReadable> TigerReadable for Tag<T> {
 }
 
 impl<T: TigerReadable> Tag<T> {
+    /// Construct a normalized tag wrapper when an era-specific decoder has
+    /// produced a compatible in-memory representation. The original tag hash
+    /// remains available for diagnostics and cache ownership.
+    pub fn with_hash(data: T, tag: TagHash) -> Self {
+        Self(data, tag)
+    }
+
     pub fn taghash(&self) -> TagHash {
         self.1
     }

@@ -32,5 +32,20 @@ fn main() -> anyhow::Result<()> {
             .with_context(|| format!("failed to parse Shadowkeep technique {name} ({tag})"))?;
     }
     println!("all referenced scopes and techniques parsed; {} scopes and {} techniques are explicitly null", absent_scopes.len(), absent_pipelines.len());
+    for name in [
+        "global_lighting",
+        "deferred_shading",
+        "deferred_shading_no_atm",
+        "final_combine",
+        "fxaa",
+        "downsample_depth_buffer",
+        "uber_depth_default",
+    ] {
+        match bootstrap.pipelines.get(name) {
+            Some(tag) if tag.is_some() => println!("pipeline {name}=ready ({tag})"),
+            Some(_) => println!("pipeline {name}=explicit-null"),
+            None => println!("pipeline {name}=missing"),
+        }
+    }
     Ok(())
 }

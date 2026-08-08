@@ -217,6 +217,16 @@ impl RenderStates {
 
         Ok(layout)
     }
+
+    pub(crate) fn create_base_input_layout(
+        device: &d3d11::Device,
+        index: usize,
+    ) -> anyhow::Result<d3d11::InputLayout> {
+        let layout = BASE_INPUT_LAYOUTS
+            .get(index)
+            .with_context(|| format!("Built-in input layout {index} is unavailable"))?;
+        Self::create_input_layout(device, layout.elements)
+    }
 }
 
 /// Regular d3d11 blend state, but with only 4 render targets

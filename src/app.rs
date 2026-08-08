@@ -86,7 +86,8 @@ impl RendererStatus {
                 "3D scene initialization is still in progress. Map metadata remains available; retry the rendered view after the renderer reports ready.".to_string()
             }
             Self::Ready => {
-                "The Shadowkeep renderer initialized, but core geometry submission is still blocked. This map can be inspected, but it cannot yet be drawn.".to_string()
+                "The Shadowkeep renderer is ready. Maps may begin loading their decoded scene and GPU assets."
+                    .to_string()
             }
             Self::Disabled => {
                 "3D rendering was disabled with --no-3d. Map metadata remains available.".to_string()
@@ -280,12 +281,26 @@ impl App {
         self.renderer_task = None;
 
         match result {
-            Ok(Ok(_bootstrap)) => {
-                self.renderer_status = RendererStatus::Blocked(
-                    "The era bootstrap and renderer-local input layouts are valid, but normalized static, terrain, dynamic, and rigid submissions are not installed. The application will not eagerly load the 623 legacy pipelines or construct a later-era scene renderer.".to_string(),
-                );
-                *self.shared_state.renderer_status.write() = self.renderer_status.clone();
-                info!("Shadowkeep bootstrap initialized; core geometry remains capability-blocked");
+            Ok(Ok(bootstrap)) => {
+                // `ThreadMutCell` intentionally pins renderer mutable state to
+                // the UI/render thread. Bootstrap parsing is background-safe,
+                // but the renderer must be finalized here before a Scene can
+                // submit its first frame.
+                match Renderer::new_shadowkeep(self._gpu.clone(), bootstrap) {
+                    Ok(renderer) => {
+                        let renderer = Arc::new(renderer);
+                        Renderer::set_instance(renderer.clone());
+                        self.renderer = Some(renderer);
+                        self.renderer_status = RendererStatus::Ready;
+                        *self.shared_state.renderer_status.write() = self.renderer_status.clone();
+                        info!("Shadowkeep renderer initialized successfully");
+                    }
+                    Err(error) => {
+                        error!("Shadowkeep renderer unavailable: {error:#}");
+                        self.renderer_status = RendererStatus::Failed(format!("{error:#}"));
+                        *self.shared_state.renderer_status.write() = self.renderer_status.clone();
+                    }
+                }
             }
             Ok(Err(error)) => {
                 error!("Shadowkeep renderer unavailable: {error:#}");

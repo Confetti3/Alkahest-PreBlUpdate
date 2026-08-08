@@ -19,7 +19,7 @@ use tiger_pkg::package_manager;
 type Wordlist = HashMap<u32, String>;
 
 fn main() -> anyhow::Result<()> {
-    alkahest_core::initialize_package_manager(None)?;
+    alkahest_core::initialize_package_manager(None, None)?;
 
     println!("Loading wordlist");
 
