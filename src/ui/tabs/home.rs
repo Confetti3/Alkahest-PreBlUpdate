@@ -45,7 +45,9 @@ impl HomeTab {
         ui.add_space(32.0);
         let renderer_status = shared_state.renderer_status.read().clone();
         ui.label(renderer_status.message());
-        if let crate::app::RendererStatus::Failed(detail) = &renderer_status {
+        if let crate::app::RendererStatus::Blocked(detail)
+        | crate::app::RendererStatus::Failed(detail) = &renderer_status
+        {
             ui.label(egui::RichText::new(detail).color(Color32::from_rgb(224, 128, 96)));
         }
         egui::CollapsingHeader::new("Renderer capability ledger")

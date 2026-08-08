@@ -50,7 +50,8 @@ pub struct App {
 
     shared_state: Arc<SharedState>,
 
-    renderer_task: Option<Task<anyhow::Result<Renderer>>>,
+    renderer_task:
+        Option<Task<anyhow::Result<alkahest_render::renderer::shadowkeep::ShadowkeepRendererBootstrap>>>,
     pub renderer_status: RendererStatus,
     last_frame_time: Instant,
     frametime_histogram: FrametimeHistogram,
@@ -61,6 +62,7 @@ pub enum RendererStatus {
     Initializing,
     Ready,
     Disabled,
+    Blocked(String),
     Failed(String),
 }
 
@@ -70,6 +72,7 @@ impl RendererStatus {
             Self::Initializing => "Initializing the Shadowkeep renderer in the background…",
             Self::Ready => "Shadowkeep renderer ready",
             Self::Disabled => "3D renderer disabled with --no-3d",
+            Self::Blocked(_) => "Shadowkeep core geometry is blocked; catalog and inspection remain active",
             Self::Failed(_) => "Shadowkeep renderer is unavailable; catalog and inspection remain active",
         }
     }
@@ -88,6 +91,9 @@ impl RendererStatus {
             Self::Disabled => {
                 "3D rendering was disabled with --no-3d. Map metadata remains available.".to_string()
             }
+            Self::Blocked(detail) => format!(
+                "Shadowkeep core geometry is blocked. Map metadata remains available. Exact diagnostic: {detail}"
+            ),
             Self::Failed(detail) => format!(
                 "The Shadowkeep renderer is unavailable. Map metadata remains available. Exact initialization diagnostic: {detail}"
             ),
@@ -169,8 +175,7 @@ impl App {
                     let bootstrap = alkahest_render::renderer::shadowkeep::ShadowkeepRendererBootstrap::load(renderer_gpu.clone())
                         .context("Failed to construct Shadowkeep renderer bootstrap")?;
                     *renderer_shared_state.renderer_capabilities.write() = bootstrap.capability_ledger();
-                    Renderer::new_shadowkeep(renderer_gpu, bootstrap)
-                        .context("Failed to construct Shadowkeep renderer")
+                    Ok(bootstrap)
                 })),
                 RendererStatus::Initializing,
             )
@@ -275,13 +280,12 @@ impl App {
         self.renderer_task = None;
 
         match result {
-            Ok(Ok(renderer)) => {
-                let renderer = Arc::new(renderer);
-                Renderer::set_instance(renderer.clone());
-                self.renderer = Some(renderer);
-                self.renderer_status = RendererStatus::Ready;
+            Ok(Ok(_bootstrap)) => {
+                self.renderer_status = RendererStatus::Blocked(
+                    "The era bootstrap and renderer-local input layouts are valid, but normalized static, terrain, dynamic, and rigid submissions are not installed. The application will not eagerly load the 623 legacy pipelines or construct a later-era scene renderer.".to_string(),
+                );
                 *self.shared_state.renderer_status.write() = self.renderer_status.clone();
-                info!("Shadowkeep renderer initialized successfully");
+                info!("Shadowkeep bootstrap initialized; core geometry remains capability-blocked");
             }
             Ok(Err(error)) => {
                 error!("Shadowkeep renderer unavailable: {error:#}");
