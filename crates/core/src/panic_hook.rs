@@ -128,11 +128,7 @@ pub fn setup_panic_hook() {
 // }
 
 fn write_panic_to_file(info: &PanicHookInfo<'_>, bt: Backtrace) -> std::io::Result<()> {
-    let panic_log_path = if cfg!(target_os = "windows") {
-        "panic.log"
-    } else {
-        "/tmp/panic.log"
-    };
+    let panic_log_path = crate::data_relative_path("panic.log");
 
     let mut file_lock = PANIC_FILE.lock();
     if file_lock.is_none() {

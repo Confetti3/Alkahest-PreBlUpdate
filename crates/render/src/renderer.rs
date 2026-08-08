@@ -3,6 +3,7 @@ pub mod globals;
 pub mod hzb;
 pub mod submit;
 pub mod surface;
+pub mod shadowkeep;
 pub mod util;
 pub mod visibility;
 
@@ -144,12 +145,13 @@ impl Renderer {
         let hzb_downsample_cs =
             gpu.compile_shader_cs("hzb_downsample", HZB_DOWNSAMPLE_SHADER, "main")?;
 
-        let globals = RenderGlobals::load(&gpu).context("Failed to load render globals")?;
+        let asset_manager = AssetManager::new(&gpu);
+        let globals = RenderGlobals::load(&gpu, &asset_manager).context("Failed to load render globals")?;
         Ok(Self {
             externs: ThreadMutCell::new(Externs::new(&globals)),
             globals,
             // timestamps: TimestampManager::new(&gpu.device)?,
-            asset_manager: AssetManager::new(&gpu),
+            asset_manager,
             debug_text: Mutex::new(DebugTextRenderer::create(&gpu)?),
             immediate: Mutex::new(
                 ImmediateShapeRenderer::new(&gpu).context("Failed to create immediate renderer")?,

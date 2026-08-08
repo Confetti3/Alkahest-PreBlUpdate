@@ -171,7 +171,7 @@ impl Renderer {
             let job_handle = SCHEDULER
                 .job_builder("submit_stage_parallel_linear_chunk")
                 .spawn(move || {
-                    let cmd_set = cmd_sets[chunk_idx.div_floor(num_threads)];
+                    let cmd_set = cmd_sets[chunk_idx / num_threads];
                     let cmd = renderer_clone
                         .cmd_pool
                         .get_command_list_manual(cmd_set, chunk_idx % num_threads)

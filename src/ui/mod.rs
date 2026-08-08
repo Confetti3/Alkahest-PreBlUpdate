@@ -11,7 +11,7 @@ use crate::{
     app::SharedState,
     task::Task,
     ui::util::DButton,
-    updater::{AvailableUpdate, check_stable_release},
+    updater::AvailableUpdate,
 };
 
 pub mod colors;
@@ -163,16 +163,10 @@ impl Gui {
             tree,
             added_nodes: Vec::new(),
 
-            update_check: Task::new("update_check".to_string(), || {
-                match check_stable_release() {
-                    Ok(Some(update)) => Some(update),
-                    Ok(None) => None,
-                    e => {
-                        error!("Failed to check for update: {:?}", e);
-                        None
-                    }
-                }
-            }),
+            // This branch is pinned to a specific upstream revision and is
+            // intended for preserved-client research.  Do not make an
+            // unrequested network call on every launch.
+            update_check: Task::new("update_check_disabled".to_string(), || None),
             available_update: None,
         })
     }

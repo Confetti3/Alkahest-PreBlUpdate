@@ -18,9 +18,7 @@ use crate::{
         scene::{Scene, controller::CameraController},
         util::{DButton, UiExt},
     },
-    world::map::{
-        load_activity_for_map_into_world, load_activity_phase_into_world, load_map_into_world,
-    },
+    world::map::{load_activity_phase_into_world, load_map_into_world},
 };
 
 pub struct ActivityTab {
@@ -231,13 +229,11 @@ impl ActivityMap {
 
                 load_map_into_world(map_hash.hash32(), &mut world).expect("Failed to load map");
 
-                if let Err(e) = load_activity_for_map_into_world(
-                    activity.ambient_activity,
-                    activity_map.bubble_name,
-                    &mut world,
-                ) {
-                    error!("Failed to load ambient activity: {e}");
-                }
+                // Shadowkeep's 0x80 activity root retains only the prefix of
+                // the later wide ambient-activity reference.  Do not treat an
+                // unrelated surviving field as an ambient activity; the
+                // renderer tab stays capability-gated until its era-specific
+                // activity chain is ported.
 
                 for unk in &activity_map.unk18 {
                     if let Err(e) = load_activity_phase_into_world(unk, &mut world) {

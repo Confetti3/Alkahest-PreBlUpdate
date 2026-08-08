@@ -22,7 +22,7 @@ fn main() -> anyhow::Result<()> {
         anyhow::bail!("Invalid technique tag hash: {}", hash);
     };
 
-    alkahest_core::initialize_package_manager(None)?;
+    alkahest_core::initialize_package_manager(None, None)?;
 
     let component: SComponent = package_manager()
         .read_tag_struct(hash)

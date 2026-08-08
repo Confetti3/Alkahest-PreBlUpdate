@@ -1,14 +1,25 @@
 use std::{ops::Deref, sync::Arc};
 
 use ahash::AHashMap;
-use alkahest_data::tfx::{STechnique, STechniqueShader, ShaderStage, TechniqueBindMode};
+use alkahest_data::{
+    tfx::{
+        SDynamicConstants, SMaterialTextureAssignment, SSamplerReference, STechnique,
+        STechniqueShader, ShaderStage, TechniqueBindMode, TfxScopeBits,
+        shadowkeep::{SShadowkeepDynamicConstants, SShadowkeepTechnique, SShadowkeepTechniqueShader, ShadowkeepTechniqueBindMode},
+    },
+};
 use anyhow::{Context, ensure};
 use d3d11::DeviceChild;
 use tiger_parse::PackageManagerExt;
 use tiger_pkg::{TagHash, package_manager};
 
 use super::dynamic_constants::DynamicConstants;
-use crate::{Gpu, asset::Handle, gpu::command_list::CommandList, tfx::sequencer_vm::ObjectChannel};
+use crate::{
+    Gpu,
+    asset::{AssetManager, Handle},
+    gpu::command_list::CommandList,
+    tfx::sequencer_vm::ObjectChannel,
+};
 
 pub struct Technique {
     pub tech: STechnique,
@@ -60,34 +71,60 @@ impl Technique {
 
 impl Technique {
     #[profiling::function]
-    #[tracing::instrument(skip(gpu, hash), fields(technique = %hash))]
-    pub fn load(gpu: &Arc<Gpu>, hash: TagHash) -> anyhow::Result<Self> {
+    #[tracing::instrument(skip(gpu, asset_manager, hash), fields(technique = %hash))]
+    pub fn load(gpu: &Arc<Gpu>, asset_manager: &AssetManager, hash: TagHash) -> anyhow::Result<Self> {
         let tech = package_manager()
             .read_tag_struct::<STechnique>(hash)
             .context("Failed to read technique tag")?;
         Ok(Self {
-            stage_vertex: TechniqueStage::load(gpu, &tech.shader_vertex, ShaderStage::Vertex, hash)
+            stage_vertex: TechniqueStage::load(gpu, asset_manager, &tech.shader_vertex, ShaderStage::Vertex, hash)
                 .context("Failed to load vertex stage")?,
-            stage_hull: TechniqueStage::load(gpu, &tech.shader_hull, ShaderStage::Hull, hash)
+            stage_hull: TechniqueStage::load(gpu, asset_manager, &tech.shader_hull, ShaderStage::Hull, hash)
                 .context("Failed to load hull stage")?,
-            stage_domain: TechniqueStage::load(gpu, &tech.shader_domain, ShaderStage::Domain, hash)
+            stage_domain: TechniqueStage::load(gpu, asset_manager, &tech.shader_domain, ShaderStage::Domain, hash)
                 .context("Failed to load domain stage")?,
             stage_geometry: TechniqueStage::load(
-                gpu,
+                gpu, asset_manager,
                 &tech.shader_geometry,
                 ShaderStage::Geometry,
                 hash,
             )
             .context("Failed to load geometry stage")?,
-            stage_pixel: TechniqueStage::load(gpu, &tech.shader_pixel, ShaderStage::Pixel, hash)
+            stage_pixel: TechniqueStage::load(gpu, asset_manager, &tech.shader_pixel, ShaderStage::Pixel, hash)
                 .context("Failed to load pixel stage")?,
             stage_compute: TechniqueStage::load(
-                gpu,
+                gpu, asset_manager,
                 &tech.shader_compute,
                 ShaderStage::Compute,
                 hash,
             )
             .context("Failed to load compute stage")?,
+            tech,
+            hash,
+        })
+    }
+
+    /// Loads a Season of Arrivals technique using its own serialized record
+    /// order, then normalizes only the runtime properties shared by the
+    /// command-list renderer.
+    #[tracing::instrument(skip(gpu, asset_manager, hash), fields(technique = %hash))]
+    pub fn load_shadowkeep(
+        gpu: &Arc<Gpu>,
+        asset_manager: &AssetManager,
+        hash: TagHash,
+    ) -> anyhow::Result<Self> {
+        let legacy = package_manager()
+            .read_tag_struct::<SShadowkeepTechnique>(hash)
+            .context("Failed to read Shadowkeep technique tag")?;
+        let tech = normalize_shadowkeep_technique(&legacy);
+
+        Ok(Self {
+            stage_vertex: TechniqueStage::load_shadowkeep(gpu, asset_manager, &legacy.shader_vertex, ShaderStage::Vertex, hash)?,
+            stage_hull: None,
+            stage_domain: None,
+            stage_geometry: TechniqueStage::load_shadowkeep(gpu, asset_manager, &legacy.shader_geometry, ShaderStage::Geometry, hash)?,
+            stage_pixel: TechniqueStage::load_shadowkeep(gpu, asset_manager, &legacy.shader_pixel, ShaderStage::Pixel, hash)?,
+            stage_compute: TechniqueStage::load_shadowkeep(gpu, asset_manager, &legacy.shader_compute, ShaderStage::Compute, hash)?,
             tech,
             hash,
         })
@@ -198,6 +235,7 @@ pub struct TechniqueStage {
 impl TechniqueStage {
     pub fn load(
         gpu: &Arc<Gpu>,
+        asset_manager: &AssetManager,
         shader: &STechniqueShader,
         stage: ShaderStage,
         technique_hash: TagHash,
@@ -223,7 +261,7 @@ impl TechniqueStage {
         //     }
         // }
 
-        let dynamic_constants = DynamicConstants::load(gpu, &shader.constants)?;
+        let dynamic_constants = DynamicConstants::load(gpu, asset_manager, &shader.constants)?;
 
         // let recompile = false;
         // let recompile = is_renderdoc_connected()
@@ -252,6 +290,40 @@ impl TechniqueStage {
         }))
     }
 
+    fn load_shadowkeep(
+        gpu: &Arc<Gpu>,
+        asset_manager: &AssetManager,
+        shader: &SShadowkeepTechniqueShader,
+        stage: ShaderStage,
+        technique_hash: TagHash,
+    ) -> anyhow::Result<Option<Self>> {
+        if shader.shader.is_none() {
+            return Ok(None);
+        }
+
+        let mut dynamic_constants = DynamicConstants::load_shadowkeep(gpu, asset_manager, &shader.constants)?;
+        dynamic_constants.textures = shader
+            .textures
+            .iter()
+            .map(|texture| (texture.slot, asset_manager.try_load(texture.texture)))
+            .collect();
+        let shader_module = ShaderModule::load(gpu, shader.shader)
+            .with_context(|| format!("Failed to load Shadowkeep shader module {}", shader.shader))?
+            .with_name(&format!(
+                "Shadowkeep {} {} (Technique {})",
+                stage.short_name(),
+                shader.shader,
+                technique_hash
+            ));
+
+        Ok(Some(Self {
+            shader: normalize_shadowkeep_shader(shader),
+            stage,
+            dynamic_constants,
+            shader_module,
+        }))
+    }
+
     pub fn bind(
         &self,
         cmd: &mut CommandList,
@@ -273,6 +345,84 @@ impl TechniqueStage {
             .textures
             .iter()
             .all(|(_, tex)| tex.as_ref().map(Handle::is_loaded).unwrap_or(true))
+    }
+}
+
+fn normalize_shadowkeep_technique(legacy: &SShadowkeepTechnique) -> STechnique {
+    STechnique {
+        file_size: legacy.file_size,
+        bind_mode: match legacy.bind_mode {
+            ShadowkeepTechniqueBindMode::VertexPixel => TechniqueBindMode::VertexPixel,
+            ShadowkeepTechniqueBindMode::VertexOnly => TechniqueBindMode::VertexOnly,
+            ShadowkeepTechniqueBindMode::VertexGeometryPixel => TechniqueBindMode::VertexGeometryPixel,
+            ShadowkeepTechniqueBindMode::VertexPixelTessellated => TechniqueBindMode::VertexPixelTesselated,
+            ShadowkeepTechniqueBindMode::VertexOnlyTessellated => TechniqueBindMode::VertexOnlyTesselated,
+            ShadowkeepTechniqueBindMode::Compute => TechniqueBindMode::Compute,
+        },
+        unkc: legacy.unkc,
+        unk10: legacy.unk10,
+        unk14: legacy.unk14,
+        unk18: 0,
+        unk1c: 0,
+        used_scopes: TfxScopeBits::from_bits_truncate(legacy.used_scopes.0 as u64),
+        compatible_scopes: TfxScopeBits::from_bits_truncate(legacy.compatible_scopes.0 as u64),
+        states: alkahest_data::tfx::PipelineState::from_raw(legacy.states.0),
+        unk34: [0; 15],
+        shader_vertex: normalize_shadowkeep_shader(&legacy.shader_vertex),
+        shader_hull: empty_shader(),
+        shader_domain: empty_shader(),
+        shader_geometry: normalize_shadowkeep_shader(&legacy.shader_geometry),
+        shader_pixel: normalize_shadowkeep_shader(&legacy.shader_pixel),
+        shader_compute: normalize_shadowkeep_shader(&legacy.shader_compute),
+    }
+}
+
+fn normalize_shadowkeep_shader(shader: &SShadowkeepTechniqueShader) -> STechniqueShader {
+    STechniqueShader {
+        shader: shader.shader,
+        unk4: shader.unk4,
+        constants: normalize_shadowkeep_constants(&shader.constants),
+    }
+}
+
+fn empty_shader() -> STechniqueShader {
+    STechniqueShader {
+        shader: TagHash::NONE,
+        unk4: 0,
+        constants: SDynamicConstants {
+            textures: Vec::new(),
+            unk10: 0,
+            bytecode: Vec::new(),
+            bytecode_constants: Vec::new(),
+            samplers: Vec::new(),
+            unk30: Vec::new(),
+            unk40: [0; 4],
+            constant_buffer_slot: -1,
+            constant_buffer: TagHash::NONE,
+        },
+    }
+}
+
+fn normalize_shadowkeep_constants(constants: &SShadowkeepDynamicConstants) -> SDynamicConstants {
+    SDynamicConstants {
+        textures: Vec::<SMaterialTextureAssignment>::new(),
+        unk10: 0,
+        bytecode: constants.bytecode.clone(),
+        bytecode_constants: constants.bytecode_constants.clone(),
+        samplers: constants
+            .samplers
+            .iter()
+            .map(|sampler| SSamplerReference {
+                sampler: sampler.sampler,
+                unk4: sampler.unk4,
+                unk8: sampler.unk8,
+                unkc: sampler.unkc,
+            })
+            .collect(),
+        unk30: constants.inline_constants.clone(),
+        unk40: [0; 4],
+        constant_buffer_slot: constants.constant_buffer_slot,
+        constant_buffer: constants.constant_buffer,
     }
 }
 

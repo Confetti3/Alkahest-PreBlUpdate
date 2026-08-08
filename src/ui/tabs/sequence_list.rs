@@ -11,9 +11,7 @@ use alkahest_data::{
     tfx::sequencer::{NodeKind, SSequence, SSequenceNodeRef, SUnk808091f1Variant},
 };
 use anyhow::Result;
-use egui::{
-    Color32, FontId, RichText, TextStyle, Ui, Vec2, Widget, scroll_area::ScrollSource,
-};
+use egui::{Color32, FontId, RichText, TextStyle, Ui, Vec2, Widget, scroll_area::ScrollSource};
 use egui_ltreeview::{NodeBuilder, TreeView, TreeViewBuilder};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use tiger_parse::{PackageManagerExt, TigerReadable};
@@ -366,10 +364,12 @@ impl SequenceListTab {
                 node!(leaf, "SSequenceLensFlare", icons::sequencer::UNKNOWN);
             }
             SUnk808091f1Variant::SSequenceEmbeddedParticleSystem(p) => {
-                if p.unk28
-                    .iter()
-                    .any(|u| u.particle_system.as_ref().map_or_default(|s| s.is_gpu()))
-                {
+                if p.unk28.iter().any(|u| {
+                    u.particle_system
+                        .as_ref()
+                        .map(|s| s.is_gpu())
+                        .unwrap_or_default()
+                }) {
                     node!(
                         leaf,
                         "ParticleSystemGpu",

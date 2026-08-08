@@ -3,6 +3,7 @@ use std::sync::Arc;
 use alkahest_data::tfx::{
     ShaderStage,
     scope::{SScope, SScopeStage},
+    shadowkeep::{SShadowkeepScope, SShadowkeepScopeStage},
 };
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3A, Vec4};
@@ -11,10 +12,11 @@ use tiger_parse::PackageManagerExt;
 use tiger_pkg::{TagHash, package_manager};
 
 use super::dynamic_constants::DynamicConstants;
-use crate::{Gpu, gpu::command_list::CommandList};
+use crate::{Gpu, asset::AssetManager, gpu::command_list::CommandList};
 
 pub struct Scope {
-    scope: SScope,
+    name: String,
+    vertex_slot: i32,
 
     pub stage_pixel: Option<Box<ScopeStage>>,
     pub stage_vertex: Option<Box<ScopeStage>>,
@@ -24,12 +26,12 @@ pub struct Scope {
 
 impl Scope {
     #[profiling::function]
-    pub fn load(gpu: &Arc<Gpu>, hash: TagHash) -> anyhow::Result<Self> {
+    pub fn load(gpu: &Arc<Gpu>, asset_manager: &AssetManager, hash: TagHash) -> anyhow::Result<Self> {
         let scope: SScope = package_manager().read_tag_struct(hash)?;
 
         let stage_vertex = if scope.stage_vertex.constants.constant_buffer_slot != -1 {
             Some(ScopeStage::load(
-                gpu,
+                gpu, asset_manager,
                 &scope.stage_vertex,
                 ShaderStage::Vertex,
             )?)
@@ -39,7 +41,7 @@ impl Scope {
 
         let stage_pixel = if scope.stage_pixel.constants.constant_buffer_slot != -1 {
             Some(ScopeStage::load(
-                gpu,
+                gpu, asset_manager,
                 &scope.stage_pixel,
                 ShaderStage::Pixel,
             )?)
@@ -49,7 +51,7 @@ impl Scope {
 
         let stage_geometry = if scope.stage_geometry.constants.constant_buffer_slot != -1 {
             Some(ScopeStage::load(
-                gpu,
+                gpu, asset_manager,
                 &scope.stage_geometry,
                 ShaderStage::Geometry,
             )?)
@@ -59,7 +61,7 @@ impl Scope {
 
         let stage_compute = if scope.stage_compute.constants.constant_buffer_slot != -1 {
             Some(ScopeStage::load(
-                gpu,
+                gpu, asset_manager,
                 &scope.stage_compute,
                 ShaderStage::Compute,
             )?)
@@ -68,7 +70,8 @@ impl Scope {
         };
 
         Ok(Self {
-            scope,
+            name: scope.name.to_string(),
+            vertex_slot: scope.stage_vertex.constants.constant_buffer_slot,
             stage_pixel,
             stage_vertex,
             stage_geometry,
@@ -76,7 +79,29 @@ impl Scope {
         })
     }
 
-    #[tracing::instrument(skip(self, cmd), fields(scope = %self.scope.name.0))]
+    pub fn load_shadowkeep(
+        gpu: &Arc<Gpu>,
+        asset_manager: &AssetManager,
+        hash: TagHash,
+    ) -> anyhow::Result<Self> {
+        let scope: SShadowkeepScope = package_manager().read_tag_struct(hash)?;
+        let load = |stage: &SShadowkeepScopeStage, shader_stage| {
+            (stage.constants.constant_buffer_slot != -1)
+                .then(|| ScopeStage::load_shadowkeep(gpu, asset_manager, stage, shader_stage))
+                .transpose()
+        };
+
+        Ok(Self {
+            name: scope.name.to_string(),
+            vertex_slot: scope.stage_vertex.constants.constant_buffer_slot,
+            stage_pixel: load(&scope.stage_pixel, ShaderStage::Pixel)?,
+            stage_vertex: load(&scope.stage_vertex, ShaderStage::Vertex)?,
+            stage_geometry: load(&scope.stage_geometry, ShaderStage::Geometry)?,
+            stage_compute: load(&scope.stage_compute, ShaderStage::Compute)?,
+        })
+    }
+
+    #[tracing::instrument(skip(self, cmd), fields(scope = %self.name))]
     pub fn bind(&self, cmd: &mut CommandList) -> anyhow::Result<()> {
         // let _s = info_span!("Bind scope", scope = %self.scope.name.0).entered();
         if let Some(stage) = &self.stage_vertex {
@@ -99,7 +124,7 @@ impl Scope {
     }
 
     pub fn vertex_slot(&self) -> i32 {
-        self.scope.stage_vertex.constants.constant_buffer_slot
+        self.vertex_slot
     }
 
     pub fn write_initial_constants(
@@ -131,13 +156,30 @@ pub struct ScopeStage {
 impl ScopeStage {
     pub fn load(
         gpu: &Arc<Gpu>,
+        asset_manager: &AssetManager,
         stage: &SScopeStage,
         shader_stage: ShaderStage,
     ) -> anyhow::Result<Box<ScopeStage>> {
-        let constants = DynamicConstants::load(gpu, &stage.constants)?;
+        let constants = DynamicConstants::load(gpu, asset_manager, &stage.constants)?;
 
         Ok(Box::new(Self {
             constants: RwLock::new(constants),
+            shader_stage,
+        }))
+    }
+
+    pub fn load_shadowkeep(
+        gpu: &Arc<Gpu>,
+        asset_manager: &AssetManager,
+        stage: &SShadowkeepScopeStage,
+        shader_stage: ShaderStage,
+    ) -> anyhow::Result<Box<ScopeStage>> {
+        Ok(Box::new(Self {
+            constants: RwLock::new(DynamicConstants::load_shadowkeep(
+                gpu,
+                asset_manager,
+                &stage.constants,
+            )?),
             shader_stage,
         }))
     }

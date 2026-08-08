@@ -1,7 +1,7 @@
 pub mod cbuffer;
 pub mod command_list;
 pub mod debug_text;
-mod global_state;
+pub(crate) mod global_state;
 pub mod profiler;
 pub mod spinner;
 pub mod state;
@@ -15,7 +15,7 @@ use d3d11::{
     sys::{
         Dxgi::{
             CreateDXGIFactory, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_QUERY_VIDEO_MEMORY_INFO,
-            IDXGIAdapter3, IDXGIFactory,
+            IDXGIAdapter, IDXGIAdapter3, IDXGIFactory4,
         },
         core::Interface,
     },
@@ -41,12 +41,57 @@ pub struct Gpu {
 unsafe impl Sync for Gpu {}
 unsafe impl Send for Gpu {}
 
+/// Deliberately small platform-level adapter policy.  It is independent of
+/// package data so the catalog shell can run on server machines as well.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdapterPreference {
+    Auto,
+    Hardware,
+    Warp,
+}
+
 #[profiling::all_functions]
 impl Gpu {
     pub fn create(window: &Rc<sdl3::video::Window>) -> anyhow::Result<Self> {
-        let dxgi: IDXGIFactory = unsafe { CreateDXGIFactory() }?;
+        Self::create_with_adapter_preference(window, AdapterPreference::Auto)
+    }
 
-        let adapter = unsafe { dxgi.EnumAdapters(0).context("No adapters found")? };
+    pub fn create_with_adapter_preference(
+        window: &Rc<sdl3::video::Window>,
+        preference: AdapterPreference,
+    ) -> anyhow::Result<Self> {
+        let dxgi: IDXGIFactory4 = unsafe { CreateDXGIFactory() }?;
+
+        let hardware = || unsafe {
+            dxgi.EnumAdapters(0)
+                .context("No compatible hardware adapters found")
+        };
+        let warp = || unsafe {
+            dxgi.EnumWarpAdapter()
+                .context("DXGI WARP adapter is unavailable")
+        };
+
+        match preference {
+            AdapterPreference::Hardware => Self::create_with_adapter(window, hardware()?),
+            AdapterPreference::Warp => Self::create_with_adapter(window, warp()?),
+            AdapterPreference::Auto => match hardware().and_then(|adapter| {
+                Self::create_with_adapter(window, adapter)
+                    .context("Hardware adapter could not create the GUI platform")
+            }) {
+                Ok(gpu) => Ok(gpu),
+                Err(hardware_error) => {
+                    warn!("Hardware GPU initialization failed; trying WARP: {hardware_error:#}");
+                    Self::create_with_adapter(window, warp()?)
+                        .context("Both hardware and WARP GUI platform creation failed")
+                }
+            },
+        }
+    }
+
+    fn create_with_adapter(
+        window: &Rc<sdl3::video::Window>,
+        adapter: IDXGIAdapter,
+    ) -> anyhow::Result<Self> {
         let adapter3 = adapter
             .cast::<IDXGIAdapter3>()
             .context("Couldn't find a compatible adapter")?;

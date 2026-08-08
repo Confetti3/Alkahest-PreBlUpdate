@@ -33,9 +33,8 @@ impl HomeTab {
             ))
             .paint_at(ui, ui.clip_rect());
 
-        #[cfg(debug_assertions)]
         if ui
-            .d_button(format!("{} TAG LOOKUP", GoogleMaterialSymbols::Search))
+            .d_button(format!("{} TAG INSPECTOR", GoogleMaterialSymbols::Search))
             .clicked()
         {
             use crate::ui::tabs::tag_lookup::TagLookupTab;
@@ -44,6 +43,27 @@ impl HomeTab {
         }
 
         ui.add_space(32.0);
+        let renderer_status = shared_state.renderer_status.read().clone();
+        ui.label(renderer_status.message());
+        if let crate::app::RendererStatus::Failed(detail) = &renderer_status {
+            ui.label(egui::RichText::new(detail).color(Color32::from_rgb(224, 128, 96)));
+        }
+        egui::CollapsingHeader::new("Renderer capability ledger")
+            .default_open(true)
+            .show(ui, |ui| {
+                for capability in shared_state.renderer_capabilities.read().iter() {
+                    let state = match capability.state {
+                        alkahest_render::renderer::shadowkeep::CapabilityState::Ready => "ready",
+                        alkahest_render::renderer::shadowkeep::CapabilityState::Blocked => "blocked",
+                        alkahest_render::renderer::shadowkeep::CapabilityState::AbsentInCorpus => "absent in corpus",
+                    };
+                    ui.label(format!("{}: {} — {}", capability.name, state, capability.evidence));
+                }
+            });
+        ui.add_space(12.0);
+        // Catalog/list tabs remain useful without a renderer.  Individual
+        // rendered scene actions are responsible for showing their structured
+        // renderer diagnostic when 3D is unavailable.
         ui.columns(1, |uis| {
             uis[0].style_mut().text_styles.insert(
                 TextStyle::Body,

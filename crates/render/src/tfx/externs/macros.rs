@@ -14,6 +14,18 @@ macro_rules! extern_container {
         }
 
         impl Externs {
+            fn from_global_channels(default_globals: [Vec4; 256], global_ids: Vec<u32>) -> Self {
+                Self {
+                    $(
+                        $name: Default::default(),
+                    )*
+                    globals: default_globals,
+                    default_globals,
+                    global_ids,
+                    unk_sequencer_values: [Vec4::ZERO; 256],
+                }
+            }
+
             // pub fn get_extern_value<T: Sized + Clone + 'static>(
             //     &self,
             //     index: ExternIndex,
@@ -52,20 +64,9 @@ macro_rules! extern_container {
 
         impl Externs {
             pub fn new(globs: &RenderGlobals) -> Self {
-                let mut r = {
-                    let mut globals = [Vec4::ONE; 256];
-                    globals[..globs.channels.default_values.len()].copy_from_slice(&globs.channels.default_values);
-
-                    Self {
-                        $(
-                            $name: Default::default(),
-                        )*
-                        default_globals: globals,
-                        globals,
-                        global_ids: globs.channels.channel_ids.clone(),
-                        unk_sequencer_values: [Vec4::ZERO; 256],
-                    }
-                };
+                let mut globals = [Vec4::ONE; 256];
+                globals[..globs.channels.default_values.len()].copy_from_slice(&globs.channels.default_values);
+                let mut r = Self::from_global_channels(globals, globs.channels.channel_ids.clone());
 
                 r.set_global_channel_by_id(0x2C538179, Vec4::splat(0.1));
 
@@ -96,6 +97,24 @@ macro_rules! extern_container {
                 r.default_globals = r.globals.clone();
 
                 r
+            }
+
+            /// Shadowkeep stores a fixed positional channel table, not the
+            /// later channel-ID resource.  Keep the IDs intentionally empty
+            /// so name lookup cannot silently invent a mapping.
+            pub fn new_shadowkeep() -> Self {
+                Self::from_global_channels(
+                    alkahest_data::tfx::shadowkeep::global_channel_defaults(),
+                    Vec::new(),
+                )
+            }
+
+            pub fn get_global_channel_by_index(&self, index: usize) -> Option<Vec4> {
+                self.globals.get(index).copied()
+            }
+
+            pub fn set_global_channel_by_index(&mut self, index: usize, value: Vec4) -> Option<Vec4> {
+                self.globals.get_mut(index).map(|current| std::mem::replace(current, value))
             }
         }
     };

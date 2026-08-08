@@ -7,7 +7,7 @@ use tiger_parse::{PackageManagerExt, TigerReadable};
 use tiger_pkg::package_manager;
 
 fn main() -> anyhow::Result<()> {
-    alkahest_core::initialize_package_manager(std::env::args().nth(1).as_deref())?;
+    alkahest_core::initialize_package_manager(std::env::args().nth(1).as_deref(), None)?;
 
     #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
     pub enum ExternFieldType {

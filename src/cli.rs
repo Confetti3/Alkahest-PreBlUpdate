@@ -1,5 +1,7 @@
 use build_time::build_time_utc;
-use clap::Parser;
+use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
 use glam::Vec4;
 
 pub const ALKAHEST_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -9,9 +11,13 @@ pub const GIT_HASH: &str = env!("GIT_HASH");
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None, disable_version_flag(true))]
 pub struct AppArgs {
-    /// Game directory
-    #[arg(short, long)]
+    /// Shadowkeep client directory; its packages child directory will be used.
+    #[arg(short, long, global = true, conflicts_with = "packages")]
     pub gamedir: Option<String>,
+
+    /// Explicit Shadowkeep packages directory.
+    #[arg(long, global = true, conflicts_with = "gamedir")]
+    pub packages: Option<String>,
 
     /// What display the window should be on
     #[arg(long)]
@@ -20,8 +26,65 @@ pub struct AppArgs {
     #[arg(long)]
     pub open_map: Option<String>,
 
+    /// Open a tag in the universal structural inspector at launch.
+    #[arg(long)]
+    pub open_tag: Option<String>,
+
+    /// Open an activity tag in the universal structural inspector at launch.
+    #[arg(long)]
+    pub open_activity: Option<String>,
+
     #[arg(long)]
     pub test_scene: bool,
+
+    /// Do not initialize the package-dependent 3D renderer. The catalog and
+    /// structural inspector remain available.
+    #[arg(long)]
+    pub no_3d: bool,
+
+    /// GPU policy used by GUI and capture modes.
+    #[arg(long, value_enum, default_value_t = AdapterPreference::Auto)]
+    pub adapter: AdapterPreference,
+
+    #[command(subcommand)]
+    pub command: Option<AppCommand>,
+}
+
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AdapterPreference {
+    Auto,
+    Hardware,
+    Warp,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum AppCommand {
+    /// Export universal structural inspections without creating a window.
+    Export {
+        #[command(subcommand)]
+        target: ExportTarget,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum ExportTarget {
+    /// Export one tag inspection.
+    Tag {
+        tag: String,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    /// Export one activity tag inspection.
+    Activity {
+        tag: String,
+        #[arg(short, long)]
+        output: PathBuf,
+    },
+    /// Export every package entry as separate JSON documents.
+    All {
+        #[arg(long)]
+        output_dir: PathBuf,
+    },
 }
 
 pub const BANNER: &str = r#"

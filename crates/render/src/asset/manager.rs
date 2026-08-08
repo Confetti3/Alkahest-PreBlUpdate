@@ -168,14 +168,13 @@ fn load_asset(request: LoadRequest, gpu: &Arc<Gpu>, num_loaded: &Arc<AtomicUsize
                 error!("Failed to load index buffer: {:?}", e);
             }
         },
-        Technique::ASSET_TYPE => match Technique::load(gpu, request.tag) {
-            Ok(o) => {
-                request.handle.update(o.into());
-            }
-            Err(e) => {
-                error!("Failed to load technique: {:?}", e);
-            }
-        },
+        Technique::ASSET_TYPE => {
+            // Techniques own dynamic textures.  They must be created through
+            // the renderer-local asset manager, which is intentionally not
+            // available to this detached generic worker.  All renderer paths
+            // load techniques explicitly with that manager instead.
+            error!("Generic asynchronous technique loading is disabled; use the renderer-local technique registry");
+        }
         u => {
             panic!(
                 "asset loader: Unknown asset type for tag {}: {u:?}",

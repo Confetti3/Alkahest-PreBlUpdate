@@ -10,7 +10,10 @@ use tiger_parse::{tiger_type, FnvHash, PackageManagerExt, Pointer, TigerReadable
 use tiger_pkg::{package_manager, TagHash};
 
 #[derive(Debug)]
-#[tiger_type(id = 0x808099EF)]
+/// Shadowkeep/Arrivals localized-string header.  Later builds reuse the Rust
+/// shape but changed the class IDs, so keeping this profile-specific ID is
+/// essential for corpus discovery.
+#[tiger_type(id = 0x80809A88)]
 pub struct SLocalizedStrings {
     pub file_size: u64,
     pub string_hashes: Vec<FnvHash>,
@@ -34,21 +37,21 @@ pub struct SLocalizedStrings {
 pub struct SStringData {
     pub file_size: u64,
     pub string_parts: Vec<SStringPart>,
-    // pub _unk1: (u64, u64),
+    pub _unk1: (u64, u64),
     pub _unk2: Vec<()>,
     pub string_data: Vec<u8>,
     pub string_combinations: Vec<SStringCombination>,
 }
 
 #[derive(Debug)]
-#[tiger_type(id = 0x808099F5)]
+#[tiger_type(id = 0x80809A8E)]
 pub struct SStringCombination {
     pub data: Pointer<()>,
     pub part_count: i64,
 }
 
 #[derive(Debug)]
-#[tiger_type(id = 0x808099F7)]
+#[tiger_type(id = 0x80809A90)]
 pub struct SStringPart {
     pub _unk0: u64,
     pub data: Pointer<()>,
@@ -93,7 +96,7 @@ impl StringContainer {
                 cur.seek(SeekFrom::Start(part.data.offset() as u64))?;
                 let mut data = vec![0u8; part.byte_length as usize];
                 cur.read_exact(&mut data)?;
-                final_string += &String::from_utf8_lossy(&data);
+                final_string += &decode_text(&data, part.cipher_shift);
             }
 
             stringmap.insert(*hash, final_string);
@@ -156,4 +159,38 @@ impl Deref for StringContainer {
     fn deref(&self) -> &Self::Target {
         &self.0
     }
+}
+
+/// Decode the byte-wise Caesar shift used by the preserved Shadowkeep string
+/// resources.  Multi-byte UTF-8 is intentionally kept visibly unresolved
+/// rather than guessed: the inspector retains the original raw payload.
+pub fn decode_text(data: &[u8], cipher: u16) -> String {
+    if cipher == 0 {
+        return String::from_utf8_lossy(data).to_string();
+    }
+
+    let mut result = String::new();
+    let mut offset = 0;
+    while offset < data.len() {
+        let byte = data[offset];
+        match byte {
+            0x00..=0x7f => {
+                result.push(char::from(byte.wrapping_add(cipher as u8)));
+                offset += 1;
+            }
+            0xc0..=0xdf => {
+                result.push(char::REPLACEMENT_CHARACTER);
+                offset += 2;
+            }
+            0xe0..=0xef => {
+                result.push(char::REPLACEMENT_CHARACTER);
+                offset += 3;
+            }
+            _ => {
+                result.push(char::REPLACEMENT_CHARACTER);
+                offset += 1;
+            }
+        }
+    }
+    result
 }

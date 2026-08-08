@@ -1,13 +1,11 @@
 pub mod convar;
-use std::{path::PathBuf, sync::Arc};
+use std::{path::{Path, PathBuf}, sync::Arc};
 
 use anyhow::Context;
 pub use convar::*;
 use directories::ProjectDirs;
-use game_detector::InstalledGame;
 use lazy_static::lazy_static;
 use tiger_pkg::{register_pkg_key, PackageManager};
-use tracing::info;
 pub mod config;
 pub mod job;
 
@@ -19,36 +17,39 @@ pub use panic_hook::setup_panic_hook;
 
 pub const DESTINY2_APP_ID: u64 = 1085660;
 
+/// Immutable format selection for this binary. Keeping it in one place avoids
+/// routing Shadowkeep packages through a current-game parser by accident.
+#[derive(Debug, Clone, Copy)]
+pub struct EraProfile {
+    pub id: &'static str,
+    pub display_name: &'static str,
+    pub version: tiger_pkg::DestinyVersion,
+}
+
+pub const SHADOWKEEP_ERA: EraProfile = EraProfile {
+    id: "destiny2-shadowkeep",
+    display_name: "Destiny 2: Shadowkeep (Pre-Beyond-Light)",
+    version: tiger_pkg::DestinyVersion::Destiny2Shadowkeep,
+};
+
 pub fn initialize_package_manager<'a>(
-    suggested_path: impl Into<Option<&'a str>>,
+    game_dir: impl Into<Option<&'a str>>,
+    packages_dir: impl Into<Option<&'a str>>,
 ) -> anyhow::Result<()> {
-    let game_path = if let Some(path) = &suggested_path.into() {
-        path.to_string()
-    } else {
-        let Some(app) = find_all_installations().into_iter().next() else {
-            return Err(anyhow::anyhow!(
-                "Failed to find a valid Destiny 2 app. If you don't have Destiny 2 installed \
-                 through Steam/Epic Games/Microsoft Store, then you can specify the path to the \
-                 game directory using the --gamedir/-g argument."
-            ));
-        };
-
-        let game_path = match app {
-            InstalledGame::Steam(app_state) => app_state.game_path,
-            InstalledGame::EpicGames(manifest) => manifest.install_location,
-            InstalledGame::MicrosoftStore(game_package) => game_package.path,
-            v => anyhow::bail!("Invalid games store ({v:?})"),
-        };
-
-        info!("Found Destiny 2 installation at '{}'", game_path);
-
-        game_path
+    let packages_path = match (game_dir.into(), packages_dir.into()) {
+        (Some(_), Some(_)) => anyhow::bail!("--gamedir and --packages cannot be used together"),
+        (Some(game_dir), None) => PathBuf::from(game_dir).join("packages"),
+        (None, Some(packages_dir)) => PathBuf::from(packages_dir),
+        (None, None) => anyhow::bail!(
+            "A Shadowkeep package source is required. Supply --gamedir <client root> or \
+             --packages <packages directory>."
+        ),
     };
 
     let pm = Arc::new(
         PackageManager::new(
-            PathBuf::from(&game_path).join("packages"),
-            tiger_pkg::GameVersion::Destiny(tiger_pkg::DestinyVersion::Destiny2TheEdgeOfFate),
+            packages_path,
+            tiger_pkg::GameVersion::Destiny(SHADOWKEEP_ERA.version),
             None,
         )
         .context("Failed to initialize package manager")?,
@@ -93,22 +94,10 @@ fn register_all_keys() {
     register_pkg_key(0xF10A51CB73ACC4E4, [0xAD, 0xF5, 0x8D, 0x01, 0x08, 0x93, 0x18, 0xC9, 0x11, 0x35, 0xE0, 0x25, 0x67, 0xD1, 0xB7, 0x36], [0x7E, 0x65, 0xB0, 0x26, 0x18, 0x5E, 0x09, 0x85, 0xE1, 0xB7, 0x37, 0x4C]); // w64_sr_v955_partner_redacted
 }
 
-fn find_all_installations() -> Vec<InstalledGame> {
-    let mut installations = game_detector::find_all_games();
-    installations.retain(|i| match i {
-        InstalledGame::Steam(a) => a.appid == 1085660,
-        InstalledGame::EpicGames(m) => m.display_name == "Destiny 2",
-        InstalledGame::MicrosoftStore(p) => p.app_name == "Destiny2PCbasegame",
-        _ => false,
-    });
-
-    installations
-}
-
 lazy_static! {
     static ref PROJECT_DIRECTORIES: ProjectDirs = {
-        let dirs = ProjectDirs::from("dev", "cohae", "alkahest")
-            .expect("Could not determine alkahest project directories");
+        let dirs = ProjectDirs::from("dev", "cohae", "alkahest-prebl")
+            .expect("Could not determine alkahest-prebl project directories");
 
         if !dirs.cache_dir().exists() {
             std::fs::create_dir_all(dirs.cache_dir()).unwrap();
@@ -124,4 +113,38 @@ pub fn cache_relative_path(path: &str) -> PathBuf {
 
 pub fn config_relative_path(path: &str) -> PathBuf {
     PROJECT_DIRECTORIES.config_dir().join(path)
+}
+
+/// Returns a path in Alkahest Pre-BL's application data directory.  Runtime
+/// diagnostics belong here rather than beside the executable or game files.
+pub fn data_relative_path(path: &str) -> PathBuf {
+    PROJECT_DIRECTORIES.data_local_dir().join(path)
+}
+
+/// Creates the private state directories used by this binary.  This is kept
+/// separate from package initialization so callers can safely set up logging
+/// before touching the read-only game corpus.
+pub fn ensure_app_directories() -> anyhow::Result<()> {
+    for directory in [
+        PROJECT_DIRECTORIES.cache_dir(),
+        PROJECT_DIRECTORIES.config_dir(),
+        PROJECT_DIRECTORIES.data_local_dir(),
+    ] {
+        std::fs::create_dir_all(directory)
+            .with_context(|| format!("Creating application directory {}", directory.display()))?;
+    }
+    Ok(())
+}
+
+pub fn atomic_write(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
+    let parent = path.parent().context("Configuration path has no parent directory")?;
+    std::fs::create_dir_all(parent)
+        .with_context(|| format!("Creating configuration directory {}", parent.display()))?;
+
+    let temporary = path.with_extension("tmp");
+    std::fs::write(&temporary, contents)
+        .with_context(|| format!("Writing temporary file {}", temporary.display()))?;
+    std::fs::rename(&temporary, path)
+        .with_context(|| format!("Replacing configuration file {}", path.display()))?;
+    Ok(())
 }

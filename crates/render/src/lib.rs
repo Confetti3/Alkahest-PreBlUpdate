@@ -1,5 +1,3 @@
-#![feature(array_try_from_fn, int_roundings)]
-
 pub mod gpu;
 pub use gpu::Gpu;
 pub mod asset;

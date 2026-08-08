@@ -10,7 +10,7 @@ use tiger_pkg::{TagHash, package_manager};
 
 use crate::{
     Gpu,
-    asset::texture::Texture,
+    asset::{AssetManager, texture::Texture},
     tfx::{scope::Scope, technique::Technique},
 };
 
@@ -26,13 +26,13 @@ pub struct RenderGlobals {
 impl RenderGlobals {
     pub const CHANNEL_SUN_LIGHT_DIRECTION: u32 = 0x5C579DFA;
 
-    pub fn load(gpu: &Arc<Gpu>) -> anyhow::Result<Self> {
+    pub fn load(gpu: &Arc<Gpu>, asset_manager: &AssetManager) -> anyhow::Result<Self> {
         let data: SRenderGlobals = package_manager().read_named_tag_struct("render_globals")?;
         let globs = &data.unk8.first().context("No render globals found")?.unk8.0;
 
         Ok(Self {
-            scopes: GlobalScopes::load(gpu, globs),
-            pipelines: GlobalPipelines::load(gpu, globs),
+            scopes: GlobalScopes::load(gpu, asset_manager, globs),
+            pipelines: GlobalPipelines::load(gpu, asset_manager, globs),
             textures: GlobalTextures::load(gpu, globs)?,
             channels: globs.global_channels.0.clone(),
             // unk34: globs.unk34.0.clone(),
@@ -74,13 +74,13 @@ macro_rules! tfx_global_scopes {
 
 
         impl GlobalScopes {
-            pub fn load(gpu: &Arc<Gpu>, globals: &SRenderGlobalsData) -> Self {
+            pub fn load(gpu: &Arc<Gpu>, asset_manager: &AssetManager, globals: &SRenderGlobalsData) -> Self {
                 let scopes: HashMap<String, TagHash> = globals.scopes.iter().map(|p| (p.name.to_string(), p.scope)).collect();
 
                 Self {
                     $(
                         $name: Box::new(Scope::load(
-                            gpu,
+                            gpu, asset_manager,
                             *scopes.get(stringify!($name))
                                 .expect(&format!("Scope {} does not exist", stringify!($name))),
                         )
@@ -113,14 +113,14 @@ macro_rules! tfx_global_pipelines {
 
 
         impl GlobalPipelines {
-            pub fn load(gpu: &Arc<Gpu>, globals: &SRenderGlobalsData) -> Self {
+            pub fn load(gpu: &Arc<Gpu>, asset_manager: &AssetManager, globals: &SRenderGlobalsData) -> Self {
                 let techniques: HashMap<String, TagHash> = globals.pipelines.iter().map(|p| (p.name.to_string(), p.technique)).collect();
 
                 Self {
                     $(
                         $name: Box::new(
                             Technique::load(
-                                gpu,
+                            gpu, asset_manager,
                                 *techniques.get(stringify!($name))
                                     .expect(&format!("Technique {} does not exist", stringify!($name)))
                             )

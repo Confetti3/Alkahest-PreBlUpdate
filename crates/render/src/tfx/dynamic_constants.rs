@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ahash::AHashMap;
-use alkahest_data::tfx::{SDynamicConstants, ShaderStage};
+use alkahest_data::tfx::{SDynamicConstants, ShaderStage, shadowkeep::SShadowkeepDynamicConstants};
 use anyhow::Context;
 use glam::Vec4;
 use itertools::Itertools;
@@ -9,8 +9,9 @@ use tiger_pkg::package_manager;
 
 use super::expression_vm::{self, interpreter::InterpreterState};
 use crate::{
-    Gpu, Renderer,
+    Gpu,
     asset::{
+        AssetManager,
         Handle,
         texture::{Texture, load_sampler},
     },
@@ -40,7 +41,14 @@ pub struct DynamicConstants {
 }
 
 impl DynamicConstants {
-    pub fn load(gpu: &Arc<Gpu>, constants: &SDynamicConstants) -> anyhow::Result<Self> {
+    /// Loads resources through the renderer-local asset manager.  This is
+    /// intentionally independent from the global renderer singleton so
+    /// bootstrap techniques can be constructed before publication.
+    pub fn load(
+        gpu: &Arc<Gpu>,
+        asset_manager: &AssetManager,
+        constants: &SDynamicConstants,
+    ) -> anyhow::Result<Self> {
         let (initial_constants, cbuffer) = if constants.constant_buffer.is_some() {
             let entry = package_manager()
                 .get_entry(constants.constant_buffer)
@@ -74,9 +82,7 @@ impl DynamicConstants {
                 .map(|tex| {
                     (
                         tex.slot,
-                        Renderer::instance()
-                            .asset_manager
-                            .try_load(tex.texture.hash32()),
+                        asset_manager.try_load(tex.texture.hash32()),
                     )
                 })
                 .collect(),
@@ -100,6 +106,61 @@ impl DynamicConstants {
 
             initial_constants,
 
+            writes_cbuffer,
+        })
+    }
+
+    /// Shadowkeep serializes the same runtime concepts in a different order:
+    /// bytecode is first and material textures use direct tag hashes.  Keep
+    /// this decoder separate from the post-BL structure rather than casting
+    /// one layout into the other.
+    pub fn load_shadowkeep(
+        gpu: &Arc<Gpu>,
+        _asset_manager: &AssetManager,
+        constants: &SShadowkeepDynamicConstants,
+    ) -> anyhow::Result<Self> {
+        let (initial_constants, cbuffer) = if constants.constant_buffer.is_some() {
+            let entry = package_manager()
+                .get_entry(constants.constant_buffer)
+                .context("Failed to get Shadowkeep cbuffer tag entry")?;
+            let data = package_manager().read_tag(entry.reference)?;
+            let vec4s = bytemuck::cast_slice(&data);
+            let cb = ConstantBuffer::create_array(gpu, vec4s.len(), Some(vec4s))?;
+            (vec4s.to_vec(), Some(cb))
+        } else if constants.inline_constants.is_empty() {
+            (vec![], None)
+        } else {
+            let cb = ConstantBuffer::create_array(gpu, constants.inline_constants.len(), Some(&constants.inline_constants))?;
+            (constants.inline_constants.clone(), Some(cb))
+        };
+
+        let writes_cbuffer = OpcodeIterator::new(&constants.bytecode).any(|op| {
+            matches!(
+                op,
+                (Opcode::PopOutput, _) | (Opcode::PopOutputMat4, _) | (Opcode::PushFromOutput, _)
+            )
+        });
+
+        Ok(Self {
+            // Shadowkeep places material assignments on the enclosing shader
+            // record.  Scope constants have no texture assignment list.
+            textures: Vec::new(),
+            samplers: constants
+                .samplers
+                .iter()
+                .map(|sampler| {
+                    if sampler.sampler.is_none() {
+                        Ok(None)
+                    } else {
+                        load_sampler(gpu, sampler.sampler).map(Some)
+                    }
+                })
+                .collect::<anyhow::Result<_>>()?,
+            cbuffer_slot: constants.constant_buffer_slot as u32,
+            cbuffer,
+            bytecode: constants.bytecode.clone(),
+            bytecode_constants: constants.bytecode_constants.clone(),
+            initial_constants,
             writes_cbuffer,
         })
     }

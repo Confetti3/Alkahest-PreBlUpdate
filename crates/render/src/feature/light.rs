@@ -117,18 +117,18 @@ impl LightRenderer {
 
         Ok(Box::new(Self {
             data: Arc::new(LightRendererData {
-                technique_lighting_apply: Technique::load(&renderer.gpu, technique_shading)?,
+                technique_lighting_apply: Technique::load(&renderer.gpu, &renderer.asset_manager, technique_shading)?,
                 technique_lighting_apply_shadowing: technique_shading_shadowing
                     .is_some()
-                    .then(|| Technique::load(&renderer.gpu, technique_shading_shadowing))
+                    .then(|| Technique::load(&renderer.gpu, &renderer.asset_manager, technique_shading_shadowing))
                     .transpose()?,
                 technique_volumetrics: technique_volumetrics
                     .is_some()
-                    .then(|| Technique::load(&renderer.gpu, technique_volumetrics))
+                    .then(|| Technique::load(&renderer.gpu, &renderer.asset_manager, technique_volumetrics))
                     .transpose()?,
                 technique_volumetrics_shadowing: technique_volumetrics_shadowing
                     .is_some()
-                    .then(|| Technique::load(&renderer.gpu, technique_volumetrics_shadowing))
+                    .then(|| Technique::load(&renderer.gpu, &renderer.asset_manager, technique_volumetrics_shadowing))
                     .transpose()?,
                 // technique_light_probe_apply: Technique::load(&renderer.gpu, technique_light_probe)?,
                 vb,

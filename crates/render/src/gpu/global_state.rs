@@ -1,10 +1,7 @@
 use std::fmt::Write;
 
-use alkahest_data::tfx::render_globals::SRenderGlobals;
 use anyhow::Context;
 use d3d11::{DeviceChild, InputElementDesc, dxgi, sys::Foundation::BOOL};
-use tiger_parse::PackageManagerExt;
-use tiger_pkg::package_manager;
 
 use crate::util::byteutil;
 
@@ -50,61 +47,6 @@ impl RenderStates {
             input_layouts[i] = Some(layout);
         }
 
-        let data: SRenderGlobals = package_manager().read_named_tag_struct("render_globals")?;
-        let globs = &data.unk8.first().context("No render globals found")?.unk8.0;
-
-        let element_set = &globs.input_layouts.elements_c;
-        for l in globs.input_layouts.mapping.layouts.iter() {
-            let mut layout_elements = vec![];
-            for (buffer_index, &(element_index, is_instance_data)) in [
-                (l.buffer_0, l.buffer_0_instanced),
-                (l.buffer_1, l.buffer_1_instanced),
-                (l.buffer_2, l.buffer_2_instanced),
-                (l.buffer_3, l.buffer_3_instanced),
-            ]
-            .iter()
-            .enumerate()
-            {
-                if element_index == u32::MAX {
-                    continue;
-                }
-                for e in &element_set.sets[element_index as usize].elements {
-                    let semantic = INPUT_SEMANTICS[e.semantic as usize];
-                    let format = &INPUT_FORMATS[e.format as usize];
-                    layout_elements.push(TigerInputLayoutElement {
-                        hlsl_type: format.hlsl_type,
-                        format: format.format,
-                        _stride: format.stride,
-                        semantic_name: semantic,
-                        semantic_index: e.semantic_index as _,
-                        buffer_index: buffer_index as _,
-                        is_instance_data,
-                    });
-                }
-            }
-
-            // println!("Layout {}", l.index);
-            // for (ei, element) in layout_elements.iter().enumerate() {
-            //     println!(
-            //         " - {} v{ei} : {}{}, // Format {:?} size {}{}",
-            //         element.hlsl_type,
-            //         element.semantic_name,
-            //         element.semantic_index,
-            //         element.format,
-            //         element._stride,
-            //         if element.is_instance_data {
-            //             " (instanced)"
-            //         } else {
-            //             ""
-            //         }
-            //     );
-            // }
-
-            let layout = Self::create_input_layout(device, &layout_elements)?;
-            layout.set_debug_name(format!("stream_input_layout_{}", l.index));
-            input_layouts[l.index as usize] = Some(layout);
-        }
-
         let mut blend_states = vec![];
 
         let blend_state_descs: &[QuadBlendState] =
@@ -145,8 +87,10 @@ impl RenderStates {
         assert_eq!(rasterizer_states.len(), 9);
         assert_eq!(depth_biases.len(), 9);
 
-        let rasterizer_states = std::array::try_from_fn(|bi| {
-            std::array::try_from_fn(|ri| {
+        let mut rasterizer_state_rows = Vec::with_capacity(9);
+        for bi in 0..9 {
+            let mut row = Vec::with_capacity(9);
+            for ri in 0..9 {
                 let mut desc = rasterizer_states[ri].desc.clone();
                 desc.multisample_enable = false.into();
                 let ShortDepthBias(_, depth_bias, slope_scaled_depth_bias, depth_bias_clamp) =
@@ -156,10 +100,20 @@ impl RenderStates {
                 desc.slope_scaled_depth_bias = slope_scaled_depth_bias;
                 desc.depth_bias_clamp = depth_bias_clamp;
 
-                device.create_rasterizer_state(&desc)
-            })
-        })
-        .context("Failed to create rasterizer states")?;
+                row.push(
+                    device
+                        .create_rasterizer_state(&desc)
+                        .context("Failed to create rasterizer state")?,
+                );
+            }
+            rasterizer_state_rows.push(
+                row.try_into()
+                    .map_err(|_| anyhow::anyhow!("expected nine rasterizer states per depth bias"))?,
+            );
+        }
+        let rasterizer_states = rasterizer_state_rows
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("expected nine rasterizer-state rows"))?;
 
         let depth_states: &[ShortDepthState] =
             unsafe { byteutil::bytes_as_slice(Self::DEPTH_STATE_DATA) };
@@ -167,7 +121,8 @@ impl RenderStates {
             unsafe { byteutil::bytes_as_slice(Self::STENCIL_STATE_DATA) };
 
         warn!("!!! STENCIL TESTING IS DISABLED");
-        let depth_stencil_states: anyhow::Result<_> = std::array::try_from_fn(|i| {
+        let mut depth_stencil_states_vec = Vec::with_capacity(DEPTH_STENCIL_COMBO_COUNT);
+        for i in 0..DEPTH_STENCIL_COMBO_COUNT {
             let (depth_index, stencil_index) = DEPTH_STENCIL_COMBOS[i];
 
             let depth = depth_states[depth_index].clone();
@@ -200,19 +155,21 @@ impl RenderStates {
             desc.depth_func = reversed_depth_func;
             let state_reversed = device.create_depth_stencil_state(&desc)?;
 
-            Ok((state, state_reversed))
-        });
+            depth_stencil_states_vec.push((state, state_reversed));
+        }
+        let depth_stencil_states = depth_stencil_states_vec
+            .try_into()
+            .map_err(|_| anyhow::anyhow!("unexpected depth-stencil state count"))?;
 
         Ok(Self {
             input_layouts,
             blend_states,
             rasterizer_states,
-            depth_stencil_states: depth_stencil_states
-                .context("Failed to create depth stencil states")?,
+            depth_stencil_states,
         })
     }
 
-    fn create_input_layout(
+    pub(crate) fn create_input_layout(
         device: &d3d11::Device,
         elements: &[TigerInputLayoutElement],
     ) -> anyhow::Result<d3d11::InputLayout> {
@@ -397,7 +354,7 @@ struct TigerInputLayout {
     pub elements: &'static [TigerInputLayoutElement],
 }
 
-struct TigerInputLayoutElement {
+pub(crate) struct TigerInputLayoutElement {
     pub hlsl_type: &'static str,
     pub format: dxgi::Format,
     pub _stride: u32,
@@ -407,14 +364,14 @@ struct TigerInputLayoutElement {
     pub is_instance_data: bool,
 }
 
-struct InputElementFormat {
-    hlsl_type: &'static str,
-    stride: u32,
-    format: dxgi::Format,
+pub(crate) struct InputElementFormat {
+    pub hlsl_type: &'static str,
+    pub stride: u32,
+    pub format: dxgi::Format,
 }
 
 //region Built-in input layouts
-const INPUT_SEMANTICS: [&str; 9] = [
+pub(crate) const INPUT_SEMANTICS: [&str; 9] = [
     "POSITION",
     "BLENDWEIGHT",
     "BLENDINDICES",
@@ -427,7 +384,7 @@ const INPUT_SEMANTICS: [&str; 9] = [
 ];
 
 #[rustfmt::skip]
-const INPUT_FORMATS: [InputElementFormat; 34] = [
+pub(crate) const INPUT_FORMATS: [InputElementFormat; 34] = [
     InputElementFormat { hlsl_type: "", stride: 0, format: dxgi::Format::Unknown, }, // 0
     InputElementFormat { hlsl_type: "float", stride: 4, format: dxgi::Format::R32Float }, // 1
     InputElementFormat { hlsl_type: "float2", stride: 8, format: dxgi::Format::R32g32Float }, // 2

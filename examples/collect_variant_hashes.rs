@@ -10,7 +10,7 @@ use tiger_parse::{PackageManagerExt, TigerReadable};
 use tiger_pkg::package_manager;
 
 fn main() -> anyhow::Result<()> {
-    alkahest_core::initialize_package_manager(None)?;
+    alkahest_core::initialize_package_manager(None, None)?;
 
     // Read all lines from "wordlist.txt" into a hashmap of hash -> string
     let mut hash_to_string: HashMap<u32, String> = HashMap::new();

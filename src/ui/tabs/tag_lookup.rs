@@ -9,7 +9,10 @@ use tiger_parse::TigerReadable;
 use tiger_pkg::{TagHash, package::UEntryHeader, package_manager};
 
 use super::TabResult;
-use crate::ui::util::UiExt;
+use crate::{
+    inspection::InspectionKind,
+    ui::tabs::{Tab, inspector::InspectorTab},
+};
 
 #[derive(Default)]
 pub struct TagLookupTab {
@@ -19,6 +22,7 @@ pub struct TagLookupTab {
 
 impl TagLookupTab {
     pub fn ui(&mut self, ui: &mut egui::Ui) -> TabResult {
+        let mut result = TabResult::Continue;
         ui.horizontal_top(|ui| {
             ui.vertical(|ui| {
                 TextEdit::singleline(&mut self.input)
@@ -27,15 +31,23 @@ impl TagLookupTab {
 
                 ui.label(self.validate());
             });
-            ui.add_enabled_ui(
-                self.tag_type.is_some() && !matches!(self.tag_type, Some(TagType::Unknown(_))),
-                |ui| {
-                    let _ = ui.d_button("Open");
-                },
-            );
+            if ui
+                .add_enabled(
+                    self.tag_type.is_some(),
+                    egui::Button::new("Open in Inspector"),
+                )
+                .clicked()
+            {
+                if let Ok(tag) = str::parse::<TagHash>(&self.input) {
+                    result = TabResult::Open(Tab::Inspector(InspectorTab::new(
+                        tag,
+                        InspectionKind::Tag,
+                    )));
+                }
+            }
         });
 
-        TabResult::Continue
+        result
     }
 
     fn validate(&mut self) -> RichText {

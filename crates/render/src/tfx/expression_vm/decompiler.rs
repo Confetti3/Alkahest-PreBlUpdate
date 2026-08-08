@@ -1,4 +1,4 @@
-use alkahest_data::tfx::{ExternIndex, ShaderStage};
+use alkahest_data::tfx::ShaderStage;
 use anyhow::{Context, ensure};
 use glam::Vec4;
 
@@ -545,8 +545,7 @@ impl<'a> DecompilerState<'a> {
                     cached_top = self.push(format!("samplers[{index}]"))?;
                 }
                 Opcode::PushExternInputFloat => {
-                    let extern_id = ExternIndex::try_from(ptr[1])
-                        .ok()
+                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
                         .context("Invalid extern index")?;
                     let offset = ptr[2];
 
@@ -559,8 +558,7 @@ impl<'a> DecompilerState<'a> {
                     ))?;
                 }
                 Opcode::PushExternInputVec4 => {
-                    let extern_id = ExternIndex::try_from(ptr[1])
-                        .ok()
+                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
                         .context("Invalid extern index")?;
                     let offset = ptr[2];
 
@@ -572,8 +570,7 @@ impl<'a> DecompilerState<'a> {
                     ))?;
                 }
                 Opcode::PushExternInputMat4 => {
-                    let extern_id = ExternIndex::try_from(ptr[1])
-                        .ok()
+                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
                         .context("Invalid extern index")?;
                     let offset = ptr[2];
 
@@ -585,8 +582,7 @@ impl<'a> DecompilerState<'a> {
                     ))?;
                 }
                 Opcode::PushExternInputTextureView => {
-                    let extern_id = ExternIndex::try_from(ptr[1])
-                        .ok()
+                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
                         .context("Invalid extern index")?;
                     let offset = ptr[2];
 
@@ -598,8 +594,7 @@ impl<'a> DecompilerState<'a> {
                     ))?;
                 }
                 Opcode::PushExternInputUav => {
-                    let extern_id = ExternIndex::try_from(ptr[1])
-                        .ok()
+                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
                         .context("Invalid extern index")?;
                     let offset = ptr[2];
 

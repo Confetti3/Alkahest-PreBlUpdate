@@ -6,7 +6,7 @@ use tiger_parse::PackageManagerExt;
 use tiger_pkg::package_manager;
 
 fn main() -> anyhow::Result<()> {
-    alkahest_core::initialize_package_manager(std::env::args().nth(1).as_deref())?;
+    alkahest_core::initialize_package_manager(std::env::args().nth(1).as_deref(), None)?;
 
     let data: SRenderGlobals = package_manager().read_named_tag_struct("render_globals")?;
     let globs = &data.unk8.first().context("No render globals found")?.unk8.0;

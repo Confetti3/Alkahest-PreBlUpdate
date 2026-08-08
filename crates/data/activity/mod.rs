@@ -24,7 +24,10 @@ pub struct SDestination {
 }
 
 #[derive(Debug)]
-#[tiger_type(id = 0x80808E8E, size = 0x134)]
+/// Preserved Shadowkeep activity root.  Newer builds share the class ID but
+/// extend the root layout to 0x134; accepting that layout here silently reads
+/// unrelated trailing bytes as activity data.
+#[tiger_type(id = 0x80808E8E, size = 0x80)]
 pub struct SActivity {
     pub file_size: u64,
     pub location_name: FnvHash,
@@ -40,7 +43,10 @@ pub struct SActivity {
     pub unk60: [u32; 4],
     pub unk70: FnvHash,
     pub unk74: TagHash,
-    pub ambient_activity: WideHash,
+    /// The final eight bytes are a legacy-wide reference prefix.  Their
+    /// discriminator/remaining bytes are outside this 0x80 root and therefore
+    /// remain raw instead of being misrepresented as a current-era WideHash.
+    pub trailing_raw: [u8; 8],
 }
 
 #[derive(Debug)]

@@ -5,7 +5,6 @@ use glam::Vec4;
 
 use super::definitions::*;
 use crate::{
-    Renderer,
     renderer::globals::RenderGlobals,
     tfx::externs::{
         Extern, ExternAccessor,
@@ -132,9 +131,7 @@ impl Externs {
 
     /// Resets every global channel to their default value, as defined by render globals
     pub fn reset_global_channels(&mut self) {
-        let globals = &Renderer::instance().globals;
-        self.globals[..globals.channels.default_values.len()]
-            .copy_from_slice(&globals.channels.default_values);
+        self.globals.copy_from_slice(&self.default_globals);
     }
 }
 

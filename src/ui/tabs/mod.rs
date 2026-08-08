@@ -2,6 +2,7 @@ pub mod activity;
 pub mod activity_list;
 pub mod entity_list;
 pub mod home;
+pub mod inspector;
 pub mod map;
 pub mod map_list;
 pub mod model_list;
@@ -18,6 +19,7 @@ use egui_dock::{DockState, NodeIndex, SurfaceIndex, TabIndex};
 use entity_list::EntityListTab;
 use google_material_symbols::GoogleMaterialSymbols;
 use home::HomeTab;
+use inspector::InspectorTab;
 use map::MapTab;
 use map_list::MapListTab;
 use tag_lookup::TagLookupTab;
@@ -39,6 +41,7 @@ pub enum Tab {
     Activity(ActivityTab),
     TestScene(TestSceneTab),
     TagLookup(TagLookupTab),
+    Inspector(InspectorTab),
 }
 
 impl Tab {
@@ -60,6 +63,7 @@ impl Tab {
             Tab::Activity(tab) => tab.tag.0 as u64,
             Tab::TestScene(_) => 0,
             Tab::TagLookup(_) => 0,
+            Tab::Inspector(tab) => tab.tag.0 as u64,
         }
     }
 }
@@ -80,6 +84,7 @@ impl Display for Tab {
             Tab::Activity(tab) => format!("{} ({})", tab.name, tab.tag),
             Tab::TestScene(_) => format!("{} Test Scene", GoogleMaterialSymbols::Experiment),
             Tab::TagLookup(_) => format!("{} Tag Lookup", GoogleMaterialSymbols::Search),
+            Tab::Inspector(tab) => format!("{} {}", GoogleMaterialSymbols::DataObject, tab.tag),
         };
 
         f.write_str(&s)
@@ -144,6 +149,9 @@ impl<'a> egui_dock::TabViewer for TabViewer<'a> {
                     }
                     Tab::TagLookup(data) => {
                         self.process_result(data.ui(ui));
+                    }
+                    Tab::Inspector(tab) => {
+                        self.process_result(tab.ui(ui));
                     }
                 });
             });

@@ -20,7 +20,8 @@ use alkahest_data::{
 };
 use alkahest_render::{
     Gpu, Renderer,
-    gpu::{command_list::CommandList, spinner::FullscreenSpinner},
+    gpu::AdapterPreference as GpuAdapterPreference,
+    gpu::command_list::CommandList,
     util::fps_histogram::FrametimeHistogram,
 };
 use anyhow::Context;
@@ -32,9 +33,10 @@ use tiger_pkg::{TagHash, package_manager};
 use crate::{
     cli::AppArgs,
     config::AppConfig,
+    task::Task,
     ui::{
         Gui,
-        tabs::{Tab, map::MapTab, test_scene::TestSceneTab},
+        tabs::{Tab, inspector::InspectorTab},
     },
 };
 
@@ -42,15 +44,35 @@ pub struct App {
     pub sdl: Rc<sdl3::Sdl>,
     pub window: Rc<Window>,
     pub _gpu: Arc<Gpu>,
-    pub renderer: Arc<Renderer>,
+    pub renderer: Option<Arc<Renderer>>,
     pub gui: Gui,
     pub running: bool,
 
     shared_state: Arc<SharedState>,
 
-    _spinner: FullscreenSpinner,
+    renderer_task: Option<Task<anyhow::Result<Renderer>>>,
+    pub renderer_status: RendererStatus,
     last_frame_time: Instant,
     frametime_histogram: FrametimeHistogram,
+}
+
+#[derive(Debug, Clone)]
+pub enum RendererStatus {
+    Initializing,
+    Ready,
+    Disabled,
+    Failed(String),
+}
+
+impl RendererStatus {
+    pub fn message(&self) -> &str {
+        match self {
+            Self::Initializing => "Initializing the Shadowkeep renderer in the background…",
+            Self::Ready => "Shadowkeep renderer ready",
+            Self::Disabled => "3D renderer disabled with --no-3d",
+            Self::Failed(_) => "Shadowkeep renderer is unavailable; catalog and inspection remain active",
+        }
+    }
 }
 
 impl App {
@@ -58,39 +80,86 @@ impl App {
         #[cfg(feature = "wwise")]
         crate::audio::init_sound_engine().context("Failed to initialize sound engine")?;
 
-        let gpu = Arc::new(Gpu::create(&window).context("Failed to create GPU")?);
-        let renderer = Arc::new(Renderer::new(gpu.clone()).context("Failed to create renderer")?);
-        Renderer::set_instance(renderer.clone());
-
+        let gpu_preference = match args.adapter {
+            crate::cli::AdapterPreference::Auto => GpuAdapterPreference::Auto,
+            crate::cli::AdapterPreference::Hardware => GpuAdapterPreference::Hardware,
+            crate::cli::AdapterPreference::Warp => GpuAdapterPreference::Warp,
+        };
+        let gpu = Arc::new(
+            Gpu::create_with_adapter_preference(&window, gpu_preference)
+                .context("Failed to create GPU platform")?,
+        );
+        info!(adapter = %gpu.get_adapter_name(), ?gpu_preference, "GPU platform initialized");
         let shared_state: Arc<SharedState> = SharedState::new()
             .context("Failed to create shared state")?
             .into();
         let mut gui = Gui::new(&gpu, sdl.clone(), window.clone())?;
-        if let Some(map_hash) = args.open_map.as_ref() {
-            match TagHash::from_str(map_hash) {
-                Ok(tag) => match MapTab::new(tag, String::new(), &shared_state) {
-                    Ok(tab) => gui.add_tab(Tab::Map(tab)),
-                    Err(e) => error!("Failed to open map tab for {}: {:?}", map_hash, e),
-                },
-                Err(e) => {
-                    error!("Failed to parse map hash {}: {:?}", map_hash, e);
-                }
-            };
+        if args.open_map.is_some() {
+            warn!("--open-map is queued until the Shadowkeep renderer is ready");
+        }
+
+        if let Some(tag_hash) = args.open_tag.as_ref() {
+            match TagHash::from_str(tag_hash) {
+                Ok(tag) => gui.add_tab(Tab::Inspector(InspectorTab::new(
+                    tag,
+                    crate::inspection::InspectionKind::Tag,
+                ))),
+                Err(error) => error!("Failed to parse tag hash {tag_hash}: {error:?}"),
+            }
+        }
+
+        if let Some(tag_hash) = args.open_activity.as_ref() {
+            match TagHash::from_str(tag_hash) {
+                Ok(tag) => gui.add_tab(Tab::Inspector(InspectorTab::new(
+                    tag,
+                    crate::inspection::InspectionKind::Activity,
+                ))),
+                Err(error) => error!("Failed to parse activity hash {tag_hash}: {error:?}"),
+            }
         }
 
         if args.test_scene {
-            gui.add_tab(Tab::TestScene(
-                TestSceneTab::new(&shared_state).context("failed to create test scene")?,
-            ));
+            warn!("--test-scene is queued until the Shadowkeep renderer is ready");
         }
 
+        let (renderer_task, renderer_status) = if args.no_3d {
+            (None, RendererStatus::Disabled)
+        } else {
+            let renderer_gpu = gpu.clone();
+            let renderer_shared_state = shared_state.clone();
+            (
+                Some(Task::new("shadowkeep_renderer".to_string(), move || {
+                    // Build only era-owned resources here.  This performs
+                    // real input-layout, scope, technique, sampler and shader
+                    // construction without touching the post-BL globals.
+                    let bootstrap = alkahest_render::renderer::shadowkeep::ShadowkeepRendererBootstrap::load(renderer_gpu)
+                        .context("Failed to construct Shadowkeep renderer bootstrap")?;
+                    *renderer_shared_state.renderer_capabilities.write() = bootstrap.capability_ledger();
+                    for scope in ["frame", "view", "rigid_model", "editor_mesh", "editor_terrain", "terrain"] {
+                        bootstrap.techniques.load_scope(scope)
+                            .with_context(|| format!("Failed to initialize core Shadowkeep scope {scope}"))?;
+                    }
+                    for technique in ["clear_color_2_mrt", "deferred_shading", "global_lighting"] {
+                        bootstrap.techniques.load_technique(technique)
+                            .with_context(|| format!("Failed to initialize core Shadowkeep technique {technique}"))?;
+                    }
+                    anyhow::bail!(
+                        "Shadowkeep bootstrap, dynamic input layouts, core scopes, and core techniques loaded successfully; the era-specific geometry submission path is still being connected"
+                    )
+                })),
+                RendererStatus::Initializing,
+            )
+        };
+        *shared_state.renderer_status.write() = renderer_status.clone();
+
         Ok(Self {
-            _spinner: FullscreenSpinner::create(&renderer.gpu)?,
-            renderer,
+            renderer: None,
             gui,
             sdl,
             window,
             _gpu: gpu,
+            renderer_task,
+            renderer_status,
             running: true,
 
             shared_state,
@@ -110,8 +179,8 @@ impl App {
                 &sdl3::event::WindowEvent::Resized(new_width, new_height) => {
                     self.gui
                         .egui_d3d11
-                        .resize_buffers(&self.renderer.gpu, || {
-                            self.renderer
+                        .resize_buffers(&self._gpu, || {
+                            self._gpu
                                 .resize_swapchain((new_width as u32, new_height as u32));
                             Ok(())
                         })
@@ -137,16 +206,19 @@ impl App {
 
         self.frametime_histogram.push(delta_time);
 
-        self.renderer.begin_frame();
+        self.poll_renderer_task();
 
-        let gpu = &self.renderer.gpu;
+        if let Some(renderer) = self.renderer.as_ref() {
+            renderer.begin_frame();
+        }
+
+        let gpu = &self._gpu;
         let mut cmd = CommandList::from_device_context(gpu, gpu.context().clone());
         subsecond::call(|| {
             self.gui.draw(&mut cmd, &self.shared_state);
         });
 
-        self.renderer
-            .present_frame(self.shared_state.config.read().vsync);
+        gpu.present(self.shared_state.config.read().vsync);
 
         let config = self.shared_state.config.read();
         if config.framelimiter_enabled {
@@ -167,6 +239,40 @@ impl App {
     }
 }
 
+impl App {
+    fn poll_renderer_task(&mut self) {
+        let Some(task) = self.renderer_task.as_mut() else {
+            return;
+        };
+        let Some(result) = task.get() else {
+            return;
+        };
+        self.renderer_task = None;
+
+        match result {
+            Ok(Ok(renderer)) => {
+                let renderer = Arc::new(renderer);
+                Renderer::set_instance(renderer.clone());
+                self.renderer = Some(renderer);
+                self.renderer_status = RendererStatus::Ready;
+                *self.shared_state.renderer_status.write() = self.renderer_status.clone();
+                info!("Shadowkeep renderer initialized successfully");
+            }
+            Ok(Err(error)) => {
+                error!("Shadowkeep renderer unavailable: {error:#}");
+                self.renderer_status = RendererStatus::Failed(format!("{error:#}"));
+                *self.shared_state.renderer_status.write() = self.renderer_status.clone();
+            }
+            Err(_) => {
+                self.renderer_status = RendererStatus::Failed(
+                    "renderer initialization panicked; see the isolated panic log".to_string(),
+                );
+                *self.shared_state.renderer_status.write() = self.renderer_status.clone();
+            }
+        }
+    }
+}
+
 impl Drop for App {
     fn drop(&mut self) {
         self.shared_state.save_config().ok();
@@ -182,6 +288,8 @@ pub struct SharedState {
     pub strings: StringContainerShared,
     pub strings_by_activity: HashMap<String, StringContainer>,
     pub config: RwLock<AppConfig>,
+    pub renderer_status: RwLock<RendererStatus>,
+    pub renderer_capabilities: RwLock<Vec<alkahest_render::renderer::shadowkeep::CapabilityRecord>>,
 
     /// Investment hash -> Name
     pub activity_names: HashMap<u32, String>,
@@ -235,6 +343,10 @@ impl SharedState {
             strings: StringContainer::load_all_global().into(),
             strings_by_activity,
             config: RwLock::new(AppConfig::default()),
+            renderer_status: RwLock::new(RendererStatus::Initializing),
+            renderer_capabilities: RwLock::new(
+                alkahest_render::renderer::shadowkeep::bootstrap_capability_ledger(),
+            ),
             activity_names: serde_json::from_str(ACTIVITY_NAME_DATA)?,
             activity_hash_to_investment: serde_json::from_str(ACTIVITY_TO_INVESTENT_DATA)?,
             wordlist,

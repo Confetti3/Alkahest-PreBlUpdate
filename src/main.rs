@@ -1,4 +1,3 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 #[macro_use]
 extern crate tracing;
 use std::{fs::File, rc::Rc, sync::Mutex};
@@ -6,7 +5,7 @@ use std::{fs::File, rc::Rc, sync::Mutex};
 use anyhow::Context;
 use app::App;
 use clap::Parser;
-use cli::AppArgs;
+use cli::{AppArgs, AppCommand, ExportTarget};
 use itertools::Itertools;
 use tracing_subscriber::{
     Layer,
@@ -23,6 +22,8 @@ mod app;
 mod audio;
 mod cli;
 mod config;
+mod inspection;
+mod launch;
 mod task;
 mod ui;
 mod updater;
@@ -37,23 +38,51 @@ static ALLOC: dhat::Alloc = dhat::Alloc;
 static GLOBAL: tracy_client::ProfiledAllocator<std::alloc::System> =
     tracy_client::ProfiledAllocator::new(std::alloc::System, 100);
 
-fn main() -> anyhow::Result<()> {
+fn main() {
+    let command_mode = std::env::args().any(|argument| argument == "export" || argument == "capture");
+    if let Err(error) = run() {
+        if error.downcast_ref::<launch::PackageSelectionCancelled>().is_some() {
+            return;
+        }
+        eprintln!("{error:#}");
+        if !command_mode {
+            launch::show_startup_error(&error);
+        }
+        std::process::exit(1);
+    }
+}
+
+fn run() -> anyhow::Result<()> {
     #[cfg(feature = "subsecond")]
     dioxus_devtools::connect_subsecond();
     #[cfg(feature = "dhat-heap")]
     let _profiler = dhat::Profiler::new_heap();
 
+    alkahest_core::ensure_app_directories()?;
     fix_windows_console();
     alkahest_core::setup_panic_hook();
     init_tracing()?;
 
-    print_banner();
-    increase_ulimit();
-
     let args = AppArgs::parse();
+    if args.command.is_none() {
+        print_banner();
+    }
+    increase_ulimit();
+    let packages_path = launch::resolve_package_source(&args)?;
 
-    alkahest_core::initialize_package_manager(args.gamedir.as_deref())
-        .expect("Failed to initialize package manager");
+    let packages_path_str = packages_path
+        .to_str()
+        .context("The normalized packages path is not valid UTF-8")?;
+    alkahest_core::initialize_package_manager(None, packages_path_str)
+        .context("Failed to initialize the Shadowkeep package manager")?;
+
+    if args.command.is_none() {
+        launch::remember_package_source(&packages_path)?;
+    }
+
+    if let Some(command) = args.command.as_ref() {
+        return run_command(command);
+    }
 
     let sdl_context = Rc::new(sdl3::init().expect("Failed to initialize SDL"));
     #[cfg(target_os = "linux")]
@@ -64,7 +93,7 @@ fn main() -> anyhow::Result<()> {
         .expect("Failed to initialize video subsystem");
 
     let mut window = {
-        let mut builder = video_subsystem.window("Alkahest", 1920, 1080);
+        let mut builder = video_subsystem.window("Alkahest Pre-BL", 1920, 1080);
 
         let mut builder_ref = builder.position_centered().resizable().maximized();
 
@@ -112,40 +141,71 @@ fn main() -> anyhow::Result<()> {
 }
 
 fn init_tracing() -> anyhow::Result<()> {
-    let log_path = if cfg!(target_os = "windows") {
-        "alkahest.log"
-    } else {
-        "/tmp/alkahest.log"
+    let log_path = alkahest_core::data_relative_path("alkahest-prebl.log");
+    let log_file = match File::create(&log_path) {
+        Ok(file) => Some(file),
+        Err(error) => {
+            eprintln!(
+                "Could not create diagnostic log {}: {error}. Continuing with stderr only.",
+                log_path.display()
+            );
+            None
+        }
     };
-    let log_file = File::create(log_path).context("creating log file")?;
 
-    let file_filter = Targets::new()
-        .with_default(LevelFilter::DEBUG)
-        .with_target("gdt_cpus", LevelFilter::OFF)
-        .with_target("ureq", LevelFilter::OFF)
-        .with_target("rustls", LevelFilter::OFF);
-
-    let file_layer = fmt::layer()
-        .with_file(false)
-        .with_ansi(false)
-        .with_writer(Mutex::new(log_file))
-        .with_filter(file_filter);
-
-    let env_filter = EnvFilter::builder()
-        .with_default_directive(LevelFilter::INFO.into())
-        .from_env_lossy();
-
-    let stderr_layer = fmt::layer()
-        .with_file(false)
-        .with_writer(std::io::stderr)
-        .with_filter(env_filter);
-
-    tracing_subscriber::registry()
-        .with(file_layer)
-        .with(stderr_layer)
-        .init();
+    if let Some(log_file) = log_file {
+        let file_filter = Targets::new()
+            .with_default(LevelFilter::DEBUG)
+            .with_target("gdt_cpus", LevelFilter::OFF)
+            .with_target("ureq", LevelFilter::OFF)
+            .with_target("rustls", LevelFilter::OFF);
+        let file_layer = fmt::layer()
+            .with_file(false)
+            .with_ansi(false)
+            .with_writer(Mutex::new(log_file))
+            .with_filter(file_filter);
+        let stderr_layer = fmt::layer()
+            .with_file(false)
+            .with_writer(std::io::stderr)
+            .with_filter(
+                EnvFilter::builder()
+                    .with_default_directive(LevelFilter::INFO.into())
+                    .from_env_lossy(),
+            );
+        tracing_subscriber::registry()
+            .with(file_layer)
+            .with(stderr_layer)
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(
+                fmt::layer()
+                    .with_file(false)
+                    .with_writer(std::io::stderr)
+                    .with_filter(
+                        EnvFilter::builder()
+                            .with_default_directive(LevelFilter::INFO.into())
+                            .from_env_lossy(),
+                    ),
+            )
+            .init();
+    }
 
     Ok(())
+}
+
+fn run_command(command: &AppCommand) -> anyhow::Result<()> {
+    match command {
+        AppCommand::Export { target } => match target {
+            ExportTarget::Tag { tag, output } => {
+                inspection::export_one(tag, output, inspection::InspectionKind::Tag)
+            }
+            ExportTarget::Activity { tag, output } => {
+                inspection::export_one(tag, output, inspection::InspectionKind::Activity)
+            }
+            ExportTarget::All { output_dir } => inspection::export_all(output_dir),
+        },
+    }
 }
 
 fn fix_windows_console() {

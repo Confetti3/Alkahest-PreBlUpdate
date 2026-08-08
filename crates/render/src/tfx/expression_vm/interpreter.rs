@@ -2,7 +2,7 @@ use core::f32;
 use std::ops::{Add, Mul, Sub};
 
 use ahash::AHashMap;
-use alkahest_data::tfx::{ExternIndex, ShaderStage};
+use alkahest_data::tfx::ShaderStage;
 use anyhow::{Context, ensure};
 use d3d11::SamplerState;
 use glam::{Mat4, Vec4, Vec4Swizzles};
@@ -513,8 +513,7 @@ impl<'a> InterpreterState<'a> {
                     let slot = ptr[1] & 0x1F;
                     let bits = cached_top.x.to_bits();
 
-                    let index = ExternIndex::try_from((bits >> 24) as u8)
-                        .ok()
+                    let index = alkahest_data::tfx::shadowkeep::decode_extern_index((bits >> 24) as u8)
                         .context("Invalid extern index on pop texture view")?;
                     let offset = bits & 0xFFFFFF;
 
@@ -572,8 +571,7 @@ impl<'a> InterpreterState<'a> {
                     let slot = ptr[1] & 0x1F;
                     let bits = cached_top.x.to_bits();
 
-                    let index = ExternIndex::try_from((bits >> 24) as u8)
-                        .ok()
+                    let index = alkahest_data::tfx::shadowkeep::decode_extern_index((bits >> 24) as u8)
                         .context("Invalid extern index on pop texture view")?;
                     let offset = bits & 0xFFFFFF;
 
@@ -616,8 +614,7 @@ impl<'a> InterpreterState<'a> {
                         anyhow::bail!("No externs set");
                     };
 
-                    let extern_id = ExternIndex::try_from(ptr[1])
-                        .ok()
+                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
                         .context("Invalid extern index")?;
                     let offset = ptr[2];
                     let val = externs
@@ -637,8 +634,7 @@ impl<'a> InterpreterState<'a> {
                         anyhow::bail!("No externs set");
                     };
 
-                    let extern_id = ExternIndex::try_from(ptr[1])
-                        .ok()
+                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
                         .context("Invalid extern index")?;
                     let offset = ptr[2];
 
@@ -659,8 +655,7 @@ impl<'a> InterpreterState<'a> {
                         anyhow::bail!("No externs set");
                     };
 
-                    let extern_id = ExternIndex::try_from(ptr[1])
-                        .ok()
+                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
                         .context("Invalid extern index")?;
                     let offset = ptr[2];
 
@@ -680,8 +675,7 @@ impl<'a> InterpreterState<'a> {
                     cached_top = self.push(val.w_axis)?;
                 }
                 Opcode::PushExternInputTextureView => {
-                    let extern_id = ExternIndex::try_from(ptr[1])
-                        .ok()
+                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
                         .context("Invalid extern index")?;
                     let offset = ptr[2] as u32 * 8;
 
@@ -689,8 +683,7 @@ impl<'a> InterpreterState<'a> {
                     cached_top = self.push(Vec4::new(f32::from_bits(bits), 0.0, 0.0, 0.0))?;
                 }
                 Opcode::PushExternInputUav => {
-                    let extern_id = ExternIndex::try_from(ptr[1])
-                        .ok()
+                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
                         .context("Invalid extern index")?;
                     let offset = ptr[2] as u32 * 8;
 
