@@ -9,9 +9,9 @@ use std::collections::HashMap;
 use anyhow::Context;
 use glam::Vec4;
 use tiger_parse::{
-    tiger_type, Endian, NullString, PackageManagerExt, Pointer, TigerReadable, TigerReader,
+    Endian, NullString, PackageManagerExt, Pointer, TigerReadable, TigerReader, tiger_type,
 };
-use tiger_pkg::{package_manager, TagHash};
+use tiger_pkg::{TagHash, package_manager};
 
 use crate::{tag::Tag, tfx::ExternIndex};
 
@@ -51,6 +51,22 @@ impl ShadowkeepEraProfile {
         }
     }
 
+    pub const fn geometry_classes(self) -> ShadowkeepGeometryClasses {
+        ShadowkeepGeometryClasses {
+            bubble_parent: 0x8080_7DAE,
+            bubble_definition: 0x8080_91E0,
+            map_container: 0x8080_8A54,
+            map_table: 0x8080_99D6,
+            entity: 0x8080_9C0F,
+            entity_resource: 0x8080_9C36,
+            rigid_model_component: 0x8080_72B8,
+            static_mesh: 0x8080_71A7,
+            static_instances: 0x8080_966D,
+            terrain: 0x8080_714F,
+            dynamic_model: 0x8080_73A5,
+        }
+    }
+
     pub fn load_bootstrap(self) -> anyhow::Result<ShadowkeepRenderBootstrap> {
         load_renderer_bootstrap()
     }
@@ -68,6 +84,24 @@ pub struct ShadowkeepRendererClasses {
     pub scope: u32,
     pub technique: u32,
     pub lookup_textures: u32,
+}
+
+/// Class identities admitted for the core Arrivals geometry path.  They are
+/// separate from renderer bootstrap identities because matching later-era
+/// Rust names are not format compatibility evidence.
+#[derive(Debug, Clone, Copy)]
+pub struct ShadowkeepGeometryClasses {
+    pub bubble_parent: u32,
+    pub bubble_definition: u32,
+    pub map_container: u32,
+    pub map_table: u32,
+    pub entity: u32,
+    pub entity_resource: u32,
+    pub rigid_model_component: u32,
+    pub static_mesh: u32,
+    pub static_instances: u32,
+    pub terrain: u32,
+    pub dynamic_model: u32,
 }
 
 /// Normalized, lossless names-to-tags view of the bootstrap.  Names remain
@@ -443,8 +477,14 @@ mod tests {
 
     #[test]
     fn legacy_extern_index_skips_only_the_post_bl_insertion() {
-        assert_eq!(decode_extern_index(23), Some(ExternIndex::CuiScreenspaceBoxes));
-        assert_eq!(decode_extern_index(24), Some(ExternIndex::TextureVisualizer));
+        assert_eq!(
+            decode_extern_index(23),
+            Some(ExternIndex::CuiScreenspaceBoxes)
+        );
+        assert_eq!(
+            decode_extern_index(24),
+            Some(ExternIndex::TextureVisualizer)
+        );
         assert_eq!(decode_extern_index(96), Some(ExternIndex::SoftDeform));
         assert_eq!(decode_extern_index(97), None);
     }
@@ -466,5 +506,14 @@ mod tests {
         assert_eq!(classes.render_globals, RENDER_GLOBALS_CLASS);
         assert_eq!(classes.scope, SCOPE_CLASS);
         assert_eq!(classes.technique, TECHNIQUE_CLASS);
+    }
+
+    #[test]
+    fn profile_exposes_shadowkeep_core_geometry_ids() {
+        let classes = ShadowkeepEraProfile.geometry_classes();
+        assert_eq!(classes.bubble_parent, 0x8080_7DAE);
+        assert_eq!(classes.map_table, 0x8080_99D6);
+        assert_eq!(classes.rigid_model_component, 0x8080_72B8);
+        assert_eq!(classes.dynamic_model, 0x8080_73A5);
     }
 }

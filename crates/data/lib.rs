@@ -5,6 +5,7 @@ pub mod cui;
 pub mod hash;
 pub mod map;
 pub mod pattern;
+pub mod shadowkeep;
 pub mod strings;
 pub mod tag;
 pub mod tfx;
