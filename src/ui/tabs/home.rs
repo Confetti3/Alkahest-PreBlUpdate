@@ -54,6 +54,7 @@ impl HomeTab {
                 for capability in shared_state.renderer_capabilities.read().iter() {
                     let state = match capability.state {
                         alkahest_render::renderer::shadowkeep::CapabilityState::Ready => "ready",
+                        alkahest_render::renderer::shadowkeep::CapabilityState::Degraded => "degraded",
                         alkahest_render::renderer::shadowkeep::CapabilityState::Blocked => "blocked",
                         alkahest_render::renderer::shadowkeep::CapabilityState::AbsentInCorpus => "absent in corpus",
                     };

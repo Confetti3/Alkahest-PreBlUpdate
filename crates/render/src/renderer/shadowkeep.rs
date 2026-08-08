@@ -21,6 +21,7 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapabilityState {
     Ready,
+    Degraded,
     Blocked,
     AbsentInCorpus,
 }
@@ -29,7 +30,7 @@ pub enum CapabilityState {
 pub struct CapabilityRecord {
     pub name: &'static str,
     pub state: CapabilityState,
-    pub evidence: &'static str,
+    pub evidence: String,
 }
 
 /// Conservative renderer capability ledger.  `AbsentInCorpus` is reserved
@@ -40,27 +41,27 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
         CapabilityRecord {
             name: "Shadowkeep bootstrap and input layouts",
             state: CapabilityState::Ready,
-            evidence: "client_bootstrap_patchable, render globals, and all dynamic layout records parsed",
+            evidence: "client_bootstrap_patchable, render globals, and all dynamic layout records parsed".into(),
         },
         CapabilityRecord {
             name: "TFX scopes, techniques, and positional channels",
             state: CapabilityState::Ready,
-            evidence: "legacy serializers and extern-index translation are active",
+            evidence: "legacy serializers and extern-index translation are active".into(),
         },
         CapabilityRecord {
             name: "Core geometry submission",
             state: CapabilityState::Blocked,
-            evidence: "map, static, terrain, dynamic, and rigid resource families are not yet normalized into the modern submitter",
+            evidence: "map, static, terrain, dynamic, and rigid resource families are not yet normalized into the modern submitter".into(),
         },
         CapabilityRecord {
             name: "Lighting, atmosphere, shadows, cubemaps, and post-processing",
             state: CapabilityState::Blocked,
-            evidence: "requires the core Shadowkeep geometry and era-specific pass graph",
+            evidence: "requires the core Shadowkeep geometry and era-specific pass graph".into(),
         },
         CapabilityRecord {
             name: "Water, decals, distortion, volumetrics, and autoexposure",
             state: CapabilityState::Blocked,
-            evidence: "no corpus-absence claim has been made",
+            evidence: "no corpus-absence claim has been made".into(),
         },
     ]
 }

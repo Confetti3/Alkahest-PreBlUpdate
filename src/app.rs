@@ -129,23 +129,14 @@ impl App {
             let renderer_shared_state = shared_state.clone();
             (
                 Some(Task::new("shadowkeep_renderer".to_string(), move || {
-                    // Build only era-owned resources here.  This performs
-                    // real input-layout, scope, technique, sampler and shader
-                    // construction without touching the post-BL globals.
-                    let bootstrap = alkahest_render::renderer::shadowkeep::ShadowkeepRendererBootstrap::load(renderer_gpu)
+                    // The era bootstrap remains renderer-owned and is passed
+                    // into the real constructor; it never falls back to the
+                    // post-BL named render globals.
+                    let bootstrap = alkahest_render::renderer::shadowkeep::ShadowkeepRendererBootstrap::load(renderer_gpu.clone())
                         .context("Failed to construct Shadowkeep renderer bootstrap")?;
                     *renderer_shared_state.renderer_capabilities.write() = bootstrap.capability_ledger();
-                    for scope in ["frame", "view", "rigid_model", "editor_mesh", "editor_terrain", "terrain"] {
-                        bootstrap.techniques.load_scope(scope)
-                            .with_context(|| format!("Failed to initialize core Shadowkeep scope {scope}"))?;
-                    }
-                    for technique in ["clear_color_2_mrt", "deferred_shading", "global_lighting"] {
-                        bootstrap.techniques.load_technique(technique)
-                            .with_context(|| format!("Failed to initialize core Shadowkeep technique {technique}"))?;
-                    }
-                    anyhow::bail!(
-                        "Shadowkeep bootstrap, dynamic input layouts, core scopes, and core techniques loaded successfully; the era-specific geometry submission path is still being connected"
-                    )
+                    Renderer::new_shadowkeep(renderer_gpu, bootstrap)
+                        .context("Failed to construct Shadowkeep renderer")
                 })),
                 RendererStatus::Initializing,
             )

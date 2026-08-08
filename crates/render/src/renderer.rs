@@ -100,6 +100,22 @@ unsafe impl Sync for Renderer {}
 static RENDERER_GLOBAL: OnceLock<Arc<Renderer>> = OnceLock::new();
 impl Renderer {
     pub fn new(gpu: Arc<Gpu>) -> anyhow::Result<Self> {
+        Self::new_with_globals(gpu, RenderGlobals::load)
+    }
+
+    pub fn new_shadowkeep(
+        gpu: Arc<Gpu>,
+        bootstrap: crate::renderer::shadowkeep::ShadowkeepRendererBootstrap,
+    ) -> anyhow::Result<Self> {
+        Self::new_with_globals(gpu, move |gpu, asset_manager| {
+            RenderGlobals::load_shadowkeep(gpu, asset_manager, &bootstrap.bootstrap)
+        })
+    }
+
+    fn new_with_globals<F>(gpu: Arc<Gpu>, load_globals: F) -> anyhow::Result<Self>
+    where
+        F: FnOnce(&Arc<Gpu>, &AssetManager) -> anyhow::Result<RenderGlobals>,
+    {
         ConVars::register("render.sky", true);
         ConVars::register("render.global_lighting", false);
         ConVars::register("render.threaded_submit", true);
@@ -146,7 +162,7 @@ impl Renderer {
             gpu.compile_shader_cs("hzb_downsample", HZB_DOWNSAMPLE_SHADER, "main")?;
 
         let asset_manager = AssetManager::new(&gpu);
-        let globals = RenderGlobals::load(&gpu, &asset_manager).context("Failed to load render globals")?;
+        let globals = load_globals(&gpu, &asset_manager).context("Failed to load render globals")?;
         Ok(Self {
             externs: ThreadMutCell::new(Externs::new(&globals)),
             globals,
