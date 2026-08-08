@@ -73,6 +73,30 @@ impl RendererStatus {
             Self::Failed(_) => "Shadowkeep renderer is unavailable; catalog and inspection remain active",
         }
     }
+
+    /// A user-facing explanation suitable for an action that would otherwise
+    /// dereference the global renderer singleton.  UI code must use this
+    /// rather than treating a background renderer task as completed.
+    pub fn scene_diagnostic(&self) -> String {
+        match self {
+            Self::Initializing => {
+                "3D scene initialization is still in progress. Map metadata remains available; retry the rendered view after the renderer reports ready.".to_string()
+            }
+            Self::Ready => {
+                "The Shadowkeep renderer initialized, but core geometry submission is still blocked. This map can be inspected, but it cannot yet be drawn.".to_string()
+            }
+            Self::Disabled => {
+                "3D rendering was disabled with --no-3d. Map metadata remains available.".to_string()
+            }
+            Self::Failed(detail) => format!(
+                "The Shadowkeep renderer is unavailable. Map metadata remains available. Exact initialization diagnostic: {detail}"
+            ),
+        }
+    }
+
+    pub fn is_ready(&self) -> bool {
+        matches!(self, Self::Ready)
+    }
 }
 
 impl App {
@@ -94,8 +118,18 @@ impl App {
             .context("Failed to create shared state")?
             .into();
         let mut gui = Gui::new(&gpu, sdl.clone(), window.clone())?;
-        if args.open_map.is_some() {
-            warn!("--open-map is queued until the Shadowkeep renderer is ready");
+        if let Some(tag_hash) = args.open_map.as_ref() {
+            match TagHash::from_str(tag_hash) {
+                Ok(tag) => match crate::ui::tabs::map::MapTab::new(
+                    tag,
+                    format!("map {tag}"),
+                    &shared_state,
+                ) {
+                    Ok(tab) => gui.add_tab(Tab::Map(tab)),
+                    Err(error) => error!("Failed to open Shadowkeep map {tag}: {error:#}"),
+                },
+                Err(error) => error!("Failed to parse --open-map tag hash {tag_hash}: {error:?}"),
+            }
         }
 
         if let Some(tag_hash) = args.open_tag.as_ref() {

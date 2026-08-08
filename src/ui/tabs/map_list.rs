@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ahash::HashMap;
-use alkahest_data::map::{SBubbleParent, SBubbleParentShallow};
+use alkahest_data::shadowkeep::map::SShadowkeepBubbleParent;
 use egui::{Margin, Ui, vec2};
 use tiger_parse::{PackageManagerExt, TigerReadable};
 use tiger_pkg::{TagHash, package_manager};
@@ -20,7 +20,7 @@ pub struct MapListTab {
 impl MapListTab {
     pub fn new(state: &Arc<SharedState>) -> Self {
         let map_tags: Vec<(TagHash, String)> = package_manager()
-            .get_all_by_reference(SBubbleParent::ID.unwrap())
+            .get_all_by_reference(SShadowkeepBubbleParent::ID.unwrap())
             .into_iter()
             .map(|(t, _)| (t, String::new()))
             .collect();
@@ -47,14 +47,19 @@ impl MapListTab {
 
     fn load_map_names(&mut self, index: usize) {
         for (tag, name) in self.map_tags_by_package[index].1.iter_mut() {
-            if name.is_empty()
-                && let Ok(bubble_parent) =
-                    package_manager().read_tag_struct::<SBubbleParentShallow>(*tag)
-            {
-                *name = self.state.get_string_by_activity(
-                    &package_manager().package_paths[&tag.pkg_id()].name,
-                    bubble_parent.map_name,
-                );
+            if name.is_empty() {
+                if let Ok(bubble_parent) =
+                    package_manager().read_tag_struct::<SShadowkeepBubbleParent>(*tag)
+                {
+                    *name = self
+                        .state
+                        .wordlist
+                        .get(&bubble_parent.map_name)
+                        .cloned()
+                        .unwrap_or_else(|| format!("map_{:08X}", bubble_parent.map_name));
+                } else {
+                    *name = format!("unreadable_{tag}");
+                }
             }
         }
         self.map_tags_by_package[index]

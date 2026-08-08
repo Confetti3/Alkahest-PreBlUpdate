@@ -62,6 +62,18 @@ impl HomeTab {
                 }
             });
         ui.add_space(12.0);
+        let core_geometry_available = shared_state.renderer_capabilities.read().iter().any(|capability| {
+            capability.name == "Core geometry submission"
+                && matches!(
+                    capability.state,
+                    alkahest_render::renderer::shadowkeep::CapabilityState::Ready
+                        | alkahest_render::renderer::shadowkeep::CapabilityState::Degraded
+                )
+        });
+        let rendered_tabs_available = renderer_status.is_ready() && core_geometry_available;
+        if !rendered_tabs_available {
+            ui.label(RichText::new("Rendered activity, entity, and static-model tabs are disabled until core Shadowkeep geometry submission is available.").color(Color32::GRAY));
+        }
         // Catalog/list tabs remain useful without a renderer.  Individual
         // rendered scene actions are responsible for showing their structured
         // renderer diagnostic when 3D is unavailable.
@@ -72,36 +84,37 @@ impl HomeTab {
             );
             // uis[0].heading("3D");
             // uis[0].add_space(4.0);
-            if uis[0]
-                .d_button(format!(
-                    "{} ACTIVITIES",
-                    GoogleMaterialSymbols::StadiaController
-                ))
-                .clicked()
-            {
-                result = TabResult::Open(Tab::ActivityList(ActivityListTab::new(shared_state)));
-            }
+            uis[0].add_enabled_ui(rendered_tabs_available, |ui| {
+                if ui
+                    .d_button(format!(
+                        "{} ACTIVITIES",
+                        GoogleMaterialSymbols::StadiaController
+                    ))
+                    .clicked()
+                {
+                    result = TabResult::Open(Tab::ActivityList(ActivityListTab::new(shared_state)));
+                }
+            });
             if uis[0]
                 .d_button(format!("{} MAPS", GoogleMaterialSymbols::Map))
                 .clicked()
             {
                 result = TabResult::Open(Tab::MapList(MapListTab::new(shared_state)));
             }
-            if uis[0]
-                .d_button(format!("{} ENTITIES", GoogleMaterialSymbols::ChessPawn))
-                .clicked()
-            {
-                // self.added_nodes.push(Tab::DynamicList);
-                result =
-                    TabResult::Open(Tab::EntityList(Box::new(EntityListTab::new(shared_state))));
-            }
-            if uis[0]
-                .d_button(format!("{} STATICS", GoogleMaterialSymbols::Landscape))
-                .clicked()
-            {
-                result =
-                    TabResult::Open(Tab::StaticList(Box::new(StaticListTab::new(shared_state))));
-            }
+            uis[0].add_enabled_ui(rendered_tabs_available, |ui| {
+                if ui
+                    .d_button(format!("{} ENTITIES", GoogleMaterialSymbols::ChessPawn))
+                    .clicked()
+                {
+                    result = TabResult::Open(Tab::EntityList(Box::new(EntityListTab::new(shared_state))));
+                }
+                if ui
+                    .d_button(format!("{} STATICS", GoogleMaterialSymbols::Landscape))
+                    .clicked()
+                {
+                    result = TabResult::Open(Tab::StaticList(Box::new(StaticListTab::new(shared_state))));
+                }
+            });
             if uis[0]
                 .d_button(format!("{} SEQUENCES", GoogleMaterialSymbols::Theaters))
                 .clicked()
