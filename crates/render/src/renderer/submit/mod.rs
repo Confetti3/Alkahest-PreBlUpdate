@@ -19,7 +19,10 @@ use glam::{Mat4, Vec4, vec4};
 
 use super::{
     Renderer,
-    provenance::{DeferredShadingProvenance, ProvenanceManifest, capture_surface},
+    provenance::{
+        DeferredShadingProvenance, ExposureAbManifest, ExposureVariantProvenance,
+        ProvenanceManifest, capture_surface,
+    },
 };
 use crate::{
     camera::Camera,
@@ -546,15 +549,23 @@ impl Renderer {
         let provenance_directory = Path::new("artifacts/shadowkeep-buffer-provenance");
         let mut provenance_captures = Vec::new();
         if capture_provenance {
-            for handle in [
-                view.gbuffers.albedo,
-                view.gbuffers.normal,
-                view.gbuffers.third,
-                view.gbuffers.depth,
-                view.lighting.light_diffuse,
-                view.lighting.light_specular,
+            for (handle, clear_value) in [
+                (view.gbuffers.albedo, None),
+                (view.gbuffers.normal, None),
+                (view.gbuffers.third, None),
+                (view.gbuffers.depth, None),
+                (
+                    view.lighting.light_diffuse,
+                    Some([0.001, 0.001, 0.001, 0.0]),
+                ),
+                (view.lighting.light_specular, Some([0.0; 4])),
             ] {
-                match capture_surface(cmd, view.surfaces.get(handle), provenance_directory) {
+                match capture_surface(
+                    cmd,
+                    view.surfaces.get(handle),
+                    provenance_directory,
+                    clear_value,
+                ) {
                     Ok(capture) => provenance_captures.push(capture),
                     Err(error) => error!(
                         surface = view.surfaces.get(handle).name(),
@@ -564,6 +575,8 @@ impl Renderer {
                 }
             }
         }
+
+        self.capture_shadowkeep_exposure_ab(cmd, view, wants_global_lighting);
 
         self.clear_surface(cmd, view.shading_result, [0.0, 0.0, 0.0, 1.0]);
         self.bind_surfaces(cmd, &[view.shading_result], None);
@@ -585,7 +598,7 @@ impl Renderer {
 
         if capture_provenance {
             for handle in [view.shading_result, view.output] {
-                match capture_surface(cmd, view.surfaces.get(handle), provenance_directory) {
+                match capture_surface(cmd, view.surfaces.get(handle), provenance_directory, None) {
                     Ok(capture) => provenance_captures.push(capture),
                     Err(error) => error!(
                         surface = view.surfaces.get(handle).name(),
@@ -594,7 +607,162 @@ impl Renderer {
                     ),
                 }
             }
-            let deferred_srvs = vec![
+            let deferred_shading = self.shadowkeep_deferred_provenance(view, deferred_draw_reached);
+            info!(
+                diagnostic = ?deferred_shading,
+                "Shadowkeep deferred shading provenance"
+            );
+            let manifest = ProvenanceManifest {
+                schema: "alkahest-shadowkeep-buffer-provenance/v1",
+                deferred_shading,
+                captures: provenance_captures,
+            };
+            if let Err(error) = manifest.write(provenance_directory) {
+                error!(error = ?error, "Failed to write Shadowkeep provenance manifest");
+            } else {
+                info!(
+                    path = %provenance_directory.join("manifest.json").display(),
+                    capture_count = manifest.captures.len(),
+                    "Wrote Shadowkeep buffer provenance"
+                );
+            }
+        }
+    }
+
+    fn capture_shadowkeep_exposure_ab(
+        &self,
+        cmd: &mut CommandList,
+        view: &MainView,
+        wants_global_lighting: bool,
+    ) {
+        if !ConVars::get_flag("render.shadowkeep_exposure_ab") {
+            return;
+        }
+        let _ = ConVars::set("render.shadowkeep_exposure_ab", false.into());
+        if wants_global_lighting {
+            error!(
+                "Shadowkeep exposure A/B requires render.global_lighting=false; diagnostic skipped"
+            );
+            return;
+        }
+
+        let (production_exposure_scale, exposure_illum_relative) = {
+            let ext = self.externs.get_mut();
+            (ext.frame.exposure_scale, ext.frame.exposure_illum_relative)
+        };
+        let directory = Path::new("artifacts/shadowkeep-exposure-ab");
+        let mut variants = Vec::with_capacity(2);
+
+        for (label, exposure_scale) in [("exposure-0.05", 0.05), ("exposure-1.0", 1.0)] {
+            let frame_scope = match self.write_frame_scope(cmd, Some(exposure_scale)) {
+                Ok(frame_scope) => frame_scope,
+                Err(error) => {
+                    error!(
+                        error = ?error,
+                        exposure_scale,
+                        "Failed to set Shadowkeep exposure diagnostic FrameScope"
+                    );
+                    break;
+                }
+            };
+
+            self.clear_surface(cmd, view.shading_result, [0.0, 0.0, 0.0, 1.0]);
+            self.bind_surfaces(cmd, &[view.shading_result], None);
+            cmd.output_merger_set_depth_stencil_state(None, 0);
+            cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+            let draw_6_reached = self.execute_shadowkeep_global_pipeline(
+                cmd,
+                &self.globals.pipelines.deferred_shading_no_atm,
+                "shadowkeep/exposure_ab/deferred_shading_no_atm",
+            );
+            self.blit_surface(
+                cmd,
+                view.shading_result,
+                view.output,
+                true,
+                "shadowkeep/exposure_ab/final_shading",
+            );
+
+            let variant_directory = directory.join(label);
+            let mut captures = Vec::with_capacity(2);
+            for handle in [view.shading_result, view.output] {
+                match capture_surface(cmd, view.surfaces.get(handle), &variant_directory, None) {
+                    Ok(capture) => captures.push(capture),
+                    Err(error) => error!(
+                        surface = view.surfaces.get(handle).name(),
+                        exposure_scale,
+                        error = ?error,
+                        "Failed to capture Shadowkeep exposure diagnostic"
+                    ),
+                }
+            }
+
+            variants.push(ExposureVariantProvenance {
+                exposure_scale,
+                frame_scope_c1: [
+                    frame_scope.exposure_scale,
+                    frame_scope.exposure_illum_relative_glow,
+                    frame_scope.exposure_scale_for_shading,
+                    frame_scope.exposure_illum_relative,
+                ],
+                deferred_shading: self.shadowkeep_deferred_provenance(view, draw_6_reached),
+                captures,
+            });
+        }
+
+        if let Err(error) = self.write_frame_scope(cmd, None) {
+            error!(error = ?error, "Failed to restore production FrameScope after exposure A/B");
+        }
+
+        let manifest = ExposureAbManifest {
+            schema: "alkahest-shadowkeep-exposure-ab/v1",
+            production_exposure_scale,
+            exposure_illum_relative,
+            variants,
+        };
+        if let Err(error) = manifest.write(directory) {
+            error!(error = ?error, "Failed to write Shadowkeep exposure A/B manifest");
+        } else {
+            info!(
+                path = %directory.join("manifest.json").display(),
+                variant_count = manifest.variants.len(),
+                "Wrote Shadowkeep exposure A/B diagnostic"
+            );
+        }
+    }
+
+    fn shadowkeep_deferred_provenance(
+        &self,
+        view: &MainView,
+        draw_6_reached: bool,
+    ) -> DeferredShadingProvenance {
+        let pipeline = &self.globals.pipelines.deferred_shading_no_atm;
+        let vertex = pipeline.stage_vertex.as_ref();
+        let pixel = pipeline.stage_pixel.as_ref();
+        DeferredShadingProvenance {
+            technique: pipeline.hash.to_string(),
+            vertex_shader: vertex.map(|stage| stage.shader.shader.to_string()),
+            pixel_shader: pixel.map(|stage| stage.shader.shader.to_string()),
+            draw_6_reached,
+            vertex_expression: vertex.map(|stage| {
+                format!(
+                    "{:?}",
+                    stage.dynamic_constants.expression_evaluation_result()
+                )
+            }),
+            pixel_expression: pixel.map(|stage| {
+                format!(
+                    "{:?}",
+                    stage.dynamic_constants.expression_evaluation_result()
+                )
+            }),
+            vertex_constant_buffer_slot: vertex.map(|stage| stage.dynamic_constants.cbuffer_slot),
+            vertex_constant_buffer_len: vertex
+                .map(|stage| stage.dynamic_constants.constant_buffer_len()),
+            pixel_constant_buffer_slot: pixel.map(|stage| stage.dynamic_constants.cbuffer_slot),
+            pixel_constant_buffer_len: pixel
+                .map(|stage| stage.dynamic_constants.constant_buffer_len()),
+            bound_deferred_srvs: vec![
                 format!(
                     "deferred_depth -> {} proxy",
                     view.surfaces.get(view.gbuffers.depth).name()
@@ -623,57 +791,11 @@ impl Renderer {
                     "light_specular_ibl -> {}",
                     view.surfaces.get(view.lighting.light_specular_ibl).name()
                 ),
-            ];
-            let vertex = pipelines.deferred_shading_no_atm.stage_vertex.as_ref();
-            let pixel = pipelines.deferred_shading_no_atm.stage_pixel.as_ref();
-            let deferred_shading = DeferredShadingProvenance {
-                technique: pipelines.deferred_shading_no_atm.hash.to_string(),
-                vertex_shader: vertex.map(|stage| stage.shader.shader.to_string()),
-                pixel_shader: pixel.map(|stage| stage.shader.shader.to_string()),
-                draw_6_reached: deferred_draw_reached,
-                vertex_expression: vertex.map(|stage| {
-                    format!(
-                        "{:?}",
-                        stage.dynamic_constants.expression_evaluation_result()
-                    )
-                }),
-                pixel_expression: pixel.map(|stage| {
-                    format!(
-                        "{:?}",
-                        stage.dynamic_constants.expression_evaluation_result()
-                    )
-                }),
-                vertex_constant_buffer_slot: vertex
-                    .map(|stage| stage.dynamic_constants.cbuffer_slot),
-                vertex_constant_buffer_len: vertex
-                    .map(|stage| stage.dynamic_constants.constant_buffer_len()),
-                pixel_constant_buffer_slot: pixel.map(|stage| stage.dynamic_constants.cbuffer_slot),
-                pixel_constant_buffer_len: pixel
-                    .map(|stage| stage.dynamic_constants.constant_buffer_len()),
-                bound_deferred_srvs: deferred_srvs,
-                output_rtv_format: format!(
-                    "{:?}",
-                    view.surfaces.get(view.shading_result).desc().view_format
-                ),
-            };
-            info!(
-                diagnostic = ?deferred_shading,
-                "Shadowkeep deferred shading provenance"
-            );
-            let manifest = ProvenanceManifest {
-                schema: "alkahest-shadowkeep-buffer-provenance/v1",
-                deferred_shading,
-                captures: provenance_captures,
-            };
-            if let Err(error) = manifest.write(provenance_directory) {
-                error!(error = ?error, "Failed to write Shadowkeep provenance manifest");
-            } else {
-                info!(
-                    path = %provenance_directory.join("manifest.json").display(),
-                    capture_count = manifest.captures.len(),
-                    "Wrote Shadowkeep buffer provenance"
-                );
-            }
+            ],
+            output_rtv_format: format!(
+                "{:?}",
+                view.surfaces.get(view.shading_result).desc().view_format
+            ),
         }
     }
 
@@ -954,43 +1076,48 @@ impl Renderer {
                 .expect("Failed to write transparent_advanced initial constants");
         }
 
-        let _ = self.globals.scopes.frame.write_initial_constants(
-            cmd,
-            FrameScope {
-                game_time: ext.frame.game_time, //self.start_time.elapsed().as_secs_f32(),
-                render_time: ext.frame.render_time, //self.start_time.elapsed().as_secs_f32(),
-                delta_game_time: ext.frame.delta_game_time,
-                exposure_time: ext.frame.exposure_time,
-
-                // exposure_scale: 1.,
-                // exposure_illum_relative_glow: 1.,
-                // exposure_illum_relative: 1.,
-                // exposure_scale_for_shading: 1.,
-                exposure_scale: ext.frame.exposure_scale,
-                exposure_illum_relative_glow: ext.frame.exposure_illum_relative * 16.0,
-                exposure_scale_for_shading: ext.frame.exposure_scale,
-                exposure_illum_relative: ext.frame.exposure_illum_relative,
-
-                random_seed_scales: vec4(
-                    (misc.time * 60.0 + 33.75) * 1.258699,
-                    (misc.time * 60.0 + 60.0) * 0.9583125,
-                    (misc.time * 60.0 + 60.0) * 8.789123,
-                    (misc.time * 60.0 + 33.75) * 2.311535,
-                ),
-                unk3: vec4(0.5, 0.5, 0.0, 0.0),
-                unk4: vec4(1.0, 1.0, 0.0, 1.0),
-                unk5: vec4(0.00, -f32::NAN, 512.00, 0.00),
-                unk6: Vec4::ONE,
-            }
-            .to_array()
-            .as_ref(),
-        );
-
-        self.globals.scopes.frame.bind(cmd).unwrap();
+        let _ = self.write_frame_scope(cmd, None);
 
         if let ViewKind::Main(v) = &view.kind {
             self.prepare_main_view_externs(v);
         }
+    }
+
+    fn write_frame_scope(
+        &self,
+        cmd: &mut CommandList,
+        exposure_override: Option<f32>,
+    ) -> anyhow::Result<FrameScope> {
+        let misc_guard = self.frame_packet.read();
+        let misc = &misc_guard.misc;
+        let ext = self.externs.get_mut();
+        let exposure_scale = exposure_override.unwrap_or(ext.frame.exposure_scale);
+        let frame_scope = FrameScope {
+            game_time: ext.frame.game_time,
+            render_time: ext.frame.render_time,
+            delta_game_time: ext.frame.delta_game_time,
+            exposure_time: ext.frame.exposure_time,
+            exposure_scale,
+            exposure_illum_relative_glow: ext.frame.exposure_illum_relative * 16.0,
+            exposure_scale_for_shading: exposure_scale,
+            exposure_illum_relative: ext.frame.exposure_illum_relative,
+            random_seed_scales: vec4(
+                (misc.time * 60.0 + 33.75) * 1.258699,
+                (misc.time * 60.0 + 60.0) * 0.9583125,
+                (misc.time * 60.0 + 60.0) * 8.789123,
+                (misc.time * 60.0 + 33.75) * 2.311535,
+            ),
+            unk3: vec4(0.5, 0.5, 0.0, 0.0),
+            unk4: vec4(1.0, 1.0, 0.0, 1.0),
+            unk5: vec4(0.00, -f32::NAN, 512.00, 0.00),
+            unk6: Vec4::ONE,
+        };
+        self.globals
+            .scopes
+            .frame
+            .write_initial_constants(cmd, frame_scope.to_array().as_ref())?;
+        self.globals.scopes.frame.bind(cmd)?;
+        Ok(frame_scope)
     }
 
     fn prepare_main_view_externs(&self, view: &MainView) {

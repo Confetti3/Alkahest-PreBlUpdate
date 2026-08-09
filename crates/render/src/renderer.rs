@@ -139,6 +139,7 @@ impl Renderer {
         ConVars::register("render.sky", true);
         ConVars::register("render.global_lighting", false);
         ConVars::register("render.shadowkeep_buffer_provenance", false);
+        ConVars::register("render.shadowkeep_exposure_ab", false);
         ConVars::register("render.threaded_submit", true);
         ConVars::register("render.patch_light_shader", false);
         ConVars::register("render.vertex_ao_workaround", true);

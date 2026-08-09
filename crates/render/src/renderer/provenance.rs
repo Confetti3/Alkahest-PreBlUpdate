@@ -16,6 +16,7 @@ pub struct SurfaceProvenance {
     pub resource_format: String,
     pub width: u32,
     pub height: u32,
+    pub statistics_encoding: &'static str,
     pub finite_pixel_count: u64,
     pub nonzero_rgb_pixel_count: u64,
     pub minimum_rgb: Option<[f64; 3]>,
@@ -23,6 +24,8 @@ pub struct SurfaceProvenance {
     pub mean_rgb: Option<[f64; 3]>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nonzero_alpha_count: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pixels_different_from_clear_value: Option<u64>,
     pub sha256: String,
 }
 
@@ -49,6 +52,31 @@ pub struct ProvenanceManifest {
     pub captures: Vec<SurfaceProvenance>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ExposureVariantProvenance {
+    pub exposure_scale: f32,
+    pub frame_scope_c1: [f32; 4],
+    pub deferred_shading: DeferredShadingProvenance,
+    pub captures: Vec<SurfaceProvenance>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExposureAbManifest {
+    pub schema: &'static str,
+    pub production_exposure_scale: f32,
+    pub exposure_illum_relative: f32,
+    pub variants: Vec<ExposureVariantProvenance>,
+}
+
+impl ExposureAbManifest {
+    pub fn write(&self, directory: &Path) -> anyhow::Result<()> {
+        let json =
+            serde_json::to_vec_pretty(self).context("Failed to serialize exposure A/B manifest")?;
+        fs::write(directory.join("manifest.json"), json)
+            .context("Failed to write exposure A/B manifest")
+    }
+}
+
 impl ProvenanceManifest {
     pub fn write(&self, directory: &Path) -> anyhow::Result<()> {
         let json =
@@ -62,6 +90,7 @@ pub fn capture_surface(
     cmd: &CommandList,
     surface: &Surface,
     directory: &Path,
+    clear_value: Option<[f32; 4]>,
 ) -> anyhow::Result<SurfaceProvenance> {
     fs::create_dir_all(directory).context("Failed to create provenance directory")?;
 
@@ -102,7 +131,7 @@ pub fn capture_surface(
     let filename = format!("{}.bin", surface.name());
     fs::write(directory.join(&filename), &bytes)
         .with_context(|| format!("Failed to write provenance capture {filename}"))?;
-    let stats = compute_stats(format, &bytes)?;
+    let stats = compute_stats(format, &bytes, clear_value)?;
 
     Ok(SurfaceProvenance {
         surface: surface.name().to_owned(),
@@ -117,12 +146,18 @@ pub fn capture_surface(
         resource_format: format!("{format:?}"),
         width: desc.width,
         height: desc.height,
+        statistics_encoding: if surface.desc().view_format == dxgi::Format::R8g8b8a8UnormSrgb {
+            "srgb_encoded_raw"
+        } else {
+            "linear"
+        },
         finite_pixel_count: stats.finite_pixel_count,
         nonzero_rgb_pixel_count: stats.nonzero_rgb_pixel_count,
         minimum_rgb: stats.minimum_rgb,
         maximum_rgb: stats.maximum_rgb,
         mean_rgb: stats.mean_rgb,
         nonzero_alpha_count: stats.nonzero_alpha_count,
+        pixels_different_from_clear_value: stats.pixels_different_from_clear_value,
         sha256: format!("{:x}", Sha256::digest(&bytes)),
     })
 }
@@ -135,14 +170,22 @@ struct PixelStats {
     maximum_rgb: Option<[f64; 3]>,
     mean_rgb: Option<[f64; 3]>,
     nonzero_alpha_count: Option<u64>,
+    pixels_different_from_clear_value: Option<u64>,
 }
 
-fn compute_stats(format: dxgi::Format, bytes: &[u8]) -> anyhow::Result<PixelStats> {
+fn compute_stats(
+    format: dxgi::Format,
+    bytes: &[u8],
+    clear_value: Option<[f32; 4]>,
+) -> anyhow::Result<PixelStats> {
     let bytes_per_pixel = bytes_per_pixel(format)?;
     if !bytes.len().is_multiple_of(bytes_per_pixel) {
         bail!("Capture byte length is not aligned to format {format:?}");
     }
 
+    let quantized_clear = clear_value
+        .map(|clear| quantize_clear_rgb(format, clear))
+        .transpose()?;
     let has_alpha = format_has_alpha(format);
     let mut finite_pixel_count = 0u64;
     let mut nonzero_rgb_pixel_count = 0u64;
@@ -150,9 +193,13 @@ fn compute_stats(format: dxgi::Format, bytes: &[u8]) -> anyhow::Result<PixelStat
     let mut minimum_rgb = [f64::INFINITY; 3];
     let mut maximum_rgb = [f64::NEG_INFINITY; 3];
     let mut sum_rgb = [0.0f64; 3];
+    let mut pixels_different_from_clear_value = 0u64;
 
     for encoded in bytes.chunks_exact(bytes_per_pixel) {
         let [r, g, b, a] = decode_pixel(format, encoded)?;
+        if quantized_clear.is_some_and(|clear| [r, g, b] != clear) {
+            pixels_different_from_clear_value += 1;
+        }
         if (r.is_finite() && r != 0.0) || (g.is_finite() && g != 0.0) || (b.is_finite() && b != 0.0)
         {
             nonzero_rgb_pixel_count += 1;
@@ -188,9 +235,55 @@ fn compute_stats(format: dxgi::Format, bytes: &[u8]) -> anyhow::Result<PixelStat
         maximum_rgb,
         mean_rgb,
         nonzero_alpha_count: has_alpha.then_some(nonzero_alpha_count),
+        pixels_different_from_clear_value: quantized_clear
+            .map(|_| pixels_different_from_clear_value),
     })
 }
 
+fn quantize_clear_rgb(format: dxgi::Format, clear: [f32; 4]) -> anyhow::Result<[f32; 3]> {
+    match format {
+        dxgi::Format::R11g11b10Float => Ok([
+            decode_unsigned_float(encode_unsigned_float(clear[0], 6), 6),
+            decode_unsigned_float(encode_unsigned_float(clear[1], 6), 6),
+            decode_unsigned_float(encode_unsigned_float(clear[2], 5), 5),
+        ]),
+        _ => bail!("Clear-value statistics are unsupported for format {format:?}"),
+    }
+}
+
+fn encode_unsigned_float(value: f32, mantissa_bits: u32) -> u32 {
+    if !value.is_finite() {
+        return if value.is_nan() {
+            (31 << mantissa_bits) | 1
+        } else {
+            31 << mantissa_bits
+        };
+    }
+    if value <= 0.0 {
+        return 0;
+    }
+
+    let mantissa_scale = (1u32 << mantissa_bits) as f32;
+    let exponent = value.log2().floor() as i32;
+    if exponent < -14 {
+        return (value * 2f32.powi(14) * mantissa_scale).round() as u32;
+    }
+    if exponent > 15 {
+        return 31 << mantissa_bits;
+    }
+
+    let mut biased_exponent = (exponent + 15) as u32;
+    let mut mantissa = ((value / 2f32.powi(exponent) - 1.0) * mantissa_scale).round() as u32;
+    if mantissa == 1 << mantissa_bits {
+        biased_exponent += 1;
+        mantissa = 0;
+    }
+    if biased_exponent >= 31 {
+        31 << mantissa_bits
+    } else {
+        (biased_exponent << mantissa_bits) | mantissa
+    }
+}
 fn bytes_per_pixel(format: dxgi::Format) -> anyhow::Result<usize> {
     match format {
         dxgi::Format::R8g8b8a8Typeless
@@ -299,8 +392,12 @@ mod tests {
 
     #[test]
     fn computes_unorm_statistics_and_alpha_count() {
-        let stats =
-            compute_stats(dxgi::Format::R8g8b8a8Unorm, &[0, 0, 0, 0, 255, 128, 0, 255]).unwrap();
+        let stats = compute_stats(
+            dxgi::Format::R8g8b8a8Unorm,
+            &[0, 0, 0, 0, 255, 128, 0, 255],
+            None,
+        )
+        .unwrap();
         assert_eq!(stats.finite_pixel_count, 2);
         assert_eq!(stats.nonzero_rgb_pixel_count, 1);
         assert_eq!(stats.minimum_rgb, Some([0.0; 3]));
@@ -309,6 +406,7 @@ mod tests {
             Some([1.0, (128.0f32 / 255.0) as f64, 0.0])
         );
         assert_eq!(stats.nonzero_alpha_count, Some(1));
+        assert_eq!(stats.pixels_different_from_clear_value, None);
     }
 
     #[test]
@@ -332,5 +430,26 @@ mod tests {
         )
         .unwrap();
         assert_eq!(pixel, [1.0, 1.0, 1.0, 0.0]);
+    }
+
+    #[test]
+    fn counts_pixels_different_from_r11_clear_value() {
+        let clear = [
+            encode_unsigned_float(0.001, 6),
+            encode_unsigned_float(0.001, 6),
+            encode_unsigned_float(0.001, 5),
+        ];
+        let packed_clear = clear[0] | (clear[1] << 11) | (clear[2] << 22);
+        let brighter = encode_unsigned_float(0.25, 6) | (clear[1] << 11) | (clear[2] << 22);
+        let bytes = [packed_clear.to_le_bytes(), brighter.to_le_bytes()].concat();
+
+        let stats = compute_stats(
+            dxgi::Format::R11g11b10Float,
+            &bytes,
+            Some([0.001, 0.001, 0.001, 0.0]),
+        )
+        .unwrap();
+
+        assert_eq!(stats.pixels_different_from_clear_value, Some(1));
     }
 }
