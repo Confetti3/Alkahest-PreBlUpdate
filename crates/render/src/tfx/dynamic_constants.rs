@@ -1,18 +1,24 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc, LazyLock,
+    atomic::{AtomicU8, Ordering},
+};
 
 use ahash::AHashMap;
-use alkahest_data::tfx::{ExternIndex, SDynamicConstants, ShaderStage, shadowkeep::SShadowkeepDynamicConstants};
+use alkahest_data::tfx::{
+    ExternIndex, SDynamicConstants, ShaderStage, shadowkeep::SShadowkeepDynamicConstants,
+};
 use anyhow::Context;
 use glam::Vec4;
 use itertools::Itertools;
 use tiger_pkg::{TagHash, package_manager};
 
+use parking_lot::Mutex;
+
 use super::expression_vm::{self, interpreter::InterpreterState};
 use crate::{
     Gpu,
     asset::{
-        AssetManager,
-        Handle,
+        AssetManager, Handle,
         texture::{Texture, load_sampler},
     },
     gpu::{
@@ -25,6 +31,16 @@ use crate::{
     },
 };
 
+static EXPRESSION_FAILURE_COUNTS: LazyLock<Mutex<AHashMap<(TagHash, TagHash, u8, usize), u64>>> =
+    LazyLock::new(|| Mutex::new(AHashMap::new()));
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExpressionEvaluationResult {
+    NotPresent,
+    NotEvaluated,
+    Succeeded,
+    Failed,
+}
 /// Holds all dynamically bound resources for a shader
 pub struct DynamicConstants {
     pub textures: Vec<(u32, Option<Handle<Texture>>)>,
@@ -45,6 +61,7 @@ pub struct DynamicConstants {
 
     /// Indicates if the expression bytecode writes to the constant buffer. If this is false, then the cbuffer is not mapped for writing.
     pub writes_cbuffer: bool,
+    expression_evaluation_result: AtomicU8,
 }
 
 impl DynamicConstants {
@@ -86,12 +103,7 @@ impl DynamicConstants {
             textures: constants
                 .textures
                 .iter()
-                .map(|tex| {
-                    (
-                        tex.slot,
-                        asset_manager.try_load(tex.texture.hash32()),
-                    )
-                })
+                .map(|tex| (tex.slot, asset_manager.try_load(tex.texture.hash32())))
                 .collect(),
             fallback_texture: gpu.placeholder_white.view.clone(),
             samplers: constants
@@ -115,6 +127,7 @@ impl DynamicConstants {
             initial_constants,
 
             writes_cbuffer,
+            expression_evaluation_result: AtomicU8::new(0),
         })
     }
 
@@ -138,7 +151,11 @@ impl DynamicConstants {
         } else if constants.inline_constants.is_empty() {
             (vec![], None)
         } else {
-            let cb = ConstantBuffer::create_array(gpu, constants.inline_constants.len(), Some(&constants.inline_constants))?;
+            let cb = ConstantBuffer::create_array(
+                gpu,
+                constants.inline_constants.len(),
+                Some(&constants.inline_constants),
+            )?;
             (constants.inline_constants.clone(), Some(cb))
         };
 
@@ -172,6 +189,7 @@ impl DynamicConstants {
             bytecode_constants: constants.bytecode_constants.clone(),
             initial_constants,
             writes_cbuffer,
+            expression_evaluation_result: AtomicU8::new(0),
         })
     }
 
@@ -184,6 +202,8 @@ impl DynamicConstants {
         technique_hash: TagHash,
         shader_hash: TagHash,
     ) -> anyhow::Result<()> {
+        self.expression_evaluation_result
+            .store(0, Ordering::Relaxed);
         if self.writes_cbuffer {
             if let Some(ref cbuffer) = self.cbuffer {
                 let map = unsafe {
@@ -238,6 +258,19 @@ impl DynamicConstants {
             &self.samplers,
             output.unwrap_or(&mut []),
         ) {
+            self.expression_evaluation_result
+                .store(2, Ordering::Relaxed);
+            let failure_key = (technique_hash, shader_hash, stage as u8, interpreter.ip);
+            let is_first_failure = {
+                let mut counts = EXPRESSION_FAILURE_COUNTS.lock();
+                let count = counts.entry(failure_key).or_insert(0);
+                *count += 1;
+                *count == 1
+            };
+            if !is_first_failure {
+                return;
+            }
+
             let raw_opcode = self.bytecode.get(interpreter.ip).copied();
             let (extern_index, extern_offset) =
                 match raw_opcode.and_then(|raw| Opcode::try_from(raw).ok()) {
@@ -275,7 +308,26 @@ impl DynamicConstants {
                 }
             };
             debug!("Bytecode:\n{}", bytecode_listing);
+        } else {
+            self.expression_evaluation_result
+                .store(1, Ordering::Relaxed);
         }
+    }
+
+    pub fn expression_evaluation_result(&self) -> ExpressionEvaluationResult {
+        if self.bytecode.is_empty() {
+            return ExpressionEvaluationResult::NotPresent;
+        }
+        match self.expression_evaluation_result.load(Ordering::Relaxed) {
+            0 => ExpressionEvaluationResult::NotEvaluated,
+            1 => ExpressionEvaluationResult::Succeeded,
+            2 => ExpressionEvaluationResult::Failed,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn constant_buffer_len(&self) -> usize {
+        self.cbuffer.as_ref().map_or(0, |buffer| buffer.size() / 16)
     }
 
     #[profiling::function]
@@ -390,14 +442,25 @@ fn translate_shadowkeep_bytecode(source: &[u8]) -> anyhow::Result<Vec<u8>> {
             0x4b => (Opcode::PushGlobalChannelVector as u8, 2),
             0x4c => (0x5b, 2),
             0x4d | 0x4e => (Opcode::PushGlobalChannelVector as u8, 2),
-            _ => anyhow::bail!("unsupported Shadowkeep expression opcode 0x{legacy:02X} at 0x{cursor:X}"),
+            _ => anyhow::bail!(
+                "unsupported Shadowkeep expression opcode 0x{legacy:02X} at 0x{cursor:X}"
+            ),
         };
         let end = cursor + size;
-        anyhow::ensure!(end <= source.len(), "truncated Shadowkeep expression opcode 0x{legacy:02X} at 0x{cursor:X}");
+        anyhow::ensure!(
+            end <= source.len(),
+            "truncated Shadowkeep expression opcode 0x{legacy:02X} at 0x{cursor:X}"
+        );
         translated.push(current);
         if (0x3c..=0x41).contains(&legacy) {
-            let extern_index = alkahest_data::tfx::shadowkeep::decode_extern_index(source[cursor + 1])
-                .with_context(|| format!("invalid Shadowkeep extern index {} at 0x{cursor:X}", source[cursor + 1]))?;
+            let extern_index =
+                alkahest_data::tfx::shadowkeep::decode_extern_index(source[cursor + 1])
+                    .with_context(|| {
+                        format!(
+                            "invalid Shadowkeep extern index {} at 0x{cursor:X}",
+                            source[cursor + 1]
+                        )
+                    })?;
             let mut offset = source[cursor + 2];
             match (extern_index, legacy) {
                 // Arrivals' Deferred texture block begins at 0x38. The
@@ -405,7 +468,9 @@ fn translate_shadowkeep_bytecode(source: &[u8]) -> anyhow::Result<Vec<u8>> {
                 // operands move by eight 8-byte slots. Scalar 0x30 became
                 // normalized scalar 0x70 and moves by sixteen 4-byte slots.
                 (ExternIndex::Deferred, 0x3f | 0x41) => {
-                    offset = offset.checked_add(8).context("Shadowkeep Deferred texture offset overflow")?;
+                    offset = offset
+                        .checked_add(8)
+                        .context("Shadowkeep Deferred texture offset overflow")?;
                 }
                 (ExternIndex::Deferred, 0x3c) if offset == 0x0c => {
                     offset = 0x1c;
@@ -417,7 +482,9 @@ fn translate_shadowkeep_bytecode(source: &[u8]) -> anyhow::Result<Vec<u8>> {
                 (ExternIndex::View, 0x3e)
                     if matches!(offset, 0x06 | 0x0A | 0x0E | 0x12 | 0x1E | 0x26) =>
                 {
-                    offset = offset.checked_add(2).context("Shadowkeep View matrix offset overflow")?;
+                    offset = offset
+                        .checked_add(2)
+                        .context("Shadowkeep View matrix offset overflow")?;
                 }
                 _ => {}
             }

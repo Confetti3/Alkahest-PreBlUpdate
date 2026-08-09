@@ -9,7 +9,7 @@ pub mod sun_shadows;
 pub mod transparent;
 pub mod water;
 
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, path::Path, sync::Arc};
 
 use alkahest_core::convar::ConVars;
 use alkahest_data::tfx::{
@@ -17,7 +17,10 @@ use alkahest_data::tfx::{
 };
 use glam::{Mat4, Vec4, vec4};
 
-use super::Renderer;
+use super::{
+    Renderer,
+    provenance::{DeferredShadingProvenance, ProvenanceManifest, capture_surface},
+};
 use crate::{
     camera::Camera,
     cmd_event_span,
@@ -111,7 +114,9 @@ impl Renderer {
         // immediate context. Its scopes and techniques mutate shared binding
         // state, so routing that work through the post-BL deferred-command
         // path can produce an empty G-buffer even when every asset is ready.
-        let geo = if self.era() == crate::renderer::RendererEra::Current && view.settings.multithreading {
+        let geo = if self.era() == crate::renderer::RendererEra::Current
+            && view.settings.multithreading
+        {
             Some(self.submit_geometry_command_lists(cmd, view))
         } else {
             None
@@ -456,7 +461,10 @@ impl Renderer {
                 DebugPipeline::Overdraw => self.submit_shadowkeep_geometry_preview(cmd, view),
                 _ => unreachable!(),
             }
-            if !matches!(pipeline, DebugPipeline::LightDiffuse | DebugPipeline::LightSpecular) {
+            if !matches!(
+                pipeline,
+                DebugPipeline::LightDiffuse | DebugPipeline::LightSpecular
+            ) {
                 return;
             }
         }
@@ -497,10 +505,7 @@ impl Renderer {
         let diffuse = view.surfaces.get(view.lighting.light_diffuse);
         let specular = view.surfaces.get(view.lighting.light_specular);
         cmd.rasterizer_set_viewports(&[diffuse.viewport()]);
-        cmd.output_merger_set_render_targets(
-            &[diffuse.rtv.as_ref(), specular.rtv.as_ref()],
-            None,
-        );
+        cmd.output_merger_set_render_targets(&[diffuse.rtv.as_ref(), specular.rtv.as_ref()], None);
         cmd.state = PipelineState::new(Some(8), Some(0), Some(2), Some(2));
         cmd.flush_states();
         self.submit_stage(
@@ -512,10 +517,7 @@ impl Renderer {
 
         let diffuse = view.surfaces.get(view.lighting.light_diffuse);
         let specular = view.surfaces.get(view.lighting.light_specular);
-        cmd.output_merger_set_render_targets(
-            &[diffuse.rtv.as_ref(), specular.rtv.as_ref()],
-            None,
-        );
+        cmd.output_merger_set_render_targets(&[diffuse.rtv.as_ref(), specular.rtv.as_ref()], None);
         if wants_global_lighting {
             cmd.state = PipelineState::new(Some(8), Some(0), Some(0), Some(0));
             self.execute_shadowkeep_global_pipeline(
@@ -525,7 +527,10 @@ impl Renderer {
             );
         }
 
-        if matches!(debug_pipeline, Some(DebugPipeline::LightDiffuse | DebugPipeline::LightSpecular)) {
+        if matches!(
+            debug_pipeline,
+            Some(DebugPipeline::LightDiffuse | DebugPipeline::LightSpecular)
+        ) {
             let source = if matches!(debug_pipeline, Some(DebugPipeline::LightDiffuse)) {
                 view.lighting.light_diffuse
             } else {
@@ -534,12 +539,37 @@ impl Renderer {
             self.blit_surface(cmd, source, view.output, true, "shadowkeep/debug_light");
             return;
         }
+        let capture_provenance = ConVars::get_flag("render.shadowkeep_buffer_provenance");
+        if capture_provenance {
+            let _ = ConVars::set("render.shadowkeep_buffer_provenance", false.into());
+        }
+        let provenance_directory = Path::new("artifacts/shadowkeep-buffer-provenance");
+        let mut provenance_captures = Vec::new();
+        if capture_provenance {
+            for handle in [
+                view.gbuffers.albedo,
+                view.gbuffers.normal,
+                view.gbuffers.third,
+                view.gbuffers.depth,
+                view.lighting.light_diffuse,
+                view.lighting.light_specular,
+            ] {
+                match capture_surface(cmd, view.surfaces.get(handle), provenance_directory) {
+                    Ok(capture) => provenance_captures.push(capture),
+                    Err(error) => error!(
+                        surface = view.surfaces.get(handle).name(),
+                        error = ?error,
+                        "Failed to capture Shadowkeep buffer provenance"
+                    ),
+                }
+            }
+        }
 
         self.clear_surface(cmd, view.shading_result, [0.0, 0.0, 0.0, 1.0]);
         self.bind_surfaces(cmd, &[view.shading_result], None);
         cmd.output_merger_set_depth_stencil_state(None, 0);
         cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
-        self.execute_shadowkeep_global_pipeline(
+        let deferred_draw_reached = self.execute_shadowkeep_global_pipeline(
             cmd,
             &pipelines.deferred_shading_no_atm,
             "shadowkeep/deferred_shading_no_atm",
@@ -552,6 +582,99 @@ impl Renderer {
             true,
             "shadowkeep/final_shading",
         );
+
+        if capture_provenance {
+            for handle in [view.shading_result, view.output] {
+                match capture_surface(cmd, view.surfaces.get(handle), provenance_directory) {
+                    Ok(capture) => provenance_captures.push(capture),
+                    Err(error) => error!(
+                        surface = view.surfaces.get(handle).name(),
+                        error = ?error,
+                        "Failed to capture Shadowkeep buffer provenance"
+                    ),
+                }
+            }
+            let deferred_srvs = vec![
+                format!(
+                    "deferred_depth -> {} proxy",
+                    view.surfaces.get(view.gbuffers.depth).name()
+                ),
+                format!(
+                    "deferred_rt0 -> {}",
+                    view.surfaces.get(view.gbuffers.albedo).name()
+                ),
+                format!(
+                    "deferred_rt1 -> {}",
+                    view.surfaces.get(view.gbuffers.normal).name()
+                ),
+                format!(
+                    "deferred_rt2 -> {}",
+                    view.surfaces.get(view.gbuffers.third).name()
+                ),
+                format!(
+                    "light_diffuse -> {}",
+                    view.surfaces.get(view.lighting.light_diffuse).name()
+                ),
+                format!(
+                    "light_specular -> {}",
+                    view.surfaces.get(view.lighting.light_specular).name()
+                ),
+                format!(
+                    "light_specular_ibl -> {}",
+                    view.surfaces.get(view.lighting.light_specular_ibl).name()
+                ),
+            ];
+            let vertex = pipelines.deferred_shading_no_atm.stage_vertex.as_ref();
+            let pixel = pipelines.deferred_shading_no_atm.stage_pixel.as_ref();
+            let deferred_shading = DeferredShadingProvenance {
+                technique: pipelines.deferred_shading_no_atm.hash.to_string(),
+                vertex_shader: vertex.map(|stage| stage.shader.shader.to_string()),
+                pixel_shader: pixel.map(|stage| stage.shader.shader.to_string()),
+                draw_6_reached: deferred_draw_reached,
+                vertex_expression: vertex.map(|stage| {
+                    format!(
+                        "{:?}",
+                        stage.dynamic_constants.expression_evaluation_result()
+                    )
+                }),
+                pixel_expression: pixel.map(|stage| {
+                    format!(
+                        "{:?}",
+                        stage.dynamic_constants.expression_evaluation_result()
+                    )
+                }),
+                vertex_constant_buffer_slot: vertex
+                    .map(|stage| stage.dynamic_constants.cbuffer_slot),
+                vertex_constant_buffer_len: vertex
+                    .map(|stage| stage.dynamic_constants.constant_buffer_len()),
+                pixel_constant_buffer_slot: pixel.map(|stage| stage.dynamic_constants.cbuffer_slot),
+                pixel_constant_buffer_len: pixel
+                    .map(|stage| stage.dynamic_constants.constant_buffer_len()),
+                bound_deferred_srvs: deferred_srvs,
+                output_rtv_format: format!(
+                    "{:?}",
+                    view.surfaces.get(view.shading_result).desc().view_format
+                ),
+            };
+            info!(
+                diagnostic = ?deferred_shading,
+                "Shadowkeep deferred shading provenance"
+            );
+            let manifest = ProvenanceManifest {
+                schema: "alkahest-shadowkeep-buffer-provenance/v1",
+                deferred_shading,
+                captures: provenance_captures,
+            };
+            if let Err(error) = manifest.write(provenance_directory) {
+                error!(error = ?error, "Failed to write Shadowkeep provenance manifest");
+            } else {
+                info!(
+                    path = %provenance_directory.join("manifest.json").display(),
+                    capture_count = manifest.captures.len(),
+                    "Wrote Shadowkeep buffer provenance"
+                );
+            }
+        }
     }
 
     /// Arrivals fullscreen techniques use a six-vertex strip. The shared
@@ -562,15 +685,16 @@ impl Renderer {
         cmd: &mut CommandList,
         pipeline: &Technique,
         name: &str,
-    ) {
+    ) -> bool {
         cmd_event_span!(cmd, &format!("[{name}]"));
         if let Err(error) = pipeline.bind(cmd) {
             error!("Failed to run {name}: {error}");
-            return;
+            return false;
         }
         cmd.flush_states();
         cmd.set_input_topology(PrimitiveType::TriangleStrip);
         cmd.draw(6, 0);
+        true
     }
 
     fn submit_shadowkeep_geometry_preview(&self, cmd: &mut CommandList, view: &MainView) {
@@ -786,46 +910,46 @@ impl Renderer {
                 .scopes
                 .transparent_advanced
                 .write_initial_constants(
-                cmd,
-                &[
-                    vec4(0.00227, 0.00896, 0.32782, 0.6419),
-                    vec4(0.0026, 4.86115, 0.00198, 0.00002),
-                    vec4(0.9158, 233.93063, 0.51102, 0.08905),
-                    vec4(147.09909, 0.55492, 0.52397, 0.00),
-                    vec4(0.00, 0.64794, 0.14063, 0.01563),
-                    Vec4::ZERO, // vec4(0.58584, 0.58584, 0.58584, 0.58584),
-                    vec4(1.38137, 2.08133, 0.85451, 0.4165),
-                    vec4(0.90933, 0.90933, 0.90933, 0.90933),
-                    vec4(132.92885, 66.40444, 56.85342, 0.00),
-                    vec4(132.92885, 66.40444, 1000.00, 0.0001),
-                    vec4(131.92885, 65.40444, 55.85342, 0.67843),
-                    vec4(131.92885, 65.40444, 999.00, 5.50),
-                    vec4(0.00, 0.50, 25.57599, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.025, 10000.00, -9999.00, 1.00),
-                    vec4(1.00, 1.00, 1.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(10.92799, 7.10136, 6.25467, 0.00),
-                    vec4(0.00376, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00753, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.01759, 0.00),
-                    vec4(-1.13485, 6.87303, -0.33715, 1.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(0.00, 0.00, 0.00, 0.00),
-                    vec4(1.00, 0.00, 0.00, 0.00),
-                ],
+                    cmd,
+                    &[
+                        vec4(0.00227, 0.00896, 0.32782, 0.6419),
+                        vec4(0.0026, 4.86115, 0.00198, 0.00002),
+                        vec4(0.9158, 233.93063, 0.51102, 0.08905),
+                        vec4(147.09909, 0.55492, 0.52397, 0.00),
+                        vec4(0.00, 0.64794, 0.14063, 0.01563),
+                        Vec4::ZERO, // vec4(0.58584, 0.58584, 0.58584, 0.58584),
+                        vec4(1.38137, 2.08133, 0.85451, 0.4165),
+                        vec4(0.90933, 0.90933, 0.90933, 0.90933),
+                        vec4(132.92885, 66.40444, 56.85342, 0.00),
+                        vec4(132.92885, 66.40444, 1000.00, 0.0001),
+                        vec4(131.92885, 65.40444, 55.85342, 0.67843),
+                        vec4(131.92885, 65.40444, 999.00, 5.50),
+                        vec4(0.00, 0.50, 25.57599, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.025, 10000.00, -9999.00, 1.00),
+                        vec4(1.00, 1.00, 1.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(10.92799, 7.10136, 6.25467, 0.00),
+                        vec4(0.00376, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00753, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.01759, 0.00),
+                        vec4(-1.13485, 6.87303, -0.33715, 1.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(0.00, 0.00, 0.00, 0.00),
+                        vec4(1.00, 0.00, 0.00, 0.00),
+                    ],
                 )
                 .expect("Failed to write transparent_advanced initial constants");
         }

@@ -1,9 +1,10 @@
 pub mod autoexposure;
 pub mod globals;
 pub mod hzb;
+pub mod provenance;
+pub mod shadowkeep;
 pub mod submit;
 pub mod surface;
-pub mod shadowkeep;
 pub mod util;
 pub mod visibility;
 
@@ -137,6 +138,7 @@ impl Renderer {
     {
         ConVars::register("render.sky", true);
         ConVars::register("render.global_lighting", false);
+        ConVars::register("render.shadowkeep_buffer_provenance", false);
         ConVars::register("render.threaded_submit", true);
         ConVars::register("render.patch_light_shader", false);
         ConVars::register("render.vertex_ao_workaround", true);
@@ -184,7 +186,8 @@ impl Renderer {
             RendererEra::Current => AssetManager::new(&gpu),
             RendererEra::Shadowkeep => AssetManager::new_shadowkeep(&gpu),
         };
-        let globals = load_globals(&gpu, &asset_manager).context("Failed to load render globals")?;
+        let globals =
+            load_globals(&gpu, &asset_manager).context("Failed to load render globals")?;
         Ok(Self {
             externs: ThreadMutCell::new(Externs::new(&globals)),
             globals,
