@@ -18,6 +18,8 @@ pub struct SurfaceProvenance {
     pub height: u32,
     pub statistics_encoding: &'static str,
     pub finite_pixel_count: u64,
+    pub non_finite_pixel_count: u64,
+    pub clipped_or_saturated_pixel_count: u64,
     pub nonzero_rgb_pixel_count: u64,
     pub minimum_rgb: Option<[f64; 3]>,
     pub maximum_rgb: Option<[f64; 3]>,
@@ -54,9 +56,45 @@ pub struct ShadowkeepLightingProvenance {
     pub assets_loading: usize,
     pub assets_failed: usize,
     pub assets_using_fallback: usize,
-    pub lighting_apply_submissions: usize,
+    pub lighting_apply_stage_submitted: bool,
     pub deferred_light_draw_indexed_calls: usize,
     pub local_light_technique_hashes: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GlobalLightingExternRead {
+    pub extern_index: String,
+    pub value_type: String,
+    pub byte_offset: u32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GlobalLightingChannelValue {
+    pub index: u8,
+    pub value: [f32; 4],
+}
+
+#[derive(Debug, Serialize)]
+pub struct GlobalLightingDependencyStage {
+    pub stage: String,
+    pub shader: String,
+    pub translated_expression_disassembly: String,
+    pub push_global_channel_vector_values: Vec<GlobalLightingChannelValue>,
+    pub push_global_channel_vector_indices: Vec<u8>,
+    pub extern_reads: Vec<GlobalLightingExternRead>,
+    pub constant_buffer_slot: u32,
+    pub constant_buffer_len: usize,
+    pub sampler_slots: Vec<usize>,
+    pub texture_slots: Vec<u32>,
+    pub expression_evaluation_result: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GlobalLightingDependencyManifest {
+    pub schema: &'static str,
+    pub technique: String,
+    pub draw_6_reached: bool,
+    pub stages: Vec<GlobalLightingDependencyStage>,
 }
 
 
@@ -74,6 +112,25 @@ pub struct FinalCombineProvenance {
     pub pixel_constant_buffer_len: Option<usize>,
     pub bound_input_srv: String,
     pub output_rtv_format: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct GlobalLightingExternValue {
+    pub byte_offset: u32,
+    pub value: [f32; 4],
+}
+
+#[derive(Debug, Serialize)]
+pub struct GlobalLightingAbManifest {
+    pub schema: &'static str,
+    pub global_lighting_enabled: bool,
+    pub global_lighting_draw_6_reached: bool,
+    pub global_lighting_stage_status: Vec<String>,
+    pub positional_channel_values: Vec<GlobalLightingChannelValue>,
+    pub extern_values: Vec<GlobalLightingExternValue>,
+    pub before_global_lighting: Vec<SurfaceProvenance>,
+    pub after_global_lighting: Vec<SurfaceProvenance>,
+    pub after_final_shading: Vec<SurfaceProvenance>,
 }
 
 #[derive(Debug, Serialize)]
@@ -131,6 +188,26 @@ impl ProvenanceManifest {
             serde_json::to_vec_pretty(self).context("Failed to serialize provenance manifest")?;
         fs::write(directory.join("manifest.json"), json)
             .context("Failed to write provenance manifest")
+    }
+}
+
+impl GlobalLightingDependencyManifest {
+    pub fn write(&self, directory: &Path) -> anyhow::Result<()> {
+        fs::create_dir_all(directory).context("Failed to create global-lighting manifest directory")?;
+        let json = serde_json::to_vec_pretty(self)
+            .context("Failed to serialize global-lighting dependency manifest")?;
+        fs::write(directory.join("manifest.json"), json)
+            .context("Failed to write global-lighting dependency manifest")
+    }
+}
+
+impl GlobalLightingAbManifest {
+    pub fn write(&self, directory: &Path) -> anyhow::Result<()> {
+        fs::create_dir_all(directory).context("Failed to create global-lighting A/B directory")?;
+        let json = serde_json::to_vec_pretty(self)
+            .context("Failed to serialize global-lighting A/B manifest")?;
+        fs::write(directory.join("manifest.json"), json)
+            .context("Failed to write global-lighting A/B manifest")
     }
 }
 
@@ -203,6 +280,8 @@ pub fn capture_surface(
             }
         }),
         finite_pixel_count: stats.finite_pixel_count,
+        non_finite_pixel_count: stats.non_finite_pixel_count,
+        clipped_or_saturated_pixel_count: stats.clipped_or_saturated_pixel_count,
         nonzero_rgb_pixel_count: stats.nonzero_rgb_pixel_count,
         minimum_rgb: stats.minimum_rgb,
         maximum_rgb: stats.maximum_rgb,
@@ -216,6 +295,8 @@ pub fn capture_surface(
 #[derive(Debug, PartialEq)]
 struct PixelStats {
     finite_pixel_count: u64,
+    non_finite_pixel_count: u64,
+    clipped_or_saturated_pixel_count: u64,
     nonzero_rgb_pixel_count: u64,
     minimum_rgb: Option<[f64; 3]>,
     maximum_rgb: Option<[f64; 3]>,
@@ -239,6 +320,8 @@ fn compute_stats(
         .transpose()?;
     let has_alpha = format_has_alpha(format);
     let mut finite_pixel_count = 0u64;
+    let mut non_finite_pixel_count = 0u64;
+    let mut clipped_or_saturated_pixel_count = 0u64;
     let mut nonzero_rgb_pixel_count = 0u64;
     let mut nonzero_alpha_count = 0u64;
     let mut minimum_rgb = [f64::INFINITY; 3];
@@ -251,12 +334,20 @@ fn compute_stats(
         if quantized_clear.is_some_and(|clear| [r, g, b] != clear) {
             pixels_different_from_clear_value += 1;
         }
-        if (r.is_finite() && r != 0.0) || (g.is_finite() && g != 0.0) || (b.is_finite() && b != 0.0)
+        if (r.is_finite() && r != 0.0)
+            || (g.is_finite() && g != 0.0)
+            || (b.is_finite() && b != 0.0)
         {
             nonzero_rgb_pixel_count += 1;
         }
         if has_alpha && a.is_finite() && a != 0.0 {
             nonzero_alpha_count += 1;
+        }
+        if [r, g, b]
+            .into_iter()
+            .any(|value| !value.is_finite() || value >= 1.0)
+        {
+            clipped_or_saturated_pixel_count += 1;
         }
         if r.is_finite() && g.is_finite() && b.is_finite() {
             finite_pixel_count += 1;
@@ -266,6 +357,8 @@ fn compute_stats(
                 maximum_rgb[index] = maximum_rgb[index].max(value);
                 sum_rgb[index] += value;
             }
+        } else {
+            non_finite_pixel_count += 1;
         }
     }
 
@@ -281,6 +374,8 @@ fn compute_stats(
 
     Ok(PixelStats {
         finite_pixel_count,
+        non_finite_pixel_count,
+        clipped_or_saturated_pixel_count,
         nonzero_rgb_pixel_count,
         minimum_rgb,
         maximum_rgb,
@@ -502,5 +597,20 @@ mod tests {
         .unwrap();
 
         assert_eq!(stats.pixels_different_from_clear_value, Some(1));
+    }
+    #[test]
+    fn counts_non_finite_and_saturated_rgb_pixels() {
+        let stats = compute_stats(
+            dxgi::Format::R16g16b16a16Float,
+            &[
+                0x00, 0x3c, 0x00, 0x3c, 0x00, 0x3c, 0x00, 0x3c,
+                0x00, 0x7c, 0x00, 0x3c, 0x00, 0x3c, 0x00, 0x3c,
+            ],
+            None,
+        )
+        .unwrap();
+        assert_eq!(stats.finite_pixel_count, 1);
+        assert_eq!(stats.non_finite_pixel_count, 1);
+        assert_eq!(stats.clipped_or_saturated_pixel_count, 2);
     }
 }

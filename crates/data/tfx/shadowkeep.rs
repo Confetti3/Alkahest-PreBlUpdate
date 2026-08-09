@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use anyhow::Context;
+use anyhow::{Context, ensure};
 use glam::Vec4;
 use tiger_parse::{
     Endian, NullString, PackageManagerExt, Pointer, TigerReadable, TigerReader, tiger_type,
@@ -420,6 +420,230 @@ pub fn global_channel_defaults() -> [Vec4; 256] {
     channels
 }
 
+/// The Arrivals channel-default tag contains three Tiger vectors after its
+/// file-size field: 153 channel hashes, 153 positional Vec4 defaults, and a
+/// five-u32 auxiliary array. Each descriptor is a u64 count plus a signed
+/// pointer relative to the pointer field itself. Each target repeats the count
+/// and carries an eight-byte element header before its payload.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShadowkeepChannelDefaults {
+    pub declared_file_size: u64,
+    pub header_size: usize,
+    pub hash_descriptor_offset: usize,
+    pub value_descriptor_offset: usize,
+    pub auxiliary_descriptor_offset: usize,
+    pub hash_array_offset: usize,
+    pub value_array_offset: usize,
+    pub auxiliary_array_offset: usize,
+    pub array_count: usize,
+    pub auxiliary_count: usize,
+    pub hash_element_header: [u8; 8],
+    pub value_element_header: [u8; 8],
+    pub auxiliary_element_header: [u8; 8],
+    pub channel_hashes: Vec<u32>,
+    pub values: Vec<Vec4>,
+    pub auxiliary_fields: Vec<u32>,
+    pub interstitial_bytes: Vec<u8>,
+    pub trailing_bytes: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ShadowkeepChannelDefaultsLoad {
+    Package(ShadowkeepChannelDefaults),
+    Fallback { reason: String },
+}
+
+fn read_u64(bytes: &[u8], offset: usize, label: &str) -> anyhow::Result<u64> {
+    let end = offset
+        .checked_add(8)
+        .ok_or_else(|| anyhow::anyhow!("{label} offset overflow"))?;
+    let value = bytes
+        .get(offset..end)
+        .ok_or_else(|| anyhow::anyhow!("truncated {label} at 0x{offset:X}"))?;
+    Ok(u64::from_le_bytes(value.try_into().unwrap()))
+}
+
+fn read_i64(bytes: &[u8], offset: usize, label: &str) -> anyhow::Result<i64> {
+    Ok(read_u64(bytes, offset, label)? as i64)
+}
+
+fn relative_offset(base: usize, offset: i64, label: &str) -> anyhow::Result<usize> {
+    if offset >= 0 {
+        base.checked_add(offset as usize)
+    } else {
+        base.checked_sub(offset.unsigned_abs() as usize)
+    }
+    .ok_or_else(|| anyhow::anyhow!("{label} points outside addressable range"))
+}
+
+fn parse_vector_layout(
+    bytes: &[u8],
+    count_offset: usize,
+    pointer_offset: usize,
+    element_size: usize,
+    label: &str,
+) -> anyhow::Result<(usize, usize, usize, [u8; 8])> {
+    const TARGET_HEADER_SIZE: usize = 0x10;
+
+    let count_u64 = read_u64(bytes, count_offset, &format!("{label} count"))?;
+    ensure!(count_u64 > 0, "{label} count must be positive");
+    let count = usize::try_from(count_u64)
+        .map_err(|_| anyhow::anyhow!("{label} count is too large"))?;
+    let relative = read_i64(bytes, pointer_offset, &format!("{label} pointer"))?;
+    let target = relative_offset(pointer_offset, relative, label)?;
+    let payload_start = target
+        .checked_add(TARGET_HEADER_SIZE)
+        .ok_or_else(|| anyhow::anyhow!("{label} target header overflows"))?;
+    ensure!(
+        payload_start <= bytes.len(),
+        "{label} target header at 0x{target:X} is truncated"
+    );
+    let target_count = read_u64(bytes, target, &format!("{label} target count"))?;
+    ensure!(
+        target_count == count_u64,
+        "{label} descriptor count {count_u64} disagrees with target count {target_count}"
+    );
+    let payload_len = count
+        .checked_mul(element_size)
+        .ok_or_else(|| anyhow::anyhow!("{label} payload size overflows"))?;
+    let payload_end = payload_start
+        .checked_add(payload_len)
+        .ok_or_else(|| anyhow::anyhow!("{label} payload end overflows"))?;
+    ensure!(
+        payload_end <= bytes.len(),
+        "{label} payload is truncated: need {payload_len} bytes at 0x{payload_start:X}"
+    );
+    let element_header = bytes[target + 8..target + TARGET_HEADER_SIZE]
+        .try_into()
+        .unwrap();
+    Ok((count, target, payload_end, element_header))
+}
+
+/// Decode the package payload after the channel-default tag has been
+/// resolved. This remains independent of package-manager state so malformed
+/// and truncated payloads are directly testable.
+pub fn parse_shadowkeep_channel_defaults(
+    bytes: &[u8],
+) -> anyhow::Result<ShadowkeepChannelDefaults> {
+    const ROOT_HEADER_SIZE: usize = 0x38;
+    const HASH_COUNT_OFFSET: usize = 0x08;
+    const HASH_POINTER_OFFSET: usize = 0x10;
+    const VALUE_COUNT_OFFSET: usize = 0x18;
+    const VALUE_POINTER_OFFSET: usize = 0x20;
+    const AUXILIARY_COUNT_OFFSET: usize = 0x28;
+    const AUXILIARY_POINTER_OFFSET: usize = 0x30;
+
+    ensure!(
+        bytes.len() >= ROOT_HEADER_SIZE,
+        "channel-default resource is truncated before its three vector descriptors"
+    );
+    let declared_file_size = read_u64(bytes, 0, "channel-default file size")?;
+    ensure!(
+        declared_file_size == bytes.len() as u64,
+        "channel-default file-size header declares {declared_file_size} bytes, payload has {}",
+        bytes.len()
+    );
+
+    let (hash_count, hash_array_offset, hash_end, hash_element_header) =
+        parse_vector_layout(
+            bytes,
+            HASH_COUNT_OFFSET,
+            HASH_POINTER_OFFSET,
+            4,
+            "channel hash vector",
+        )?;
+    let (value_count, value_array_offset, value_end, value_element_header) =
+        parse_vector_layout(
+            bytes,
+            VALUE_COUNT_OFFSET,
+            VALUE_POINTER_OFFSET,
+            16,
+            "channel value vector",
+        )?;
+    let (auxiliary_count, auxiliary_array_offset, auxiliary_end, auxiliary_element_header) =
+        parse_vector_layout(
+            bytes,
+            AUXILIARY_COUNT_OFFSET,
+            AUXILIARY_POINTER_OFFSET,
+            4,
+            "channel auxiliary vector",
+        )?;
+    ensure!(
+        hash_count == value_count,
+        "channel hash count {hash_count} disagrees with positional value count {value_count}"
+    );
+    ensure!(
+        ROOT_HEADER_SIZE <= hash_array_offset
+            && hash_end <= value_array_offset
+            && value_end <= auxiliary_array_offset,
+        "channel-default vectors overlap or are out of package order"
+    );
+
+    let hash_start = hash_array_offset + 0x10;
+    let value_start = value_array_offset + 0x10;
+    let auxiliary_start = auxiliary_array_offset + 0x10;
+    let channel_hashes = bytes[hash_start..hash_end]
+        .chunks_exact(4)
+        .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+        .collect();
+    let values = bytes[value_start..value_end]
+        .chunks_exact(16)
+        .map(|chunk| {
+            Vec4::new(
+                f32::from_le_bytes(chunk[0..4].try_into().unwrap()),
+                f32::from_le_bytes(chunk[4..8].try_into().unwrap()),
+                f32::from_le_bytes(chunk[8..12].try_into().unwrap()),
+                f32::from_le_bytes(chunk[12..16].try_into().unwrap()),
+            )
+        })
+        .collect();
+    let auxiliary_fields = bytes[auxiliary_start..auxiliary_end]
+        .chunks_exact(4)
+        .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+        .collect();
+    let mut interstitial_bytes = Vec::new();
+    interstitial_bytes.extend_from_slice(&bytes[ROOT_HEADER_SIZE..hash_array_offset]);
+    interstitial_bytes.extend_from_slice(&bytes[hash_end..value_array_offset]);
+    interstitial_bytes.extend_from_slice(&bytes[value_end..auxiliary_array_offset]);
+
+    Ok(ShadowkeepChannelDefaults {
+        declared_file_size,
+        header_size: ROOT_HEADER_SIZE,
+        hash_descriptor_offset: HASH_COUNT_OFFSET,
+        value_descriptor_offset: VALUE_COUNT_OFFSET,
+        auxiliary_descriptor_offset: AUXILIARY_COUNT_OFFSET,
+        hash_array_offset,
+        value_array_offset,
+        auxiliary_array_offset,
+        array_count: value_count,
+        auxiliary_count,
+        hash_element_header,
+        value_element_header,
+        auxiliary_element_header,
+        channel_hashes,
+        values,
+        auxiliary_fields,
+        interstitial_bytes,
+        trailing_bytes: bytes[auxiliary_end..].to_vec(),
+    })
+}
+
+/// Preserve the hand-authored table only as an explicit degraded fallback.
+pub fn shadowkeep_channel_defaults_with_fallback(
+    bytes: &[u8],
+) -> (Vec<Vec4>, ShadowkeepChannelDefaultsLoad) {
+    match parse_shadowkeep_channel_defaults(bytes) {
+        Ok(parsed) => (parsed.values.clone(), ShadowkeepChannelDefaultsLoad::Package(parsed)),
+        Err(error) => {
+            let reason = format!("{error:#}");
+            (
+                global_channel_defaults().to_vec(),
+                ShadowkeepChannelDefaultsLoad::Fallback { reason },
+            )
+        }
+    }
+}
+
 /// Load the era-correct bootstrap and its mandatory input-layout resources.
 /// This is an intentionally narrow capability probe: it proves the corpus
 /// contains the foundational Shadowkeep resources without pretending that the
@@ -497,6 +721,113 @@ mod tests {
         assert_eq!(channels[27], Vec4::X);
         assert_eq!(channels[37], Vec4::X * 50.0);
         assert_eq!(channels[131], Vec4::new(0.5, 0.5, 0.3, 0.0));
+    }
+
+    fn encoded_channel_defaults(values: &[Vec4], trailing: &[u8]) -> Vec<u8> {
+        fn write_descriptor(
+            bytes: &mut [u8],
+            count_offset: usize,
+            pointer_offset: usize,
+            count: usize,
+            target: usize,
+        ) {
+            bytes[count_offset..count_offset + 8]
+                .copy_from_slice(&(count as u64).to_le_bytes());
+            bytes[pointer_offset..pointer_offset + 8]
+                .copy_from_slice(&((target - pointer_offset) as i64).to_le_bytes());
+        }
+
+        let auxiliary: [u32; 5] = [0, 0, 0, 0x74, 0];
+        let hash_target = 0x38;
+        let value_target = hash_target + 0x10 + values.len() * 4;
+        let auxiliary_target = value_target + 0x10 + values.len() * 16;
+        let payload_end = auxiliary_target + 0x10 + auxiliary.len() * 4;
+        let mut bytes = vec![0; payload_end + trailing.len()];
+        let byte_len = bytes.len() as u64;
+        bytes[0..8].copy_from_slice(&byte_len.to_le_bytes());
+        write_descriptor(&mut bytes, 0x08, 0x10, values.len(), hash_target);
+        write_descriptor(&mut bytes, 0x18, 0x20, values.len(), value_target);
+        write_descriptor(
+            &mut bytes,
+            0x28,
+            0x30,
+            auxiliary.len(),
+            auxiliary_target,
+        );
+
+        for (target, count, header) in [
+            (hash_target, values.len(), [0x70, 0x00, 0x80, 0x80, 0, 0, 0, 0]),
+            (value_target, values.len(), [0x90, 0x00, 0x80, 0x80, 0, 0, 0, 0]),
+            (
+                auxiliary_target,
+                auxiliary.len(),
+                [0x0b, 0x00, 0x80, 0x80, 0, 0, 0, 0],
+            ),
+        ] {
+            bytes[target..target + 8].copy_from_slice(&(count as u64).to_le_bytes());
+            bytes[target + 8..target + 0x10].copy_from_slice(&header);
+        }
+        for index in 0..values.len() {
+            let start = hash_target + 0x10 + index * 4;
+            bytes[start..start + 4].copy_from_slice(&(index as u32).to_le_bytes());
+        }
+        for (index, value) in values.iter().enumerate() {
+            let start = value_target + 0x10 + index * 16;
+            for (component, scalar) in value.to_array().iter().enumerate() {
+                bytes[start + component * 4..start + component * 4 + 4]
+                    .copy_from_slice(&scalar.to_le_bytes());
+            }
+        }
+        for (index, value) in auxiliary.iter().enumerate() {
+            let start = auxiliary_target + 0x10 + index * 4;
+            bytes[start..start + 4].copy_from_slice(&value.to_le_bytes());
+        }
+        bytes[payload_end..].copy_from_slice(trailing);
+        bytes
+    }
+
+    #[test]
+    fn channel_defaults_report_the_encoded_array_count() {
+        let values = [Vec4::X, Vec4::Y, Vec4::Z];
+        let parsed = parse_shadowkeep_channel_defaults(&encoded_channel_defaults(&values, &[]))
+            .unwrap();
+        assert_eq!(parsed.array_count, values.len());
+        assert_eq!(parsed.channel_hashes, [0, 1, 2]);
+        assert_eq!(parsed.values, values);
+        assert_eq!(parsed.auxiliary_fields, [0, 0, 0, 0x74, 0]);
+        assert_eq!(
+            parsed.value_element_header,
+            [0x90, 0x00, 0x80, 0x80, 0, 0, 0, 0]
+        );
+    }
+
+    #[test]
+    fn truncated_channel_defaults_are_rejected() {
+        let mut bytes = encoded_channel_defaults(&[Vec4::ONE], &[]);
+        bytes.pop();
+        let error = parse_shadowkeep_channel_defaults(&bytes).unwrap_err();
+        assert!(error.to_string().contains("declares"));
+    }
+
+    #[test]
+    fn channel_default_values_remain_positional() {
+        let values = [Vec4::new(2.0, 3.0, 5.0, 7.0), Vec4::new(11.0, 13.0, 17.0, 19.0)];
+        let parsed = parse_shadowkeep_channel_defaults(&encoded_channel_defaults(&values, &[]))
+            .unwrap();
+        assert_eq!(parsed.values[0], values[0]);
+        assert_eq!(parsed.values[1], values[1]);
+    }
+
+    #[test]
+    fn malformed_channel_defaults_expose_the_degraded_fallback() {
+        let (values, source) = shadowkeep_channel_defaults_with_fallback(&[0; 7]);
+        assert_eq!(values, global_channel_defaults().to_vec());
+        match source {
+            ShadowkeepChannelDefaultsLoad::Fallback { reason } => {
+                assert!(reason.contains("channel-default resource"));
+            }
+            ShadowkeepChannelDefaultsLoad::Package(_) => panic!("malformed data decoded"),
+        }
     }
 
     #[test]

@@ -13,7 +13,8 @@ use std::{fmt::Debug, path::Path, sync::Arc};
 
 use alkahest_core::convar::ConVars;
 use alkahest_data::tfx::{
-    FeatureRendererSubscription, PipelineState, PrimitiveType, RenderStage, ShaderStage,
+    ExternIndex, FeatureRendererSubscription, PipelineState, PrimitiveType, RenderStage,
+    ShaderStage,
 };
 use glam::{Mat4, Vec4, vec4};
 
@@ -21,8 +22,10 @@ use super::{
     Renderer,
     provenance::{
         DeferredShadingProvenance, ExposureAbManifest, ExposureVariantProvenance,
-        FinalCombineManifest, FinalCombineProvenance, ProvenanceManifest,
-        ShadowkeepLightingProvenance, capture_surface,
+        FinalCombineManifest, FinalCombineProvenance, GlobalLightingAbManifest,
+        GlobalLightingChannelValue, GlobalLightingDependencyManifest,
+        GlobalLightingDependencyStage, GlobalLightingExternRead, GlobalLightingExternValue,
+        ProvenanceManifest, ShadowkeepLightingProvenance, capture_surface,
     },
 };
 use crate::{
@@ -30,6 +33,10 @@ use crate::{
     cmd_event_span,
     gpu::command_list::{CommandList, DepthMode},
     tfx::{
+        expression_vm::{
+            self,
+            opcodes::{Opcode, OpcodeIterator},
+        },
         externs::{self, GlobalLighting, ScreenArea, TextureView, UberDepth},
         scope::FrameScope,
         technique::{ShaderModule, Technique},
@@ -213,9 +220,12 @@ impl Renderer {
 
                 self.execute_global_pipeline(cmd, technique, &format!("{debug_pipeline:?}"));
             } else {
-                let sun_light_direction = self
-                    .externs
-                    .get_global_channel_by_name("sun_light_direction");
+                let sun_light_direction = if self.era() == crate::renderer::RendererEra::Shadowkeep {
+                    self.externs.get().global_lighting.unk30
+                } else {
+                    self.externs
+                        .get_global_channel_by_name("sun_light_direction")
+                };
                 self.debug_cbuffer
                     .write(
                         cmd,
@@ -250,8 +260,12 @@ impl Renderer {
                 .write(
                     cmd,
                     &Mat4::from_cols(
-                        self.externs
-                            .get_global_channel_by_name("sky_snapshot_intensity"),
+                        if self.era() == crate::renderer::RendererEra::Shadowkeep {
+                            Vec4::ZERO
+                        } else {
+                            self.externs
+                                .get_global_channel_by_name("sky_snapshot_intensity")
+                        },
                         Vec4::ZERO,
                         Vec4::ZERO,
                         Vec4::ZERO,
@@ -493,12 +507,24 @@ impl Renderer {
             return;
         }
         let capture_requested = ConVars::get_flag("render.shadowkeep_buffer_provenance");
+        let global_lighting_ab_requested =
+            ConVars::get_flag("render.shadowkeep_global_lighting_ab");
+        let requested_feature_subscriptions = self.frame_packet.read().misc.subscribed_features;
         let asset_summary = self.asset_manager.diagnostic_summary();
         let capture_provenance =
             capture_requested && asset_summary.queued == 0 && asset_summary.loading == 0;
+        let capture_global_lighting_ab = global_lighting_ab_requested
+            && asset_summary.queued == 0
+            && asset_summary.loading == 0;
         if capture_provenance {
             let _ = ConVars::set("render.shadowkeep_buffer_provenance", false.into());
         }
+        if capture_global_lighting_ab {
+            let _ = ConVars::set("render.shadowkeep_global_lighting_ab", false.into());
+        }
+        let global_lighting_ab_directory = Path::new("artifacts/shadowkeep-global-lighting-ab");
+        let mut global_lighting_ab_before = Vec::new();
+        let mut global_lighting_ab_after = Vec::new();
 
         // The preserved renderer starts these buffers at a small non-zero
         // diffuse floor before applying its global-lighting fullscreen pass.
@@ -528,18 +554,60 @@ impl Renderer {
             RenderStage::LightingApply,
             FeatureRendererSubscription::all(),
         );
+        let lighting_apply_stage_submitted = true;
         let light_capture = capture_provenance
             .then(crate::feature::light::finish_shadowkeep_light_capture);
+        if capture_global_lighting_ab {
+            // Produce the disabled baseline from this same frame before the
+            // fullscreen pass mutates the light targets. This makes the
+            // shading/output A/B comparable even when separate launches reach
+            // asset readiness at different times.
+            self.clear_surface(cmd, view.shading_result, [0.0, 0.0, 0.0, 1.0]);
+            self.bind_surfaces(cmd, &[view.shading_result], None);
+            cmd.output_merger_set_depth_stencil_state(None, 0);
+            cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+            self.execute_shadowkeep_global_pipeline(
+                cmd,
+                &pipelines.deferred_shading_no_atm,
+                "shadowkeep/global_lighting_ab_baseline",
+            );
+            self.blit_surface(
+                cmd,
+                view.shading_result,
+                view.output,
+                true,
+                "shadowkeep/global_lighting_ab_baseline",
+            );
+        }
+        if capture_global_lighting_ab {
+            global_lighting_ab_before = self.capture_shadowkeep_global_lighting_surfaces(
+                cmd,
+                view,
+                global_lighting_ab_directory.join("before_global_lighting"),
+            );
+        }
 
         let diffuse = view.surfaces.get(view.lighting.light_diffuse);
         let specular = view.surfaces.get(view.lighting.light_specular);
         cmd.output_merger_set_render_targets(&[diffuse.rtv.as_ref(), specular.rtv.as_ref()], None);
+        let mut global_lighting_draw_6_reached = false;
         if wants_global_lighting {
             cmd.state = PipelineState::new(Some(8), Some(0), Some(0), Some(0));
-            self.execute_shadowkeep_global_pipeline(
+            global_lighting_draw_6_reached = self.execute_shadowkeep_global_pipeline(
                 cmd,
                 &pipelines.global_lighting,
                 "shadowkeep/global_lighting",
+            );
+            self.emit_shadowkeep_global_lighting_manifest(
+                &pipelines.global_lighting,
+                global_lighting_draw_6_reached,
+            );
+        }
+        if capture_global_lighting_ab {
+            global_lighting_ab_after = self.capture_shadowkeep_global_lighting_surfaces(
+                cmd,
+                view,
+                global_lighting_ab_directory.join("after_global_lighting"),
             );
         }
 
@@ -599,6 +667,7 @@ impl Renderer {
         );
         self.capture_shadowkeep_final_combine_no_film_curve(cmd, view);
 
+
         self.blit_surface(
             cmd,
             view.shading_result,
@@ -606,6 +675,29 @@ impl Renderer {
             true,
             "shadowkeep/final_shading",
         );
+        if capture_global_lighting_ab {
+            let global_lighting_ab_after_final = self.capture_shadowkeep_global_lighting_surfaces(
+                cmd,
+                view,
+                global_lighting_ab_directory.join("after_final_shading"),
+            );
+            let manifest = GlobalLightingAbManifest {
+                schema: "alkahest-shadowkeep-global-lighting-ab/v1",
+                global_lighting_enabled: wants_global_lighting,
+                global_lighting_draw_6_reached,
+                global_lighting_stage_status: self
+                    .shadowkeep_global_lighting_stage_status(&pipelines.global_lighting),
+                positional_channel_values: self
+                    .shadowkeep_global_lighting_channel_values(&pipelines.global_lighting),
+                extern_values: self.shadowkeep_global_lighting_extern_values(),
+                before_global_lighting: global_lighting_ab_before,
+                after_global_lighting: global_lighting_ab_after,
+                after_final_shading: global_lighting_ab_after_final,
+            };
+            if let Err(error) = manifest.write(global_lighting_ab_directory) {
+                error!(error = ?error, "Failed to write Shadowkeep global-lighting A/B manifest");
+            }
+        }
 
         if capture_provenance {
             for handle in [view.shading_result, view.output] {
@@ -631,7 +723,7 @@ impl Renderer {
             );
             let light_capture = light_capture.expect("capture was initialized above");
             let lighting = ShadowkeepLightingProvenance {
-                requested_feature_subscriptions: format!("{:?}", FeatureRendererSubscription::all()),
+                requested_feature_subscriptions: format!("{requested_feature_subscriptions:?}"),
                 active_feature_subscriptions: format!(
                     "{:?}",
                     self.active_feature_renderers.load()
@@ -657,7 +749,7 @@ impl Renderer {
                 assets_loading: asset_summary.loading,
                 assets_failed: asset_summary.failed,
                 assets_using_fallback: asset_summary.fallback,
-                lighting_apply_submissions: 1,
+                lighting_apply_stage_submitted,
                 deferred_light_draw_indexed_calls: light_capture.draw_indexed_calls,
                 local_light_technique_hashes: light_capture.technique_hashes,
             };
@@ -678,6 +770,39 @@ impl Renderer {
             }
         }
     }
+    fn capture_shadowkeep_global_lighting_surfaces(
+        &self,
+        cmd: &CommandList,
+        view: &MainView,
+        directory: impl AsRef<Path>,
+    ) -> Vec<crate::renderer::provenance::SurfaceProvenance> {
+        let directory = directory.as_ref();
+        let mut captures = Vec::new();
+        for (handle, clear_value) in [
+            (view.lighting.light_diffuse, Some([0.001, 0.001, 0.001, 0.0])),
+            (view.lighting.light_specular, Some([0.0; 4])),
+            (view.lighting.light_specular_ibl, Some([0.0; 4])),
+            (view.shading_result, Some([0.0, 0.0, 0.0, 1.0])),
+            (view.output, None),
+        ] {
+            match capture_surface(
+                cmd,
+                view.surfaces.get(handle),
+                directory,
+                clear_value,
+                None,
+            ) {
+                Ok(capture) => captures.push(capture),
+                Err(error) => error!(
+                    surface = view.surfaces.get(handle).name(),
+                    error = ?error,
+                    "Failed to capture Shadowkeep global-lighting A/B surface"
+                ),
+            }
+        }
+        captures
+    }
+
 
     fn capture_shadowkeep_final_combine_no_film_curve(
         &self,
@@ -983,6 +1108,218 @@ impl Renderer {
         }
     }
 
+    fn shadowkeep_global_lighting_channel_values(
+        &self,
+        pipeline: &Technique,
+    ) -> Vec<GlobalLightingChannelValue> {
+        let mut indices = pipeline
+            .all_stages()
+            .into_iter()
+            .filter_map(|(_, stage)| stage)
+            .flat_map(|stage| {
+                OpcodeIterator::new(&stage.dynamic_constants.bytecode).filter_map(
+                    |(opcode, args)| {
+                        (opcode == Opcode::PushGlobalChannelVector)
+                            .then(|| args.first().copied())
+                            .flatten()
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+        indices.sort_unstable();
+        indices.dedup();
+        let ext = self.externs.get();
+        indices
+            .into_iter()
+            .filter_map(|index| {
+                ext.globals
+                    .get(index as usize)
+                    .copied()
+                    .map(|value| GlobalLightingChannelValue {
+                        index,
+                        value: value.to_array(),
+                    })
+            })
+            .collect()
+    }
+
+    fn shadowkeep_global_lighting_extern_values(
+        &self,
+    ) -> Vec<GlobalLightingExternValue> {
+        let ext = self.externs.get();
+        let global_lighting = &ext.global_lighting;
+        vec![
+            GlobalLightingExternValue { byte_offset: 0x10, value: global_lighting.unk10.to_array() },
+            GlobalLightingExternValue { byte_offset: 0x30, value: global_lighting.unk30.to_array() },
+            GlobalLightingExternValue { byte_offset: 0x50, value: global_lighting.unk50.to_array() },
+            GlobalLightingExternValue { byte_offset: 0x70, value: global_lighting.unk70.to_array() },
+            GlobalLightingExternValue { byte_offset: 0x80, value: global_lighting.unk80.to_array() },
+            GlobalLightingExternValue { byte_offset: 0x90, value: [global_lighting.unk90, 0.0, 0.0, 0.0] },
+            GlobalLightingExternValue { byte_offset: 0x94, value: [global_lighting.unk94, 0.0, 0.0, 0.0] },
+            GlobalLightingExternValue { byte_offset: 0x98, value: [global_lighting.unk98, 0.0, 0.0, 0.0] },
+            GlobalLightingExternValue { byte_offset: 0x9C, value: [global_lighting.unk9c, 0.0, 0.0, 0.0] },
+            GlobalLightingExternValue { byte_offset: 0xA0, value: [global_lighting.unka0, 0.0, 0.0, 0.0] },
+            GlobalLightingExternValue { byte_offset: 0xB0, value: global_lighting.unkb0.to_array() },
+            GlobalLightingExternValue { byte_offset: 0xC0, value: global_lighting.unkc0.to_array() },
+            GlobalLightingExternValue { byte_offset: 0xD0, value: global_lighting.unkd0.to_array() },
+        ]
+    }
+    fn shadowkeep_global_lighting_stage_status(
+        &self,
+        pipeline: &Technique,
+    ) -> Vec<String> {
+        pipeline
+            .all_stages()
+            .into_iter()
+            .filter_map(|(_, stage)| stage)
+            .map(|stage| {
+                format!(
+                    "stage={} shader={} expression={:?}",
+                    stage.stage.short_name(),
+                    stage.shader.shader,
+                    stage.dynamic_constants.expression_evaluation_result()
+                )
+            })
+            .collect()
+    }
+
+
+    fn emit_shadowkeep_global_lighting_manifest(
+        &self,
+        pipeline: &Technique,
+        draw_6_reached: bool,
+    ) {
+        if self
+            .shadowkeep_global_lighting_manifest_emitted
+            .load()
+        {
+            return;
+        }
+        self.shadowkeep_global_lighting_manifest_emitted.store(true);
+
+        let stages = pipeline
+            .all_stages()
+            .into_iter()
+            .filter_map(|(_, stage)| stage)
+            .map(|stage| {
+                let bytecode = &stage.dynamic_constants.bytecode;
+                let mut global_channel_indices = OpcodeIterator::new(bytecode)
+                    .filter_map(|(opcode, args)| {
+                        (opcode == Opcode::PushGlobalChannelVector)
+                            .then(|| args.first().copied())
+                            .flatten()
+                    })
+                    .collect::<Vec<_>>();
+                global_channel_indices.sort_unstable();
+                global_channel_indices.dedup();
+
+                let mut extern_reads = OpcodeIterator::new(bytecode)
+                    .filter_map(|(opcode, args)| {
+                        let (value_type, scalar_width) = match opcode {
+                            Opcode::PushExternInputFloat => ("float", 4),
+                            Opcode::PushExternInputVec4 => ("vec4", 16),
+                            Opcode::PushExternInputMat4 => ("mat4", 16),
+                            Opcode::PushExternInputTextureView => ("texture_view", 8),
+                            Opcode::PushExternInputU32 => ("u32", 4),
+                            Opcode::PushExternInputUav => ("uav", 8),
+                            _ => return None,
+                        };
+                        let raw_index = args.first().copied()?;
+                        let offset = u32::from(
+                            args.get(1).copied().unwrap_or_default(),
+                        )
+                        .saturating_mul(scalar_width as u32);
+                        let extern_index = ExternIndex::try_from(raw_index)
+                            .map(|index| format!("{index:?}"))
+                            .unwrap_or_else(|_| format!("0x{raw_index:02X}"));
+                        Some(GlobalLightingExternRead {
+                            extern_index,
+                            value_type: value_type.to_owned(),
+                            byte_offset: offset,
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                extern_reads.sort_by(|left, right| {
+                    left.extern_index
+                        .cmp(&right.extern_index)
+                        .then(left.byte_offset.cmp(&right.byte_offset))
+                        .then(left.value_type.cmp(&right.value_type))
+                });
+                let push_global_channel_vector_values = global_channel_indices
+                    .iter()
+                    .filter_map(|&index| {
+                        self.externs
+                            .globals
+                            .get(index as usize)
+                            .copied()
+                            .map(|value| GlobalLightingChannelValue {
+                                index,
+                                value: value.to_array(),
+                            })
+                    })
+                    .collect();
+                let resource_slots = |opcode| {
+                    let mut slots = OpcodeIterator::new(bytecode)
+                        .filter_map(|(candidate, args)| {
+                            (candidate == opcode)
+                                .then(|| args.first().map(|encoded| encoded & 0x1f))
+                                .flatten()
+                        })
+                        .collect::<Vec<_>>();
+                    slots.sort_unstable();
+                    slots.dedup();
+                    slots
+                };
+                let sampler_slots = resource_slots(Opcode::PopSamplerState)
+                    .into_iter()
+                    .map(usize::from)
+                    .collect();
+                let texture_slots = resource_slots(Opcode::PopTextureView)
+                    .into_iter()
+                    .map(u32::from)
+                    .collect();
+
+
+                let translated_expression_disassembly =
+                    match expression_vm::disassemble(bytecode) {
+                        Ok(lines) => lines.join("\n"),
+                        Err(error) => format!("ERROR: {error:#}"),
+                    };
+                GlobalLightingDependencyStage {
+                    stage: stage.stage.short_name().to_owned(),
+                    shader: stage.shader.shader.to_string(),
+                    translated_expression_disassembly,
+                    push_global_channel_vector_values,
+                    push_global_channel_vector_indices: global_channel_indices,
+                    extern_reads,
+                    constant_buffer_slot: stage.dynamic_constants.cbuffer_slot,
+                    constant_buffer_len: stage.dynamic_constants.constant_buffer_len(),
+                    sampler_slots,
+                    texture_slots,
+                    expression_evaluation_result: format!(
+                        "{:?}",
+                        stage.dynamic_constants.expression_evaluation_result()
+                    ),
+                }
+            })
+            .collect();
+        let manifest = GlobalLightingDependencyManifest {
+            schema: "alkahest-shadowkeep-global-lighting-dependencies/v1",
+            technique: pipeline.hash.to_string(),
+            draw_6_reached,
+            stages,
+        };
+        if let Err(error) = manifest.write(Path::new("artifacts/shadowkeep-global-lighting")) {
+            error!(error = ?error, "Failed to write Shadowkeep global-lighting dependency manifest");
+        } else {
+            info!(
+                path = "artifacts/shadowkeep-global-lighting/manifest.json",
+                draw_6_reached,
+                "Wrote Shadowkeep global-lighting dependency manifest"
+            );
+        }
+    }
+
     /// Arrivals fullscreen techniques use a six-vertex strip. The shared
     /// post-BL helper emits four vertices, which binds successfully but leaves
     /// these legacy passes with incomplete or empty screen coverage.
@@ -1139,24 +1476,53 @@ impl Renderer {
             unk30: 7.7,
         };
 
-        *ext.global_lighting = GlobalLighting {
-            unk08: self.gpu.placeholder_white.view.clone().into(),
-            unk10: ext.get_global_channel_by_name("sun_color")
-                * ext.get_global_channel_by_name("sun_intensity").x,
-            unk30: ext.get_global_channel_by_name("sun_light_direction"),
-            unk50: ext.get_global_channel_by_name("sun_ambient_direction"),
-            unk70: ext.get_global_channel_by_name("up_ambient_color")
-                * ext.get_global_channel_by_name("up_ambient_intensity").x,
-            unk80: ext.get_global_channel_by_name("down_ambient_color")
-                * ext.get_global_channel_by_name("down_ambient_intensity").x,
-            unk90: ext.get_global_channel_by_name("up_ambient_sharpness").x,
-            unk94: ext.get_global_channel_by_name("down_ambient_sharpness").x,
-            unka0: 0.20,
-            unkb0: vec4(0.01, 0.01, -0.5, -0.5),
-            unkc0: vec4(0.02, -2.0, 0.0, 0.0),
-            unkd0: vec4(0.00333, -2.33333, 0.00, 0.00),
-            ..Default::default()
-        };
+        if self.era() == crate::renderer::RendererEra::Shadowkeep {
+            // The preserved pass consumes the positional global table
+            // directly.  Keep its ABI defaults; no later-era channel names
+            // are meaningful for this renderer.
+            *ext.global_lighting = GlobalLighting {
+                unk08: self.gpu.placeholder_white.view.clone().into(),
+                // The old pixel expression reads this field at 0x10 as its
+                // direct-light color. Package defaults leave the associated
+                // skybox color/intensity channels zero until unavailable
+                // activity automation runs, so retain the neutral ABI input.
+                unk10: Vec4::ONE,
+                // Preserved Arrivals directional defaults at 0x30/0x50.
+                unk30: Vec4::NEG_Z,
+                unk50: Vec4::ZERO,
+                // Offsets 0x70/0x80 are the matching up/down ambient colors.
+                // Their package intensities are 1, while their colors likewise
+                // await absent automation; neutral ABI colors preserve the old
+                // pass without importing later-era hashed-name lookup.
+                unk70: Vec4::ONE,
+                unk80: Vec4::ONE,
+                unk94: -0.5,
+                ..Default::default()
+            };
+            let white: TextureView = self.gpu.placeholder_white.view.clone().into();
+            ext.shadow_mask.unk00 = white.clone();
+            ext.shadow_mask.unk08 = white.clone();
+            ext.shadow_mask.unk10 = white;
+        } else {
+            *ext.global_lighting = GlobalLighting {
+                unk08: self.gpu.placeholder_white.view.clone().into(),
+                unk10: ext.get_global_channel_by_name("sun_color")
+                    * ext.get_global_channel_by_name("sun_intensity").x,
+                unk30: ext.get_global_channel_by_name("sun_light_direction"),
+                unk50: ext.get_global_channel_by_name("sun_ambient_direction"),
+                unk70: ext.get_global_channel_by_name("up_ambient_color")
+                    * ext.get_global_channel_by_name("up_ambient_intensity").x,
+                unk80: ext.get_global_channel_by_name("down_ambient_color")
+                    * ext.get_global_channel_by_name("down_ambient_intensity").x,
+                unk90: ext.get_global_channel_by_name("up_ambient_sharpness").x,
+                unk94: ext.get_global_channel_by_name("down_ambient_sharpness").x,
+                unka0: 0.20,
+                unkb0: vec4(0.01, 0.01, -0.5, -0.5),
+                unkc0: vec4(0.02, -2.0, 0.0, 0.0),
+                unkd0: vec4(0.00333, -2.33333, 0.00, 0.00),
+                ..Default::default()
+            };
+        }
 
         // ext.shadow_mask.unk00 = self.gpu.placeholder_white.view.clone().into();
         // ext.shadow_mask.unk08 = self.lighting.ssao.into();
@@ -1170,7 +1536,11 @@ impl Renderer {
         // ext.atmosphere.unk88 = self.common.temporary_atmos.view.clone().into();
 
         // TODO(cohae): Most of these need to be verified, currently they are just shifted +0x70 from pre-BL
-        ext.atmosphere.unk110 = ext.get_global_channel_by_name("sun_light_direction");
+        ext.atmosphere.unk110 = if self.era() == crate::renderer::RendererEra::Shadowkeep {
+            ext.global_lighting.unk30
+        } else {
+            ext.get_global_channel_by_name("sun_light_direction")
+        };
 
         // Sun
         ext.atmosphere.unk140 = ext.get_global_channel_by_id(0x56007c7);

@@ -10,6 +10,23 @@ fn main() -> anyhow::Result<()> {
 
     let bootstrap = alkahest_data::tfx::shadowkeep::ShadowkeepEraProfile.load_bootstrap()?;
     println!("{} scopes, {} pipelines, {} input layouts", bootstrap.scopes.len(), bootstrap.pipelines.len(), bootstrap.input_layout_count);
+    let channel_tag = bootstrap.channel_defaults;
+    let channel_entry = package_manager()
+        .get_entry(channel_tag)
+        .with_context(|| format!("missing channel-default entry {channel_tag}"))?;
+    let channel_bytes = package_manager().read_tag(channel_tag)?;
+    println!(
+        "channel_defaults tag={channel_tag} reference=0x{:08X} class={:02X}:{:02X} declared_size={} raw_len={}",
+        channel_entry.reference,
+        channel_entry.file_type,
+        channel_entry.file_subtype,
+        channel_entry.file_size,
+        channel_bytes.len(),
+    );
+    println!(
+        "channel_defaults hex={}",
+        channel_bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>()
+    );
 
     let mut absent_scopes = Vec::new();
     for (name, tag) in &bootstrap.scopes {

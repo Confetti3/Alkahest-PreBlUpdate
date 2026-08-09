@@ -3,7 +3,9 @@ use std::{collections::HashMap, ops::{Deref, DerefMut}, sync::Arc};
 use alkahest_data::tfx::{
     features::cubemap::CubemapShape,
     render_globals::{SRenderGlobals, SRenderGlobalsData, SRenderGlobalsGlobalChannels},
-    shadowkeep::{SShadowkeepLookupTextures, ShadowkeepRenderBootstrap},
+    shadowkeep::{
+        SShadowkeepLookupTextures, ShadowkeepRenderBootstrap, parse_shadowkeep_channel_defaults,
+    },
 };
 use anyhow::Context;
 use tiger_parse::PackageManagerExt;
@@ -14,6 +16,51 @@ use crate::{
     asset::{AssetManager, manager::TextureFallback, texture::Texture},
     tfx::{scope::Scope, technique::Technique},
 };
+
+fn load_shadowkeep_channel_defaults(tag: TagHash) -> anyhow::Result<Vec<glam::Vec4>> {
+    let manager = package_manager();
+    let entry = manager
+        .get_entry(tag)
+        .with_context(|| format!("Shadowkeep channel-default tag {tag} has no package entry"))?;
+    let bytes = manager
+        .read_tag(tag)
+        .with_context(|| format!("Failed to read Shadowkeep channel-default tag {tag}"))?;
+    let parsed = parse_shadowkeep_channel_defaults(&bytes)
+        .with_context(|| format!("Failed to decode Shadowkeep channel-default tag {tag}"))?;
+    anyhow::ensure!(
+        parsed.array_count <= 256,
+        "Shadowkeep channel-default array has {} entries; the renderer ABI exposes 256 positional slots",
+        parsed.array_count
+    );
+    info!(
+        tag = %tag,
+        package_entry_reference = format_args!("0x{:08X}", entry.reference),
+        package_entry_file_type = entry.file_type,
+        package_entry_file_subtype = entry.file_subtype,
+        package_entry_declared_size = entry.file_size,
+        raw_byte_length = bytes.len(),
+        declared_file_size = parsed.declared_file_size,
+        header_size = parsed.header_size,
+        hash_descriptor_offset = parsed.hash_descriptor_offset,
+        value_descriptor_offset = parsed.value_descriptor_offset,
+        auxiliary_descriptor_offset = parsed.auxiliary_descriptor_offset,
+        hash_array_offset = parsed.hash_array_offset,
+        value_array_offset = parsed.value_array_offset,
+        auxiliary_array_offset = parsed.auxiliary_array_offset,
+        array_count = parsed.array_count,
+        auxiliary_count = parsed.auxiliary_count,
+        hash_element_header = ?parsed.hash_element_header,
+        value_element_header = ?parsed.value_element_header,
+        auxiliary_element_header = ?parsed.auxiliary_element_header,
+        channel_hashes = ?parsed.channel_hashes,
+        candidate_vec4_values = ?parsed.values,
+        auxiliary_fields = ?parsed.auxiliary_fields,
+        interstitial_byte_length = parsed.interstitial_bytes.len(),
+        trailing_byte_length = parsed.trailing_bytes.len(),
+        "Decoded Shadowkeep positional channel defaults"
+    );
+    Ok(parsed.values)
+}
 
 pub struct RenderGlobals {
     pub scopes: GlobalScopes,
@@ -84,13 +131,24 @@ impl RenderGlobals {
         asset_manager: &AssetManager,
         bootstrap: &ShadowkeepRenderBootstrap,
     ) -> anyhow::Result<Self> {
+        let default_values = match load_shadowkeep_channel_defaults(bootstrap.channel_defaults) {
+            Ok(values) => values,
+            Err(error) => {
+                warn!(
+                    tag = %bootstrap.channel_defaults,
+                    error = ?error,
+                    "Shadowkeep package channel defaults could not be decoded; using degraded hand-authored positional fallback"
+                );
+                alkahest_data::tfx::shadowkeep::global_channel_defaults().to_vec()
+            }
+        };
         Ok(Self {
             scopes: GlobalScopes::load_shadowkeep(gpu, asset_manager, bootstrap)?,
             pipelines: GlobalPipelines::load_shadowkeep(gpu, asset_manager, bootstrap)?,
             textures: GlobalTextures::load_shadowkeep(gpu, asset_manager, bootstrap.lookup_textures)?,
             channels: GlobalChannels {
                 channel_ids: Vec::new(),
-                default_values: alkahest_data::tfx::shadowkeep::global_channel_defaults().to_vec(),
+                default_values,
             },
         })
     }

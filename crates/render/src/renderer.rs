@@ -21,7 +21,7 @@ use alkahest_data::tfx::{
 use anyhow::Context;
 use crossbeam::atomic::AtomicCell;
 use d3d11::dxgi;
-use glam::Mat4;
+use glam::{Mat4, Vec4};
 use globals::RenderGlobals;
 use parking_lot::{Mutex, RwLock, RwLockReadGuard};
 use surface::Surfaces;
@@ -87,6 +87,7 @@ pub struct Renderer {
 
     pub common: CommonResources,
     active_feature_renderers: AtomicCell<FeatureRendererSubscription>,
+    shadowkeep_global_lighting_manifest_emitted: AtomicCell<bool>,
     placeholder_textures:
         RwLock<HashMap<(ExternIndex, u32), (Texture, d3d11::UnorderedAccessView)>>,
 
@@ -139,6 +140,7 @@ impl Renderer {
         ConVars::register("render.sky", true);
         ConVars::register("render.global_lighting", false);
         ConVars::register("render.shadowkeep_buffer_provenance", false);
+        ConVars::register("render.shadowkeep_global_lighting_ab", false);
         ConVars::register("render.shadowkeep_exposure_ab", false);
         ConVars::register("render.shadowkeep_final_combine_no_film_curve", false);
         ConVars::register("render.threaded_submit", true);
@@ -190,8 +192,17 @@ impl Renderer {
         };
         let globals =
             load_globals(&gpu, &asset_manager).context("Failed to load render globals")?;
+        let mut externs = Externs::new(&globals);
+        if era == RendererEra::Shadowkeep {
+            // The preserved fallback table supplied this positional default.
+            // The package resource leaves it zero for activity automation,
+            // which is outside this renderer path, while the old global-light
+            // expression proves index 126 is its ambient-intensity multiplier.
+            externs.globals[126] = Vec4::X;
+            externs.default_globals[126] = Vec4::X;
+        }
         Ok(Self {
-            externs: ThreadMutCell::new(Externs::new(&globals)),
+            externs: ThreadMutCell::new(externs),
             globals,
             era,
             shadowkeep_input_layouts,
@@ -228,8 +239,8 @@ impl Renderer {
             profiler: D3D11Profiler::new(&gpu),
             gpu,
             active_feature_renderers: AtomicCell::new(FeatureRendererSubscription::all()),
+            shadowkeep_global_lighting_manifest_emitted: AtomicCell::new(false),
             placeholder_textures: RwLock::new(HashMap::new()),
-
             settings: RwLock::new(RenderSettings::for_era(era)),
         })
     }
