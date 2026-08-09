@@ -97,7 +97,6 @@ pub struct GlobalLightingDependencyManifest {
     pub stages: Vec<GlobalLightingDependencyStage>,
 }
 
-
 #[derive(Debug, Serialize)]
 pub struct FinalCombineProvenance {
     pub technique: String,
@@ -131,6 +130,24 @@ pub struct GlobalLightingAbManifest {
     pub before_global_lighting: Vec<SurfaceProvenance>,
     pub after_global_lighting: Vec<SurfaceProvenance>,
     pub after_final_shading: Vec<SurfaceProvenance>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DirectionalLightVariantManifest {
+    pub label: &'static str,
+    pub direct_direction: [f32; 4],
+    pub diffuse_direction: [f32; 4],
+    pub before_global_lighting: Vec<SurfaceProvenance>,
+    pub after_global_lighting: Vec<SurfaceProvenance>,
+    pub after_final_shading: Vec<SurfaceProvenance>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DirectionalLightAbManifest {
+    pub schema: &'static str,
+    pub selected_direction: [f32; 4],
+    pub world_normal: Vec<SurfaceProvenance>,
+    pub variants: Vec<DirectionalLightVariantManifest>,
 }
 
 #[derive(Debug, Serialize)]
@@ -193,7 +210,8 @@ impl ProvenanceManifest {
 
 impl GlobalLightingDependencyManifest {
     pub fn write(&self, directory: &Path) -> anyhow::Result<()> {
-        fs::create_dir_all(directory).context("Failed to create global-lighting manifest directory")?;
+        fs::create_dir_all(directory)
+            .context("Failed to create global-lighting manifest directory")?;
         let json = serde_json::to_vec_pretty(self)
             .context("Failed to serialize global-lighting dependency manifest")?;
         fs::write(directory.join("manifest.json"), json)
@@ -208,6 +226,17 @@ impl GlobalLightingAbManifest {
             .context("Failed to serialize global-lighting A/B manifest")?;
         fs::write(directory.join("manifest.json"), json)
             .context("Failed to write global-lighting A/B manifest")
+    }
+}
+
+impl DirectionalLightAbManifest {
+    pub fn write(&self, directory: &Path) -> anyhow::Result<()> {
+        fs::create_dir_all(directory)
+            .context("Failed to create directional-light A/B directory")?;
+        let json = serde_json::to_vec_pretty(self)
+            .context("Failed to serialize directional-light A/B manifest")?;
+        fs::write(directory.join("manifest.json"), json)
+            .context("Failed to write directional-light A/B manifest")
     }
 }
 
@@ -334,9 +363,7 @@ fn compute_stats(
         if quantized_clear.is_some_and(|clear| [r, g, b] != clear) {
             pixels_different_from_clear_value += 1;
         }
-        if (r.is_finite() && r != 0.0)
-            || (g.is_finite() && g != 0.0)
-            || (b.is_finite() && b != 0.0)
+        if (r.is_finite() && r != 0.0) || (g.is_finite() && g != 0.0) || (b.is_finite() && b != 0.0)
         {
             nonzero_rgb_pixel_count += 1;
         }
@@ -603,8 +630,8 @@ mod tests {
         let stats = compute_stats(
             dxgi::Format::R16g16b16a16Float,
             &[
-                0x00, 0x3c, 0x00, 0x3c, 0x00, 0x3c, 0x00, 0x3c,
-                0x00, 0x7c, 0x00, 0x3c, 0x00, 0x3c, 0x00, 0x3c,
+                0x00, 0x3c, 0x00, 0x3c, 0x00, 0x3c, 0x00, 0x3c, 0x00, 0x7c, 0x00, 0x3c, 0x00, 0x3c,
+                0x00, 0x3c,
             ],
             None,
         )

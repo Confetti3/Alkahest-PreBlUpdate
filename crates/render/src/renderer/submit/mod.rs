@@ -21,12 +21,14 @@ use glam::{Mat4, Vec4, vec4};
 use super::{
     Renderer,
     provenance::{
-        DeferredShadingProvenance, ExposureAbManifest, ExposureVariantProvenance,
-        FinalCombineManifest, FinalCombineProvenance, GlobalLightingAbManifest,
-        GlobalLightingChannelValue, GlobalLightingDependencyManifest,
-        GlobalLightingDependencyStage, GlobalLightingExternRead, GlobalLightingExternValue,
-        ProvenanceManifest, ShadowkeepLightingProvenance, capture_surface,
+        DeferredShadingProvenance, DirectionalLightAbManifest, DirectionalLightVariantManifest,
+        ExposureAbManifest, ExposureVariantProvenance, FinalCombineManifest,
+        FinalCombineProvenance, GlobalLightingAbManifest, GlobalLightingChannelValue,
+        GlobalLightingDependencyManifest, GlobalLightingDependencyStage, GlobalLightingExternRead,
+        GlobalLightingExternValue, ProvenanceManifest, ShadowkeepLightingProvenance,
+        SurfaceProvenance, capture_surface,
     },
+    surface::SurfaceHandle,
 };
 use crate::{
     camera::Camera,
@@ -220,7 +222,8 @@ impl Renderer {
 
                 self.execute_global_pipeline(cmd, technique, &format!("{debug_pipeline:?}"));
             } else {
-                let sun_light_direction = if self.era() == crate::renderer::RendererEra::Shadowkeep {
+                let sun_light_direction = if self.era() == crate::renderer::RendererEra::Shadowkeep
+                {
                     self.externs.get().global_lighting.unk30
                 } else {
                     self.externs
@@ -509,11 +512,16 @@ impl Renderer {
         let capture_requested = ConVars::get_flag("render.shadowkeep_buffer_provenance");
         let global_lighting_ab_requested =
             ConVars::get_flag("render.shadowkeep_global_lighting_ab");
+        let directional_light_ab_requested =
+            ConVars::get_flag("render.shadowkeep_directional_light_ab");
         let requested_feature_subscriptions = self.frame_packet.read().misc.subscribed_features;
         let asset_summary = self.asset_manager.diagnostic_summary();
         let capture_provenance =
             capture_requested && asset_summary.queued == 0 && asset_summary.loading == 0;
-        let capture_global_lighting_ab = global_lighting_ab_requested
+        let capture_global_lighting_ab =
+            global_lighting_ab_requested && asset_summary.queued == 0 && asset_summary.loading == 0;
+        let capture_directional_light_ab = directional_light_ab_requested
+            && wants_global_lighting
             && asset_summary.queued == 0
             && asset_summary.loading == 0;
         if capture_provenance {
@@ -521,6 +529,9 @@ impl Renderer {
         }
         if capture_global_lighting_ab {
             let _ = ConVars::set("render.shadowkeep_global_lighting_ab", false.into());
+        }
+        if capture_directional_light_ab {
+            let _ = ConVars::set("render.shadowkeep_directional_light_ab", false.into());
         }
         let global_lighting_ab_directory = Path::new("artifacts/shadowkeep-global-lighting-ab");
         let mut global_lighting_ab_before = Vec::new();
@@ -555,8 +566,11 @@ impl Renderer {
             FeatureRendererSubscription::all(),
         );
         let lighting_apply_stage_submitted = true;
-        let light_capture = capture_provenance
-            .then(crate::feature::light::finish_shadowkeep_light_capture);
+        let light_capture =
+            capture_provenance.then(crate::feature::light::finish_shadowkeep_light_capture);
+        if capture_directional_light_ab {
+            self.capture_shadowkeep_directional_light_ab(cmd, view, &pipelines.global_lighting);
+        }
         if capture_global_lighting_ab {
             // Produce the disabled baseline from this same frame before the
             // fullscreen pass mutates the light targets. This makes the
@@ -667,7 +681,6 @@ impl Renderer {
         );
         self.capture_shadowkeep_final_combine_no_film_curve(cmd, view);
 
-
         self.blit_surface(
             cmd,
             view.shading_result,
@@ -724,10 +737,7 @@ impl Renderer {
             let light_capture = light_capture.expect("capture was initialized above");
             let lighting = ShadowkeepLightingProvenance {
                 requested_feature_subscriptions: format!("{requested_feature_subscriptions:?}"),
-                active_feature_subscriptions: format!(
-                    "{:?}",
-                    self.active_feature_renderers.load()
-                ),
+                active_feature_subscriptions: format!("{:?}", self.active_feature_renderers.load()),
                 render_settings: format!(
                     "exposure_scale={}, exposure_illum_relative={}, vertex_ao={}, bloom={}, \
                      volumetrics={}, shadows={}, autoexposure={}, sun_shadows={}, \
@@ -770,6 +780,189 @@ impl Renderer {
             }
         }
     }
+    fn capture_shadowkeep_directional_light_ab(
+        &self,
+        cmd: &mut CommandList,
+        view: &MainView,
+        global_lighting: &Technique,
+    ) {
+        let directory = Path::new("artifacts/shadowkeep-directional-light-ab");
+        let selected_direction = self
+            .externs
+            .get()
+            .global_lighting
+            .unk30
+            .truncate()
+            .normalize_or_zero()
+            .extend(0.0);
+        let original_direct = self.externs.get().global_lighting.unk30;
+        let original_diffuse = self.externs.get().global_lighting.unk50;
+        let world_normal = self.capture_shadowkeep_directional_surfaces(
+            cmd,
+            view,
+            directory.join("world_normal"),
+            &[(view.gbuffers.normal, None)],
+        );
+        let mut variants = Vec::new();
+
+        for selection in [
+            ShadowkeepDirectionalLightSelection::Current,
+            ShadowkeepDirectionalLightSelection::PreservedBaseline,
+            ShadowkeepDirectionalLightSelection::Manual,
+            ShadowkeepDirectionalLightSelection::InvertedManual,
+            ShadowkeepDirectionalLightSelection::PositiveX,
+            ShadowkeepDirectionalLightSelection::NegativeX,
+            ShadowkeepDirectionalLightSelection::PositiveY,
+            ShadowkeepDirectionalLightSelection::NegativeY,
+        ] {
+            if !variants.is_empty() {
+                self.reset_shadowkeep_local_lighting(cmd, view);
+            }
+            let (direct_direction, diffuse_direction) = selection.directions(selected_direction);
+            {
+                let ext = self.externs.get_mut();
+                ext.global_lighting.unk30 = direct_direction;
+                ext.global_lighting.unk50 = diffuse_direction;
+            }
+
+            let variant_directory = directory.join(selection.label());
+            let before_global_lighting = self.capture_shadowkeep_directional_surfaces(
+                cmd,
+                view,
+                variant_directory.join("before_global_lighting"),
+                &[
+                    (
+                        view.lighting.light_diffuse,
+                        Some([0.001, 0.001, 0.001, 0.0]),
+                    ),
+                    (view.lighting.light_specular, Some([0.0; 4])),
+                ],
+            );
+
+            let diffuse = view.surfaces.get(view.lighting.light_diffuse);
+            let specular = view.surfaces.get(view.lighting.light_specular);
+            cmd.output_merger_set_render_targets(
+                &[diffuse.rtv.as_ref(), specular.rtv.as_ref()],
+                None,
+            );
+            cmd.state = PipelineState::new(Some(8), Some(0), Some(0), Some(0));
+            self.execute_shadowkeep_global_pipeline(
+                cmd,
+                global_lighting,
+                &format!("shadowkeep/directional_light_ab/{}", selection.label()),
+            );
+            let after_global_lighting = self.capture_shadowkeep_directional_surfaces(
+                cmd,
+                view,
+                variant_directory.join("after_global_lighting"),
+                &[
+                    (
+                        view.lighting.light_diffuse,
+                        Some([0.001, 0.001, 0.001, 0.0]),
+                    ),
+                    (view.lighting.light_specular, Some([0.0; 4])),
+                ],
+            );
+
+            self.clear_surface(cmd, view.shading_result, [0.0, 0.0, 0.0, 1.0]);
+            self.bind_surfaces(cmd, &[view.shading_result], None);
+            cmd.output_merger_set_depth_stencil_state(None, 0);
+            cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+            self.execute_shadowkeep_global_pipeline(
+                cmd,
+                &self.globals.pipelines.deferred_shading_no_atm,
+                &format!(
+                    "shadowkeep/directional_light_ab/{}/deferred_shading",
+                    selection.label()
+                ),
+            );
+            self.blit_surface(
+                cmd,
+                view.shading_result,
+                view.output,
+                true,
+                &format!(
+                    "shadowkeep/directional_light_ab/{}/output",
+                    selection.label()
+                ),
+            );
+            let after_final_shading = self.capture_shadowkeep_directional_surfaces(
+                cmd,
+                view,
+                variant_directory.join("after_final_shading"),
+                &[(view.shading_result, None), (view.output, None)],
+            );
+            variants.push(DirectionalLightVariantManifest {
+                label: selection.label(),
+                direct_direction: direct_direction.to_array(),
+                diffuse_direction: diffuse_direction.to_array(),
+                before_global_lighting,
+                after_global_lighting,
+                after_final_shading,
+            });
+        }
+
+        {
+            let ext = self.externs.get_mut();
+            ext.global_lighting.unk30 = original_direct;
+            ext.global_lighting.unk50 = original_diffuse;
+        }
+        self.reset_shadowkeep_local_lighting(cmd, view);
+
+        let manifest = DirectionalLightAbManifest {
+            schema: "alkahest-shadowkeep-directional-light-ab/v1",
+            selected_direction: selected_direction.to_array(),
+            world_normal,
+            variants,
+        };
+        if let Err(error) = manifest.write(directory) {
+            error!(error = ?error, "Failed to write Shadowkeep directional-light A/B manifest");
+        }
+    }
+
+    fn reset_shadowkeep_local_lighting(&self, cmd: &mut CommandList, view: &MainView) {
+        self.clear_surface(cmd, view.lighting.light_diffuse, [0.001, 0.001, 0.001, 0.0]);
+        self.clear_surface(cmd, view.lighting.light_specular, [0.0; 4]);
+        self.clear_surface(cmd, view.lighting.light_specular_ibl, [0.0; 4]);
+        self.clear_surface(cmd, view.shadow_mask, [1.0; 4]);
+        view.lighting
+            .bind_diffuse_specular(cmd, &view.surfaces, &view.gbuffers);
+        let diffuse = view.surfaces.get(view.lighting.light_diffuse);
+        let specular = view.surfaces.get(view.lighting.light_specular);
+        cmd.rasterizer_set_viewports(&[diffuse.viewport()]);
+        cmd.output_merger_set_render_targets(&[diffuse.rtv.as_ref(), specular.rtv.as_ref()], None);
+        cmd.state = PipelineState::new(Some(8), Some(0), Some(2), Some(2));
+        cmd.flush_states();
+        self.submit_stage(
+            cmd,
+            View::MAIN,
+            RenderStage::LightingApply,
+            FeatureRendererSubscription::all(),
+        );
+    }
+
+    fn capture_shadowkeep_directional_surfaces(
+        &self,
+        cmd: &CommandList,
+        view: &MainView,
+        directory: impl AsRef<Path>,
+        surfaces: &[(SurfaceHandle, Option<[f32; 4]>)],
+    ) -> Vec<SurfaceProvenance> {
+        let directory = directory.as_ref();
+        let mut captures = Vec::new();
+        for &(handle, clear_value) in surfaces {
+            match capture_surface(cmd, view.surfaces.get(handle), directory, clear_value, None) {
+                Ok(capture) => captures.push(capture),
+                Err(error) => error!(
+                    surface = view.surfaces.get(handle).name(),
+                    error = ?error,
+                    "Failed to capture Shadowkeep directional-light surface"
+                ),
+            }
+        }
+        captures
+    }
+
     fn capture_shadowkeep_global_lighting_surfaces(
         &self,
         cmd: &CommandList,
@@ -779,19 +972,16 @@ impl Renderer {
         let directory = directory.as_ref();
         let mut captures = Vec::new();
         for (handle, clear_value) in [
-            (view.lighting.light_diffuse, Some([0.001, 0.001, 0.001, 0.0])),
+            (
+                view.lighting.light_diffuse,
+                Some([0.001, 0.001, 0.001, 0.0]),
+            ),
             (view.lighting.light_specular, Some([0.0; 4])),
             (view.lighting.light_specular_ibl, Some([0.0; 4])),
             (view.shading_result, Some([0.0, 0.0, 0.0, 1.0])),
             (view.output, None),
         ] {
-            match capture_surface(
-                cmd,
-                view.surfaces.get(handle),
-                directory,
-                clear_value,
-                None,
-            ) {
+            match capture_surface(cmd, view.surfaces.get(handle), directory, clear_value, None) {
                 Ok(capture) => captures.push(capture),
                 Err(error) => error!(
                     surface = view.surfaces.get(handle).name(),
@@ -802,7 +992,6 @@ impl Renderer {
         }
         captures
     }
-
 
     fn capture_shadowkeep_final_combine_no_film_curve(
         &self,
@@ -1143,31 +1332,65 @@ impl Renderer {
             .collect()
     }
 
-    fn shadowkeep_global_lighting_extern_values(
-        &self,
-    ) -> Vec<GlobalLightingExternValue> {
+    fn shadowkeep_global_lighting_extern_values(&self) -> Vec<GlobalLightingExternValue> {
         let ext = self.externs.get();
         let global_lighting = &ext.global_lighting;
         vec![
-            GlobalLightingExternValue { byte_offset: 0x10, value: global_lighting.unk10.to_array() },
-            GlobalLightingExternValue { byte_offset: 0x30, value: global_lighting.unk30.to_array() },
-            GlobalLightingExternValue { byte_offset: 0x50, value: global_lighting.unk50.to_array() },
-            GlobalLightingExternValue { byte_offset: 0x70, value: global_lighting.unk70.to_array() },
-            GlobalLightingExternValue { byte_offset: 0x80, value: global_lighting.unk80.to_array() },
-            GlobalLightingExternValue { byte_offset: 0x90, value: [global_lighting.unk90, 0.0, 0.0, 0.0] },
-            GlobalLightingExternValue { byte_offset: 0x94, value: [global_lighting.unk94, 0.0, 0.0, 0.0] },
-            GlobalLightingExternValue { byte_offset: 0x98, value: [global_lighting.unk98, 0.0, 0.0, 0.0] },
-            GlobalLightingExternValue { byte_offset: 0x9C, value: [global_lighting.unk9c, 0.0, 0.0, 0.0] },
-            GlobalLightingExternValue { byte_offset: 0xA0, value: [global_lighting.unka0, 0.0, 0.0, 0.0] },
-            GlobalLightingExternValue { byte_offset: 0xB0, value: global_lighting.unkb0.to_array() },
-            GlobalLightingExternValue { byte_offset: 0xC0, value: global_lighting.unkc0.to_array() },
-            GlobalLightingExternValue { byte_offset: 0xD0, value: global_lighting.unkd0.to_array() },
+            GlobalLightingExternValue {
+                byte_offset: 0x10,
+                value: global_lighting.unk10.to_array(),
+            },
+            GlobalLightingExternValue {
+                byte_offset: 0x30,
+                value: global_lighting.unk30.to_array(),
+            },
+            GlobalLightingExternValue {
+                byte_offset: 0x50,
+                value: global_lighting.unk50.to_array(),
+            },
+            GlobalLightingExternValue {
+                byte_offset: 0x70,
+                value: global_lighting.unk70.to_array(),
+            },
+            GlobalLightingExternValue {
+                byte_offset: 0x80,
+                value: global_lighting.unk80.to_array(),
+            },
+            GlobalLightingExternValue {
+                byte_offset: 0x90,
+                value: [global_lighting.unk90, 0.0, 0.0, 0.0],
+            },
+            GlobalLightingExternValue {
+                byte_offset: 0x94,
+                value: [global_lighting.unk94, 0.0, 0.0, 0.0],
+            },
+            GlobalLightingExternValue {
+                byte_offset: 0x98,
+                value: [global_lighting.unk98, 0.0, 0.0, 0.0],
+            },
+            GlobalLightingExternValue {
+                byte_offset: 0x9C,
+                value: [global_lighting.unk9c, 0.0, 0.0, 0.0],
+            },
+            GlobalLightingExternValue {
+                byte_offset: 0xA0,
+                value: [global_lighting.unka0, 0.0, 0.0, 0.0],
+            },
+            GlobalLightingExternValue {
+                byte_offset: 0xB0,
+                value: global_lighting.unkb0.to_array(),
+            },
+            GlobalLightingExternValue {
+                byte_offset: 0xC0,
+                value: global_lighting.unkc0.to_array(),
+            },
+            GlobalLightingExternValue {
+                byte_offset: 0xD0,
+                value: global_lighting.unkd0.to_array(),
+            },
         ]
     }
-    fn shadowkeep_global_lighting_stage_status(
-        &self,
-        pipeline: &Technique,
-    ) -> Vec<String> {
+    fn shadowkeep_global_lighting_stage_status(&self, pipeline: &Technique) -> Vec<String> {
         pipeline
             .all_stages()
             .into_iter()
@@ -1183,16 +1406,8 @@ impl Renderer {
             .collect()
     }
 
-
-    fn emit_shadowkeep_global_lighting_manifest(
-        &self,
-        pipeline: &Technique,
-        draw_6_reached: bool,
-    ) {
-        if self
-            .shadowkeep_global_lighting_manifest_emitted
-            .load()
-        {
+    fn emit_shadowkeep_global_lighting_manifest(&self, pipeline: &Technique, draw_6_reached: bool) {
+        if self.shadowkeep_global_lighting_manifest_emitted.load() {
             return;
         }
         self.shadowkeep_global_lighting_manifest_emitted.store(true);
@@ -1225,10 +1440,8 @@ impl Renderer {
                             _ => return None,
                         };
                         let raw_index = args.first().copied()?;
-                        let offset = u32::from(
-                            args.get(1).copied().unwrap_or_default(),
-                        )
-                        .saturating_mul(scalar_width as u32);
+                        let offset = u32::from(args.get(1).copied().unwrap_or_default())
+                            .saturating_mul(scalar_width as u32);
                         let extern_index = ExternIndex::try_from(raw_index)
                             .map(|index| format!("{index:?}"))
                             .unwrap_or_else(|_| format!("0x{raw_index:02X}"));
@@ -1279,12 +1492,10 @@ impl Renderer {
                     .map(u32::from)
                     .collect();
 
-
-                let translated_expression_disassembly =
-                    match expression_vm::disassemble(bytecode) {
-                        Ok(lines) => lines.join("\n"),
-                        Err(error) => format!("ERROR: {error:#}"),
-                    };
+                let translated_expression_disassembly = match expression_vm::disassemble(bytecode) {
+                    Ok(lines) => lines.join("\n"),
+                    Err(error) => format!("ERROR: {error:#}"),
+                };
                 GlobalLightingDependencyStage {
                     stage: stage.stage.short_name().to_owned(),
                     shader: stage.shader.shader.to_string(),
@@ -1314,8 +1525,7 @@ impl Renderer {
         } else {
             info!(
                 path = "artifacts/shadowkeep-global-lighting/manifest.json",
-                draw_6_reached,
-                "Wrote Shadowkeep global-lighting dependency manifest"
+                draw_6_reached, "Wrote Shadowkeep global-lighting dependency manifest"
             );
         }
     }
@@ -1477,23 +1687,17 @@ impl Renderer {
         };
 
         if self.era() == crate::renderer::RendererEra::Shadowkeep {
-            // The preserved pass consumes the positional global table
-            // directly.  Keep its ABI defaults; no later-era channel names
-            // are meaningful for this renderer.
+            let sun_direction = misc.shadowkeep_sun_direction.unwrap_or(Vec4::NEG_Z);
+            // Shadowkeep's package channels remain positional. The direct and
+            // diffuse direction fields are populated through the explicit
+            // era-specific frame state rather than guessed channel semantics.
             *ext.global_lighting = GlobalLighting {
                 unk08: self.gpu.placeholder_white.view.clone().into(),
-                // The old pixel expression reads this field at 0x10 as its
-                // direct-light color. Package defaults leave the associated
-                // skybox color/intensity channels zero until unavailable
-                // activity automation runs, so retain the neutral ABI input.
+                // Neutral direct color and ambient colors retain the broad fill
+                // restored in a5a27f8 while direction supplies the sun lobe.
                 unk10: Vec4::ONE,
-                // Preserved Arrivals directional defaults at 0x30/0x50.
-                unk30: Vec4::NEG_Z,
-                unk50: Vec4::ZERO,
-                // Offsets 0x70/0x80 are the matching up/down ambient colors.
-                // Their package intensities are 1, while their colors likewise
-                // await absent automation; neutral ABI colors preserve the old
-                // pass without importing later-era hashed-name lookup.
+                unk30: sun_direction,
+                unk50: sun_direction,
                 unk70: Vec4::ONE,
                 unk80: Vec4::ONE,
                 unk94: -0.5,
@@ -1809,6 +2013,49 @@ impl Renderer {
             unkb0: vec4(0.00, 0.00, 0.00, 0.00),
             ..Default::default()
         };
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShadowkeepDirectionalLightSelection {
+    Current,
+    PreservedBaseline,
+    Manual,
+    InvertedManual,
+    PositiveX,
+    NegativeX,
+    PositiveY,
+    NegativeY,
+}
+
+impl ShadowkeepDirectionalLightSelection {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Current => "A_current",
+            Self::PreservedBaseline => "B_preserved_baseline",
+            Self::Manual => "C_manual",
+            Self::InvertedManual => "D_inverted_manual",
+            Self::PositiveX => "E_positive_x",
+            Self::NegativeX => "F_negative_x",
+            Self::PositiveY => "G_positive_y",
+            Self::NegativeY => "H_negative_y",
+        }
+    }
+
+    fn directions(self, selected: Vec4) -> (Vec4, Vec4) {
+        match self {
+            Self::Current => (Vec4::NEG_Z, Vec4::ZERO),
+            Self::PreservedBaseline => {
+                let preserved = vec4(1.0, -1.0, 1.0, 0.0);
+                (preserved, preserved)
+            }
+            Self::Manual => (selected, selected),
+            Self::InvertedManual => (-selected, -selected),
+            Self::PositiveX => (Vec4::X, Vec4::X),
+            Self::NegativeX => (Vec4::NEG_X, Vec4::NEG_X),
+            Self::PositiveY => (Vec4::Y, Vec4::Y),
+            Self::NegativeY => (Vec4::NEG_Y, Vec4::NEG_Y),
+        }
     }
 }
 

@@ -735,11 +735,20 @@ impl Scene {
                 .update_autoexposure(&self.renderer.gpu, frame_delta_time);
         }
 
+        let is_shadowkeep = self.renderer.era() == RendererEra::Shadowkeep;
+        let manual_sun_direction = Vec3::new(
+            self.sun_light_angle.to_radians().cos(),
+            self.sun_light_angle.to_radians().sin(),
+            0.7,
+        )
+        .normalize()
+        .extend(0.0);
         let mut packet_misc = FramePacketMisc {
             delta_time: frame_delta_time,
             time: frame_time,
             time_of_day: (self.time_of_day / 3600.0).fract(),
             subscribed_features: self.view.subscribed_features,
+            shadowkeep_sun_direction: is_shadowkeep.then_some(manual_sun_direction),
             ..Default::default()
         };
 
@@ -763,7 +772,15 @@ impl Scene {
             .globals
             .copy_from_slice(&self.global_channels);
 
-        if let Some((_, directions)) = self.world.query::<&SunDirections>().iter().next() {
+        if is_shadowkeep {
+            // The preserved package hash table is positional. This setter only
+            // becomes active when the package contains an exact FNV1 match;
+            // the renderer's explicit era-specific state remains authoritative.
+            self.renderer
+                .externs
+                .get_mut()
+                .set_global_channel_by_name("sun_light_direction", manual_sun_direction);
+        } else if let Some((_, directions)) = self.world.query::<&SunDirections>().iter().next() {
             let time_of_day_half = self.time_of_day / 2.0;
             let a = time_of_day_half.floor() as usize % 1800;
             let b = time_of_day_half.ceil() as usize % 1800;
@@ -789,17 +806,10 @@ impl Scene {
                 .get_mut()
                 .set_global_channel_by_name("sun_atmosphere_direction", atmos_direction);
         } else {
-            let sun_light_direction = Vec3::new(
-                self.sun_light_angle.to_radians().cos(),
-                self.sun_light_angle.to_radians().sin(),
-                0.7,
-            )
-            .normalize();
-
             self.renderer
                 .externs
                 .get_mut()
-                .set_global_channel_by_name("sun_light_direction", sun_light_direction.extend(0.0));
+                .set_global_channel_by_name("sun_light_direction", manual_sun_direction);
         }
 
         if self.render_mode == RenderMode::Lookdev {

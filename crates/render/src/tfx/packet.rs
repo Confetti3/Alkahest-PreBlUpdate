@@ -133,6 +133,9 @@ pub struct FramePacketMisc {
     pub atmosphere: AtmosphereData,
     pub time_of_day: f32,
     pub subscribed_features: FeatureRendererSubscription,
+    /// Era-specific directional-light state. Shadowkeep has no reliable named
+    /// global-channel table, so Scene passes the verified sun vector explicitly.
+    pub shadowkeep_sun_direction: Option<Vec4>,
 }
 
 pub enum ViewSource {

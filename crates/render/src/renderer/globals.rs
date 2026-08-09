@@ -1,4 +1,8 @@
-use std::{collections::HashMap, ops::{Deref, DerefMut}, sync::Arc};
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
 use alkahest_data::tfx::{
     features::cubemap::CubemapShape,
@@ -14,10 +18,10 @@ use tiger_pkg::{TagHash, package_manager};
 use crate::{
     Gpu,
     asset::{AssetManager, manager::TextureFallback, texture::Texture},
-    tfx::{scope::Scope, technique::Technique},
+    tfx::{externs::get_global_channel_name, scope::Scope, technique::Technique},
 };
 
-fn load_shadowkeep_channel_defaults(tag: TagHash) -> anyhow::Result<Vec<glam::Vec4>> {
+fn load_shadowkeep_channel_defaults(tag: TagHash) -> anyhow::Result<GlobalChannels> {
     let manager = package_manager();
     let entry = manager
         .get_entry(tag)
@@ -32,6 +36,15 @@ fn load_shadowkeep_channel_defaults(tag: TagHash) -> anyhow::Result<Vec<glam::Ve
         "Shadowkeep channel-default array has {} entries; the renderer ABI exposes 256 positional slots",
         parsed.array_count
     );
+    let exact_named_channels = parsed
+        .channel_hashes
+        .iter()
+        .copied()
+        .enumerate()
+        .filter_map(|(index, hash)| {
+            get_global_channel_name(hash).map(|name| (index, format!("0x{hash:08X}"), name))
+        })
+        .collect::<Vec<_>>();
     info!(
         tag = %tag,
         package_entry_reference = format_args!("0x{:08X}", entry.reference),
@@ -53,13 +66,17 @@ fn load_shadowkeep_channel_defaults(tag: TagHash) -> anyhow::Result<Vec<glam::Ve
         value_element_header = ?parsed.value_element_header,
         auxiliary_element_header = ?parsed.auxiliary_element_header,
         channel_hashes = ?parsed.channel_hashes,
+        exact_named_channels = ?exact_named_channels,
         candidate_vec4_values = ?parsed.values,
         auxiliary_fields = ?parsed.auxiliary_fields,
         interstitial_byte_length = parsed.interstitial_bytes.len(),
         trailing_byte_length = parsed.trailing_bytes.len(),
         "Decoded Shadowkeep positional channel defaults"
     );
-    Ok(parsed.values)
+    Ok(GlobalChannels {
+        channel_ids: parsed.channel_hashes,
+        default_values: parsed.values,
+    })
 }
 
 pub struct RenderGlobals {
@@ -77,36 +94,54 @@ pub struct RenderGlobals {
 pub struct ScopeSlot(Option<Box<Scope>>);
 
 impl ScopeSlot {
-    fn present(value: Scope) -> Self { Self(Some(Box::new(value))) }
-    fn absent() -> Self { Self(None) }
-    pub fn is_available(&self) -> bool { self.0.is_some() }
+    fn present(value: Scope) -> Self {
+        Self(Some(Box::new(value)))
+    }
+    fn absent() -> Self {
+        Self(None)
+    }
+    pub fn is_available(&self) -> bool {
+        self.0.is_some()
+    }
 }
 
 impl Deref for ScopeSlot {
     type Target = Scope;
     fn deref(&self) -> &Self::Target {
-        self.0.as_deref().expect("attempted to bind an unavailable Shadowkeep scope")
+        self.0
+            .as_deref()
+            .expect("attempted to bind an unavailable Shadowkeep scope")
     }
 }
 
 impl DerefMut for ScopeSlot {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.0.as_deref_mut().expect("attempted to mutate an unavailable Shadowkeep scope")
+        self.0
+            .as_deref_mut()
+            .expect("attempted to mutate an unavailable Shadowkeep scope")
     }
 }
 
 pub struct PipelineSlot(Option<Box<Technique>>);
 
 impl PipelineSlot {
-    fn present(value: Technique) -> Self { Self(Some(Box::new(value))) }
-    fn absent() -> Self { Self(None) }
-    pub fn is_available(&self) -> bool { self.0.is_some() }
+    fn present(value: Technique) -> Self {
+        Self(Some(Box::new(value)))
+    }
+    fn absent() -> Self {
+        Self(None)
+    }
+    pub fn is_available(&self) -> bool {
+        self.0.is_some()
+    }
 }
 
 impl Deref for PipelineSlot {
     type Target = Technique;
     fn deref(&self) -> &Self::Target {
-        self.0.as_deref().expect("attempted to bind an unavailable Shadowkeep pipeline")
+        self.0
+            .as_deref()
+            .expect("attempted to bind an unavailable Shadowkeep pipeline")
     }
 }
 
@@ -131,25 +166,30 @@ impl RenderGlobals {
         asset_manager: &AssetManager,
         bootstrap: &ShadowkeepRenderBootstrap,
     ) -> anyhow::Result<Self> {
-        let default_values = match load_shadowkeep_channel_defaults(bootstrap.channel_defaults) {
-            Ok(values) => values,
+        let channels = match load_shadowkeep_channel_defaults(bootstrap.channel_defaults) {
+            Ok(channels) => channels,
             Err(error) => {
                 warn!(
                     tag = %bootstrap.channel_defaults,
                     error = ?error,
                     "Shadowkeep package channel defaults could not be decoded; using degraded hand-authored positional fallback"
                 );
-                alkahest_data::tfx::shadowkeep::global_channel_defaults().to_vec()
+                GlobalChannels {
+                    channel_ids: Vec::new(),
+                    default_values: alkahest_data::tfx::shadowkeep::global_channel_defaults()
+                        .to_vec(),
+                }
             }
         };
         Ok(Self {
             scopes: GlobalScopes::load_shadowkeep(gpu, asset_manager, bootstrap)?,
             pipelines: GlobalPipelines::load_shadowkeep(gpu, asset_manager, bootstrap)?,
-            textures: GlobalTextures::load_shadowkeep(gpu, asset_manager, bootstrap.lookup_textures)?,
-            channels: GlobalChannels {
-                channel_ids: Vec::new(),
-                default_values,
-            },
+            textures: GlobalTextures::load_shadowkeep(
+                gpu,
+                asset_manager,
+                bootstrap.lookup_textures,
+            )?,
+            channels,
         })
     }
 }
@@ -192,42 +232,65 @@ impl GlobalTextures {
         })
     }
 
-    fn load_shadowkeep(gpu: &Gpu, asset_manager: &AssetManager, tag: TagHash) -> anyhow::Result<Self> {
+    fn load_shadowkeep(
+        gpu: &Gpu,
+        asset_manager: &AssetManager,
+        tag: TagHash,
+    ) -> anyhow::Result<Self> {
         let data: SShadowkeepLookupTextures = package_manager().read_tag_struct(tag)?;
         Ok(Self {
             specular_tint_lookup: Self::load_shadowkeep_lookup(
-                gpu, asset_manager,
+                gpu,
+                asset_manager,
                 data.specular_tint_lookup_texture,
                 "specular_tint_lookup",
             )?,
             specular_lobe_lookup: Self::load_shadowkeep_lookup(
-                gpu, asset_manager,
+                gpu,
+                asset_manager,
                 data.specular_lobe_lookup_texture,
                 "specular_lobe_lookup",
             )?,
             specular_lobe_3d_lookup: Self::load_shadowkeep_lookup(
-                gpu, asset_manager,
+                gpu,
+                asset_manager,
                 data.specular_lobe_3d_lookup_texture,
                 "specular_lobe_3d_lookup",
             )?,
             iridescence_lookup: Self::load_shadowkeep_lookup(
-                gpu, asset_manager,
+                gpu,
+                asset_manager,
                 data.iridescence_lookup_texture,
                 "iridescence_lookup",
             )?,
             // These water slots are later-era globals. Do not attempt to
             // reinterpret a legacy texture as their serialized resource.
-            water_displacement_unk00: Self::neutral_shadowkeep_lookup(gpu, "water_displacement_unk00")?,
-            water_displacement_unk08: Self::neutral_shadowkeep_lookup(gpu, "water_displacement_unk08")?,
+            water_displacement_unk00: Self::neutral_shadowkeep_lookup(
+                gpu,
+                "water_displacement_unk00",
+            )?,
+            water_displacement_unk08: Self::neutral_shadowkeep_lookup(
+                gpu,
+                "water_displacement_unk08",
+            )?,
         })
     }
 
-    fn load_shadowkeep_lookup(gpu: &Gpu, asset_manager: &AssetManager, tag: TagHash, name: &str) -> anyhow::Result<Texture> {
+    fn load_shadowkeep_lookup(
+        gpu: &Gpu,
+        asset_manager: &AssetManager,
+        tag: TagHash,
+        name: &str,
+    ) -> anyhow::Result<Texture> {
         match Texture::load_shadowkeep(gpu, tag) {
             Ok(texture) => Ok(texture),
             Err(error) => {
                 warn!(%tag, %name, "Shadowkeep lookup texture could not be decoded; using neutral fallback: {error:#}");
-                asset_manager.record_fallback(tag, TextureFallback::NeutralLookup, format!("{name}: {error:#}"));
+                asset_manager.record_fallback(
+                    tag,
+                    TextureFallback::NeutralLookup,
+                    format!("{name}: {error:#}"),
+                );
                 Self::neutral_shadowkeep_lookup(gpu, name)
             }
         }
