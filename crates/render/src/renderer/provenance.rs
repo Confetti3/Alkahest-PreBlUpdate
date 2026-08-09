@@ -46,6 +46,29 @@ pub struct DeferredShadingProvenance {
 }
 
 #[derive(Debug, Serialize)]
+pub struct FinalCombineProvenance {
+    pub technique: String,
+    pub vertex_shader: Option<String>,
+    pub pixel_shader: Option<String>,
+    pub draw_6_reached: bool,
+    pub vertex_expression: Option<String>,
+    pub pixel_expression: Option<String>,
+    pub vertex_constant_buffer_slot: Option<u32>,
+    pub vertex_constant_buffer_len: Option<usize>,
+    pub pixel_constant_buffer_slot: Option<u32>,
+    pub pixel_constant_buffer_len: Option<usize>,
+    pub bound_input_srv: String,
+    pub output_rtv_format: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct FinalCombineManifest {
+    pub schema: &'static str,
+    pub final_combine: FinalCombineProvenance,
+    pub capture: SurfaceProvenance,
+}
+
+#[derive(Debug, Serialize)]
 pub struct ProvenanceManifest {
     pub schema: &'static str,
     pub deferred_shading: DeferredShadingProvenance,
@@ -77,6 +100,15 @@ impl ExposureAbManifest {
     }
 }
 
+impl FinalCombineManifest {
+    pub fn write(&self, directory: &Path) -> anyhow::Result<()> {
+        let json = serde_json::to_vec_pretty(self)
+            .context("Failed to serialize final-combine manifest")?;
+        fs::write(directory.join("manifest.json"), json)
+            .context("Failed to write final-combine manifest")
+    }
+}
+
 impl ProvenanceManifest {
     pub fn write(&self, directory: &Path) -> anyhow::Result<()> {
         let json =
@@ -91,6 +123,7 @@ pub fn capture_surface(
     surface: &Surface,
     directory: &Path,
     clear_value: Option<[f32; 4]>,
+    statistics_encoding: Option<&'static str>,
 ) -> anyhow::Result<SurfaceProvenance> {
     fs::create_dir_all(directory).context("Failed to create provenance directory")?;
 
@@ -146,11 +179,13 @@ pub fn capture_surface(
         resource_format: format!("{format:?}"),
         width: desc.width,
         height: desc.height,
-        statistics_encoding: if surface.desc().view_format == dxgi::Format::R8g8b8a8UnormSrgb {
-            "srgb_encoded_raw"
-        } else {
-            "linear"
-        },
+        statistics_encoding: statistics_encoding.unwrap_or_else(|| {
+            if surface.desc().view_format == dxgi::Format::R8g8b8a8UnormSrgb {
+                "srgb_encoded_raw"
+            } else {
+                "linear"
+            }
+        }),
         finite_pixel_count: stats.finite_pixel_count,
         nonzero_rgb_pixel_count: stats.nonzero_rgb_pixel_count,
         minimum_rgb: stats.minimum_rgb,

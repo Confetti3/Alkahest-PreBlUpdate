@@ -21,7 +21,7 @@ use super::{
     Renderer,
     provenance::{
         DeferredShadingProvenance, ExposureAbManifest, ExposureVariantProvenance,
-        ProvenanceManifest, capture_surface,
+        FinalCombineManifest, FinalCombineProvenance, ProvenanceManifest, capture_surface,
     },
 };
 use crate::{
@@ -565,6 +565,7 @@ impl Renderer {
                     view.surfaces.get(handle),
                     provenance_directory,
                     clear_value,
+                    None,
                 ) {
                     Ok(capture) => provenance_captures.push(capture),
                     Err(error) => error!(
@@ -587,6 +588,7 @@ impl Renderer {
             &pipelines.deferred_shading_no_atm,
             "shadowkeep/deferred_shading_no_atm",
         );
+        self.capture_shadowkeep_final_combine_no_film_curve(cmd, view, wants_global_lighting);
 
         self.blit_surface(
             cmd,
@@ -598,7 +600,13 @@ impl Renderer {
 
         if capture_provenance {
             for handle in [view.shading_result, view.output] {
-                match capture_surface(cmd, view.surfaces.get(handle), provenance_directory, None) {
+                match capture_surface(
+                    cmd,
+                    view.surfaces.get(handle),
+                    provenance_directory,
+                    None,
+                    None,
+                ) {
                     Ok(capture) => provenance_captures.push(capture),
                     Err(error) => error!(
                         surface = view.surfaces.get(handle).name(),
@@ -626,6 +634,140 @@ impl Renderer {
                     "Wrote Shadowkeep buffer provenance"
                 );
             }
+        }
+    }
+
+    fn capture_shadowkeep_final_combine_no_film_curve(
+        &self,
+        cmd: &mut CommandList,
+        view: &MainView,
+        wants_global_lighting: bool,
+    ) {
+        if !ConVars::get_flag("render.shadowkeep_final_combine_no_film_curve") {
+            return;
+        }
+        let _ = ConVars::set(
+            "render.shadowkeep_final_combine_no_film_curve",
+            false.into(),
+        );
+        if wants_global_lighting {
+            error!(
+                "Shadowkeep final-combine diagnostic requires render.global_lighting=false; \
+                 diagnostic skipped"
+            );
+            return;
+        }
+
+        let pipeline = &self.globals.pipelines.final_combine_no_film_curve;
+        if !pipeline.is_available() {
+            error!("Shadowkeep final_combine_no_film_curve pipeline is unavailable");
+            return;
+        }
+
+        view.shading_result_read
+            .lock()
+            .update(cmd, view.surfaces.get(view.shading_result));
+        let input_srv = view.shading_result_read.lock().srv.clone();
+        {
+            let ext = self.externs.get_mut();
+            ext.postprocess.input = input_srv.into();
+            ext.postprocess.res_for_input = view
+                .surfaces
+                .get(view.shading_result)
+                .resolution_with_recip();
+            ext.postprocess.output_res =
+                view.surfaces.get(view.postprocess).resolution_with_recip();
+        }
+
+        self.clear_surface(cmd, view.postprocess, [0.0, 0.0, 0.0, 1.0]);
+        self.bind_surfaces(cmd, &[view.postprocess], None);
+        cmd.output_merger_set_depth_stencil_state(None, 0);
+        cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+        let draw_6_reached = self.execute_shadowkeep_global_pipeline(
+            cmd,
+            pipeline,
+            "shadowkeep/final_combine_no_film_curve",
+        );
+
+        let directory = Path::new("artifacts/shadowkeep-final-combine-no-film-curve");
+        let capture = match capture_surface(
+            cmd,
+            view.surfaces.get(view.postprocess),
+            directory,
+            None,
+            Some("unknown_transfer_float"),
+        ) {
+            Ok(capture) => capture,
+            Err(error) => {
+                error!(
+                    error = ?error,
+                    "Failed to capture Shadowkeep final_combine_no_film_curve output"
+                );
+                return;
+            }
+        };
+        let final_combine = self.shadowkeep_final_combine_provenance(
+            view,
+            pipeline,
+            draw_6_reached,
+            "shading_result_read -> shading_result proxy",
+        );
+        info!(
+            diagnostic = ?final_combine,
+            "Shadowkeep final_combine_no_film_curve provenance"
+        );
+        let manifest = FinalCombineManifest {
+            schema: "alkahest-shadowkeep-final-combine-no-film-curve/v1",
+            final_combine,
+            capture,
+        };
+        if let Err(error) = manifest.write(directory) {
+            error!(error = ?error, "Failed to write Shadowkeep final-combine manifest");
+        } else {
+            info!(
+                path = %directory.join("manifest.json").display(),
+                "Wrote Shadowkeep final_combine_no_film_curve diagnostic"
+            );
+        }
+    }
+
+    fn shadowkeep_final_combine_provenance(
+        &self,
+        view: &MainView,
+        pipeline: &Technique,
+        draw_6_reached: bool,
+        bound_input_srv: &str,
+    ) -> FinalCombineProvenance {
+        let vertex = pipeline.stage_vertex.as_ref();
+        let pixel = pipeline.stage_pixel.as_ref();
+        FinalCombineProvenance {
+            technique: pipeline.hash.to_string(),
+            vertex_shader: vertex.map(|stage| stage.shader.shader.to_string()),
+            pixel_shader: pixel.map(|stage| stage.shader.shader.to_string()),
+            draw_6_reached,
+            vertex_expression: vertex.map(|stage| {
+                format!(
+                    "{:?}",
+                    stage.dynamic_constants.expression_evaluation_result()
+                )
+            }),
+            pixel_expression: pixel.map(|stage| {
+                format!(
+                    "{:?}",
+                    stage.dynamic_constants.expression_evaluation_result()
+                )
+            }),
+            vertex_constant_buffer_slot: vertex.map(|stage| stage.dynamic_constants.cbuffer_slot),
+            vertex_constant_buffer_len: vertex
+                .map(|stage| stage.dynamic_constants.constant_buffer_len()),
+            pixel_constant_buffer_slot: pixel.map(|stage| stage.dynamic_constants.cbuffer_slot),
+            pixel_constant_buffer_len: pixel
+                .map(|stage| stage.dynamic_constants.constant_buffer_len()),
+            bound_input_srv: bound_input_srv.to_owned(),
+            output_rtv_format: format!(
+                "{:?}",
+                view.surfaces.get(view.postprocess).desc().view_format
+            ),
         }
     }
 
@@ -686,7 +828,13 @@ impl Renderer {
             let variant_directory = directory.join(label);
             let mut captures = Vec::with_capacity(2);
             for handle in [view.shading_result, view.output] {
-                match capture_surface(cmd, view.surfaces.get(handle), &variant_directory, None) {
+                match capture_surface(
+                    cmd,
+                    view.surfaces.get(handle),
+                    &variant_directory,
+                    None,
+                    None,
+                ) {
                     Ok(capture) => captures.push(capture),
                     Err(error) => error!(
                         surface = view.surfaces.get(handle).name(),
