@@ -577,7 +577,7 @@ impl Renderer {
             }
         }
 
-        self.capture_shadowkeep_exposure_ab(cmd, view, wants_global_lighting);
+        self.capture_shadowkeep_exposure_ab(cmd, view);
 
         self.clear_surface(cmd, view.shading_result, [0.0, 0.0, 0.0, 1.0]);
         self.bind_surfaces(cmd, &[view.shading_result], None);
@@ -588,7 +588,7 @@ impl Renderer {
             &pipelines.deferred_shading_no_atm,
             "shadowkeep/deferred_shading_no_atm",
         );
-        self.capture_shadowkeep_final_combine_no_film_curve(cmd, view, wants_global_lighting);
+        self.capture_shadowkeep_final_combine_no_film_curve(cmd, view);
 
         self.blit_surface(
             cmd,
@@ -641,7 +641,6 @@ impl Renderer {
         &self,
         cmd: &mut CommandList,
         view: &MainView,
-        wants_global_lighting: bool,
     ) {
         if !ConVars::get_flag("render.shadowkeep_final_combine_no_film_curve") {
             return;
@@ -650,7 +649,7 @@ impl Renderer {
             "render.shadowkeep_final_combine_no_film_curve",
             false.into(),
         );
-        if wants_global_lighting {
+        if ConVars::get_flag("render.global_lighting") {
             error!(
                 "Shadowkeep final-combine diagnostic requires render.global_lighting=false; \
                  diagnostic skipped"
@@ -771,17 +770,12 @@ impl Renderer {
         }
     }
 
-    fn capture_shadowkeep_exposure_ab(
-        &self,
-        cmd: &mut CommandList,
-        view: &MainView,
-        wants_global_lighting: bool,
-    ) {
+    fn capture_shadowkeep_exposure_ab(&self, cmd: &mut CommandList, view: &MainView) {
         if !ConVars::get_flag("render.shadowkeep_exposure_ab") {
             return;
         }
         let _ = ConVars::set("render.shadowkeep_exposure_ab", false.into());
-        if wants_global_lighting {
+        if ConVars::get_flag("render.global_lighting") {
             error!(
                 "Shadowkeep exposure A/B requires render.global_lighting=false; diagnostic skipped"
             );
