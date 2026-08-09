@@ -21,7 +21,8 @@ use super::{
     Renderer,
     provenance::{
         DeferredShadingProvenance, ExposureAbManifest, ExposureVariantProvenance,
-        FinalCombineManifest, FinalCombineProvenance, ProvenanceManifest, capture_surface,
+        FinalCombineManifest, FinalCombineProvenance, ProvenanceManifest,
+        ShadowkeepLightingProvenance, capture_surface,
     },
 };
 use crate::{
@@ -491,6 +492,13 @@ impl Renderer {
             self.submit_shadowkeep_geometry_preview(cmd, view);
             return;
         }
+        let capture_requested = ConVars::get_flag("render.shadowkeep_buffer_provenance");
+        let asset_summary = self.asset_manager.diagnostic_summary();
+        let capture_provenance =
+            capture_requested && asset_summary.queued == 0 && asset_summary.loading == 0;
+        if capture_provenance {
+            let _ = ConVars::set("render.shadowkeep_buffer_provenance", false.into());
+        }
 
         // The preserved renderer starts these buffers at a small non-zero
         // diffuse floor before applying its global-lighting fullscreen pass.
@@ -503,6 +511,9 @@ impl Renderer {
         // lights before the optional fullscreen global-lighting technique.
         // Keep that producer in the Shadowkeep path instead of presenting a
         // zero light buffer to deferred shading.
+        if capture_provenance {
+            crate::feature::light::begin_shadowkeep_light_capture();
+        }
         view.lighting
             .bind_diffuse_specular(cmd, &view.surfaces, &view.gbuffers);
         let diffuse = view.surfaces.get(view.lighting.light_diffuse);
@@ -517,6 +528,8 @@ impl Renderer {
             RenderStage::LightingApply,
             FeatureRendererSubscription::all(),
         );
+        let light_capture = capture_provenance
+            .then(crate::feature::light::finish_shadowkeep_light_capture);
 
         let diffuse = view.surfaces.get(view.lighting.light_diffuse);
         let specular = view.surfaces.get(view.lighting.light_specular);
@@ -541,10 +554,6 @@ impl Renderer {
             };
             self.blit_surface(cmd, source, view.output, true, "shadowkeep/debug_light");
             return;
-        }
-        let capture_provenance = ConVars::get_flag("render.shadowkeep_buffer_provenance");
-        if capture_provenance {
-            let _ = ConVars::set("render.shadowkeep_buffer_provenance", false.into());
         }
         let provenance_directory = Path::new("artifacts/shadowkeep-buffer-provenance");
         let mut provenance_captures = Vec::new();
@@ -620,9 +629,42 @@ impl Renderer {
                 diagnostic = ?deferred_shading,
                 "Shadowkeep deferred shading provenance"
             );
+            let light_capture = light_capture.expect("capture was initialized above");
+            let lighting = ShadowkeepLightingProvenance {
+                requested_feature_subscriptions: format!("{:?}", FeatureRendererSubscription::all()),
+                active_feature_subscriptions: format!(
+                    "{:?}",
+                    self.active_feature_renderers.load()
+                ),
+                render_settings: format!(
+                    "exposure_scale={}, exposure_illum_relative={}, vertex_ao={}, bloom={}, \
+                     volumetrics={}, shadows={}, autoexposure={}, sun_shadows={}, \
+                     anti_aliasing={}, multithreading={}, hzb_culling={}",
+                    self.settings().exposure_scale,
+                    self.settings().exposure_illum_relative,
+                    self.settings().vertex_ao,
+                    self.settings().bloom,
+                    self.settings().volumetrics,
+                    self.settings().shadows,
+                    self.settings().autoexposure,
+                    self.settings().sun_shadows,
+                    self.settings().anti_aliasing,
+                    self.settings().multithreading,
+                    self.settings().hzb_culling,
+                ),
+                assets_ready: asset_summary.ready,
+                assets_queued: asset_summary.queued,
+                assets_loading: asset_summary.loading,
+                assets_failed: asset_summary.failed,
+                assets_using_fallback: asset_summary.fallback,
+                lighting_apply_submissions: 1,
+                deferred_light_draw_indexed_calls: light_capture.draw_indexed_calls,
+                local_light_technique_hashes: light_capture.technique_hashes,
+            };
             let manifest = ProvenanceManifest {
                 schema: "alkahest-shadowkeep-buffer-provenance/v1",
                 deferred_shading,
+                lighting,
                 captures: provenance_captures,
             };
             if let Err(error) = manifest.write(provenance_directory) {

@@ -1,6 +1,9 @@
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
+use std::{
+    collections::BTreeSet,
+    sync::{
+        Arc, LazyLock,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+    },
 };
 
 use alkahest_core::job::{SCHEDULER, potassium::Priority};
@@ -31,6 +34,35 @@ use crate::{
 
 static SHADOWKEEP_DEFERRED_LIGHT_DRAW_REPORTED: AtomicBool = AtomicBool::new(false);
 static SHADOWKEEP_LIGHT_BINDING_REPORTED: AtomicBool = AtomicBool::new(false);
+static SHADOWKEEP_LIGHT_CAPTURE_ACTIVE: AtomicBool = AtomicBool::new(false);
+static SHADOWKEEP_LIGHT_CAPTURE_DRAWS: AtomicUsize = AtomicUsize::new(0);
+static SHADOWKEEP_LIGHT_CAPTURE_TECHNIQUES: LazyLock<parking_lot::Mutex<BTreeSet<String>>> =
+    LazyLock::new(|| parking_lot::Mutex::new(BTreeSet::new()));
+
+#[derive(Debug)]
+pub(crate) struct ShadowkeepLightCapture {
+    pub draw_indexed_calls: usize,
+    pub technique_hashes: Vec<String>,
+}
+
+pub(crate) fn begin_shadowkeep_light_capture() {
+    SHADOWKEEP_LIGHT_CAPTURE_DRAWS.store(0, Ordering::Relaxed);
+    SHADOWKEEP_LIGHT_CAPTURE_TECHNIQUES.lock().clear();
+    SHADOWKEEP_LIGHT_CAPTURE_ACTIVE.store(true, Ordering::Release);
+}
+
+pub(crate) fn finish_shadowkeep_light_capture() -> ShadowkeepLightCapture {
+    SHADOWKEEP_LIGHT_CAPTURE_ACTIVE.store(false, Ordering::Release);
+    ShadowkeepLightCapture {
+        draw_indexed_calls: SHADOWKEEP_LIGHT_CAPTURE_DRAWS.load(Ordering::Relaxed),
+        technique_hashes: SHADOWKEEP_LIGHT_CAPTURE_TECHNIQUES
+            .lock()
+            .iter()
+            .cloned()
+            .collect(),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LightSubmissionPath {
     Current,
@@ -318,6 +350,12 @@ impl LightRenderer {
 
         cmd.input_assembler_set_index_buffer(&self.data.ib, dxgi::Format::R16Uint, 0);
         cmd.draw_indexed(geometry::CUBE_INDICES.len() as u32, 0, 0);
+        if SHADOWKEEP_LIGHT_CAPTURE_ACTIVE.load(Ordering::Acquire) {
+            SHADOWKEEP_LIGHT_CAPTURE_DRAWS.fetch_add(1, Ordering::Relaxed);
+            SHADOWKEEP_LIGHT_CAPTURE_TECHNIQUES
+                .lock()
+                .insert(technique.hash.to_string());
+        }
         if SHADOWKEEP_DEFERRED_LIGHT_DRAW_REPORTED
             .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()

@@ -8,6 +8,7 @@ use parking_lot::Mutex;
 use crate::{
     Gpu, Renderer,
     renderer::{
+        RendererEra,
         autoexposure::AutoExposureSystem,
         hzb::Hzb,
         submit::buffers::{AtmosphereBuffers, BloomBuffers, Gbuffers, LightBuffers, WaterBuffers},
@@ -356,6 +357,24 @@ pub struct RenderSettings {
     pub multithreading: bool,
     pub hzb_culling: bool,
 }
+impl RenderSettings {
+    pub fn for_era(era: RendererEra) -> Self {
+        let mut settings = Self::default();
+
+        if era == RendererEra::Shadowkeep {
+            settings.autoexposure = false;
+            settings.bloom = false;
+            settings.volumetrics = false;
+            settings.shadows = false;
+            settings.sun_shadows = false;
+            settings.anti_aliasing = false;
+            settings.multithreading = false;
+            settings.hzb_culling = false;
+        }
+
+        settings
+    }
+}
 
 impl Default for RenderSettings {
     fn default() -> Self {
@@ -373,5 +392,39 @@ impl Default for RenderSettings {
             multithreading: true,
             hzb_culling: true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shadowkeep_defaults_disable_unproduced_passes() {
+        let settings = RenderSettings::for_era(RendererEra::Shadowkeep);
+
+        assert!(!settings.autoexposure);
+        assert!(!settings.bloom);
+        assert!(!settings.volumetrics);
+        assert!(!settings.shadows);
+        assert!(!settings.sun_shadows);
+        assert!(!settings.anti_aliasing);
+        assert!(!settings.multithreading);
+        assert!(!settings.hzb_culling);
+        assert_eq!(settings.exposure_scale, 0.050);
+    }
+
+    #[test]
+    fn current_defaults_keep_existing_features_enabled() {
+        let settings = RenderSettings::for_era(RendererEra::Current);
+
+        assert!(settings.autoexposure);
+        assert!(settings.bloom);
+        assert!(settings.volumetrics);
+        assert!(settings.shadows);
+        assert!(settings.sun_shadows);
+        assert!(settings.anti_aliasing);
+        assert!(settings.multithreading);
+        assert!(settings.hzb_culling);
     }
 }

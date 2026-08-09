@@ -44,6 +44,21 @@ pub struct DeferredShadingProvenance {
     pub bound_deferred_srvs: Vec<String>,
     pub output_rtv_format: String,
 }
+#[derive(Debug, Serialize)]
+pub struct ShadowkeepLightingProvenance {
+    pub requested_feature_subscriptions: String,
+    pub active_feature_subscriptions: String,
+    pub render_settings: String,
+    pub assets_ready: usize,
+    pub assets_queued: usize,
+    pub assets_loading: usize,
+    pub assets_failed: usize,
+    pub assets_using_fallback: usize,
+    pub lighting_apply_submissions: usize,
+    pub deferred_light_draw_indexed_calls: usize,
+    pub local_light_technique_hashes: Vec<String>,
+}
+
 
 #[derive(Debug, Serialize)]
 pub struct FinalCombineProvenance {
@@ -72,6 +87,7 @@ pub struct FinalCombineManifest {
 pub struct ProvenanceManifest {
     pub schema: &'static str,
     pub deferred_shading: DeferredShadingProvenance,
+    pub lighting: ShadowkeepLightingProvenance,
     pub captures: Vec<SurfaceProvenance>,
 }
 

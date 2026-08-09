@@ -115,9 +115,12 @@ impl MapTab {
                 ui.collapsing("Shadowkeep map load report", |ui| {
                     ui.label(
                         RichText::new(
-                            "Presentation: Shadowkeep G-buffer material composite; deferred-light families pending",
+                            "Presentation: local-light/deferred shading only → deferred_shading_no_atm → direct sRGB output",
                         )
                         .color(Color32::from_rgb(224, 192, 96)),
+                    );
+                    ui.weak(
+                        "Global lighting, IBL, atmosphere, and activity-layer scene content remain incomplete.",
                     );
                     ui.label(format!(
                         "{} tables, {} entries in {:.2?}; {} static, {} terrain, {} rigid render objects",

@@ -230,7 +230,7 @@ impl Renderer {
             active_feature_renderers: AtomicCell::new(FeatureRendererSubscription::all()),
             placeholder_textures: RwLock::new(HashMap::new()),
 
-            settings: RwLock::new(RenderSettings::default()),
+            settings: RwLock::new(RenderSettings::for_era(era)),
         })
     }
 

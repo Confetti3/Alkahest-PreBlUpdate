@@ -17,6 +17,7 @@ use alkahest_render::{
     cmd_event_span,
     gpu::command_list::{CommandList, DepthMode},
     renderer::{
+        RendererEra,
         hzb::Hzb,
         submit::{
             DebugPipeline,
@@ -26,7 +27,7 @@ use alkahest_render::{
     tfx::{
         externs::get_global_channel_name,
         packet::FramePacketMisc,
-        view::{View, ViewKind},
+        view::{RenderSettings, View, ViewKind},
     },
     visibility::frustum::Frustum,
 };
@@ -72,6 +73,8 @@ pub struct Scene {
     animate_time_of_day: bool,
     time_scale: f32,
     sun_light_angle: f32,
+    diagnostic_freeze: bool,
+    frozen_render_time: f32,
     pub render_mode: RenderMode,
     keep_settings_open: bool,
     lock_resolution: bool,
@@ -110,9 +113,11 @@ impl Scene {
             v
         });
 
-        let view = View::new_main("main", &renderer.gpu, (128, 128))?;
+        let mut view = View::new_main("main", &renderer.gpu, (128, 128))?;
+        *view.settings_mut() = RenderSettings::for_era(renderer.era());
         let view_surfaces = view.surfaces().unwrap().clone();
         view_surfaces.set_resolution_scale(shared.config.read().resolution_scale);
+        let is_shadowkeep = renderer.era() == RendererEra::Shadowkeep;
 
         Ok(Self {
             world: hecs::World::new(),
@@ -123,8 +128,14 @@ impl Scene {
             time_of_day: 1200.0,
             time_scale: 1.0,
             animate_time_of_day: true,
+            diagnostic_freeze: false,
+            frozen_render_time: 0.0,
             sun_light_angle: 60f32,
-            render_mode: RenderMode::LightDiffuse,
+            render_mode: if is_shadowkeep {
+                RenderMode::ShadingOnly
+            } else {
+                RenderMode::LightDiffuse
+            },
             keep_settings_open: false,
             lock_resolution: false,
             controller: CameraController::new_orbit(Vec3::ZERO, 2.5),
@@ -336,12 +347,14 @@ impl Scene {
             let size_pixels = size * ui.ctx().pixels_per_point();
             let resolution = (size_pixels.x as u32, size_pixels.y as u32);
 
-            self.controller.update(&mut self.camera, ui, &r, delta_time);
+            if !self.diagnostic_freeze {
+                self.controller.update(&mut self.camera, ui, &r, delta_time);
 
-            if r.dragged_by(egui::PointerButton::Middle) {
-                let delta_adjusted = r.drag_delta() / 4.0;
-                self.sun_light_angle += delta_adjusted.x;
-                self.sun_light_angle = self.sun_light_angle.rem_euclid(360.0);
+                if r.dragged_by(egui::PointerButton::Middle) {
+                    let delta_adjusted = r.drag_delta() / 4.0;
+                    self.sun_light_angle += delta_adjusted.x;
+                    self.sun_light_angle = self.sun_light_angle.rem_euclid(360.0);
+                }
             }
 
             subsecond::call(|| {
@@ -489,14 +502,31 @@ impl Scene {
             }
         });
 
+        let is_shadowkeep = self.renderer.era() == RendererEra::Shadowkeep;
         let view_surfaces = self.view.surfaces().unwrap().clone();
+
+        let freeze_changed = ui
+            .checkbox(&mut self.diagnostic_freeze, "Diagnostic Freeze")
+            .on_hover_text(
+                "Freezes camera input, exposure, game/render time, time of day, and sequencer automation.",
+            )
+            .changed();
+        if freeze_changed && self.diagnostic_freeze {
+            self.frozen_render_time = self.start_time.elapsed().as_secs_f32();
+        }
+
         let view_settings = self.view.settings_mut();
         ui.spacing_mut().item_spacing = vec2(8.0, 4.0);
-        ui.checkbox(&mut view_settings.autoexposure, "Auto-exposure")
-            .setting_description_tooltip(
-                "Enables automatic exposure adjustment based on scene brightness.",
-                PerformanceImpact::None,
-            );
+        ui.add_enabled_ui(!is_shadowkeep, |ui| {
+            ui.checkbox(&mut view_settings.autoexposure, "Auto-exposure")
+                .setting_description_tooltip(
+                    "Enables automatic exposure adjustment based on scene brightness.",
+                    PerformanceImpact::None,
+                );
+        });
+        if is_shadowkeep {
+            ui.weak("Auto-exposure is unavailable for Shadowkeep; fixed exposure is active.");
+        }
 
         // if settings_mut.autoexposure {
         //     ui.strong("Target Luminance");
@@ -604,54 +634,71 @@ impl Scene {
                 PerformanceImpact::None,
             );
 
-        ui.checkbox(&mut view_settings.bloom, "Bloom")
-            .setting_description_tooltip(
-                "Enables bloom effect, which adds a glow to bright areas of the scene.",
-                PerformanceImpact::Low,
-            );
-
-        ui.checkbox(&mut view_settings.volumetrics, "Volumetrics")
-            .setting_description_tooltip(
-                "Enables volumetric lighting effects, such as light shafts and fog.",
-                PerformanceImpact::Medium,
-            );
-        ui.checkbox(&mut view_settings.shadows, "Local Shadows")
-            .setting_description_tooltip(
-                "Enables (static) shadows for local lights.",
-                PerformanceImpact::Medium,
-            );
-
-        ui.checkbox(&mut view_settings.sun_shadows, "Sun Shadows")
-            .setting_description_tooltip(
-                "Enables (dynamic) shadows for the sun light.",
-                PerformanceImpact::High,
-            );
-
-        ui.checkbox(&mut view_settings.anti_aliasing, "Anti-Aliasing")
-            .setting_description_tooltip(
-                "Enables FXAA anti-aliasing to smooth out jagged edges.",
-                PerformanceImpact::Low,
-            );
-
-        ui.collapsing("Advanced", |ui| {
-            ui.checkbox(&mut view_settings.multithreading, "Multi-threaded Submit")
+        ui.add_enabled_ui(!is_shadowkeep, |ui| {
+            ui.checkbox(&mut view_settings.bloom, "Bloom")
                 .setting_description_tooltip(
-                    "Enables multi-threaded submission of commands to the GPU. May improve \
-                     performance on systems with many CPU cores, but can introduce stuttering on \
-                     older systems",
+                    "Enables bloom effect, which adds a glow to bright areas of the scene.",
+                    PerformanceImpact::Low,
+                );
+
+            ui.checkbox(&mut view_settings.volumetrics, "Volumetrics")
+                .setting_description_tooltip(
+                    "Enables volumetric lighting effects, such as light shafts and fog.",
+                    PerformanceImpact::Medium,
+                );
+            ui.checkbox(&mut view_settings.shadows, "Local Shadows")
+                .setting_description_tooltip(
+                    "Enables (static) shadows for local lights.",
+                    PerformanceImpact::Medium,
+                );
+
+            ui.checkbox(&mut view_settings.sun_shadows, "Sun Shadows")
+                .setting_description_tooltip(
+                    "Enables (dynamic) shadows for the sun light.",
                     PerformanceImpact::High,
                 );
 
-            ui.checkbox(&mut view_settings.hzb_culling, "HZB Culling")
+            ui.checkbox(&mut view_settings.anti_aliasing, "Anti-Aliasing")
                 .setting_description_tooltip(
-                    "Enables Hierarchical Z-Buffer (HZB) culling to optimize rendering by \
-                     discarding occluded objects.",
-                    PerformanceImpact::High,
+                    "Enables FXAA anti-aliasing to smooth out jagged edges.",
+                    PerformanceImpact::Low,
                 );
+
+            ui.collapsing("Advanced", |ui| {
+                ui.checkbox(&mut view_settings.multithreading, "Multi-threaded Submit")
+                    .setting_description_tooltip(
+                        "Enables multi-threaded submission of commands to the GPU. May improve \
+                         performance on systems with many CPU cores, but can introduce stuttering on \
+                         older systems",
+                        PerformanceImpact::High,
+                    );
+
+                ui.checkbox(&mut view_settings.hzb_culling, "HZB Culling")
+                    .setting_description_tooltip(
+                        "Enables Hierarchical Z-Buffer (HZB) culling to optimize rendering by \
+                         discarding occluded objects.",
+                        PerformanceImpact::High,
+                    );
+            });
         });
+        if is_shadowkeep {
+            ui.weak(
+                "Bloom, volumetrics, local/sun shadows, anti-aliasing, threaded submit, and HZB are not connected to the Shadowkeep pass graph.",
+            );
+        }
     }
 
     pub fn render(&mut self, delta_time: f32, resolution: (u32, u32)) {
+        let frame_delta_time = if self.diagnostic_freeze {
+            0.0
+        } else {
+            delta_time
+        };
+        let frame_time = if self.diagnostic_freeze {
+            self.frozen_render_time
+        } else {
+            self.start_time.elapsed().as_secs_f32()
+        };
         s_update_object_channels(&self.world);
 
         let resolution = if self.lock_resolution {
@@ -669,24 +716,28 @@ impl Scene {
             self.surface_srv = srv;
         }
 
-        if self.animate_time_of_day {
-            self.time_of_day += delta_time * self.time_scale;
+        if self.animate_time_of_day && !self.diagnostic_freeze {
+            self.time_of_day += frame_delta_time * self.time_scale;
             self.time_of_day = self.time_of_day.rem_euclid(3600.0);
         }
 
         self.camera.aspect_ratio = resolution.0 as f32 / resolution.1 as f32;
-        self.controller.update_rotation(&mut self.camera);
+        if !self.diagnostic_freeze {
+            self.controller.update_rotation(&mut self.camera);
+        }
         self.camera.update();
         let camera_to_projective = self.camera.projection_matrix(self.camera.aspect_ratio);
         let world_to_camera = self.camera.view_matrix();
         self.view
             .update(world_to_camera, camera_to_projective, resolution);
-        self.view
-            .update_autoexposure(&self.renderer.gpu, delta_time);
+        if !self.diagnostic_freeze {
+            self.view
+                .update_autoexposure(&self.renderer.gpu, frame_delta_time);
+        }
 
         let mut packet_misc = FramePacketMisc {
-            delta_time,
-            time: self.start_time.elapsed().as_secs_f32(),
+            delta_time: frame_delta_time,
+            time: frame_time,
             time_of_day: (self.time_of_day / 3600.0).fract(),
             subscribed_features: self.view.subscribed_features,
             ..Default::default()
@@ -775,7 +826,7 @@ impl Scene {
                 ext.unk_sequencer_values[0] = Vec4::splat(self.time_of_day / 3600.0);
             }
 
-            if self.automate_channels {
+            if self.automate_channels && !self.diagnostic_freeze {
                 s_evaluate_global_channel_expressions(&self.world);
             }
 
@@ -1210,7 +1261,7 @@ impl RenderMode {
                 mode!(
                     ui,
                     RenderMode::ShadingOnly,
-                    "Shading Only (No atmosphere, no sun)"
+                    "Shading Only (Local-light/deferred shading only)"
                 );
                 // mode!(ui, RenderMode::Matcap, "Matcap");
 
