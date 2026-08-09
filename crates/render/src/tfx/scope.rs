@@ -185,7 +185,9 @@ impl ScopeStage {
     }
 
     pub fn bind(&self, cmd: &mut CommandList) -> anyhow::Result<()> {
-        self.constants.read().bind(cmd, self.shader_stage, None)
+        self.constants
+            .read()
+            .bind(cmd, TagHash::NONE, TagHash::NONE, self.shader_stage, None)
     }
 
     /// Overrides the initial constants with the given values.

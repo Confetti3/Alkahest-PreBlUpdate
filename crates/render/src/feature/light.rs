@@ -36,10 +36,6 @@ enum LightSubmissionPath {
     Current,
     Shadowkeep { shadowing: bool },
 }
-const SHADOWKEEP_LIGHT_DEBUG_PS: &str =
-    "float4 mainPS() : SV_TARGET0 { return float4(1.0, 0.0, 1.0, 1.0); }";
-
-
 
 struct LightRendererData {
     technique_lighting_apply: Technique,
@@ -51,7 +47,6 @@ struct LightRendererData {
     // TODO(cohae): This should be a shared resource (eg. a struct in the renderer that we can use instead of recreating it for every light/cubemap)
     vb: d3d11::Buffer,
     ib: d3d11::Buffer,
-    debug_pixel_shader: Option<d3d11::PixelShader>,
 }
 
 pub struct LightRenderer {
@@ -188,19 +183,6 @@ impl LightRenderer {
                 Technique::load(&renderer.gpu, &renderer.asset_manager, hash)
             }
         };
-        let debug_pixel_shader = if matches!(submission_path, LightSubmissionPath::Shadowkeep { .. }) {
-            let blob = d3d11::fxc::compile(
-                SHADOWKEEP_LIGHT_DEBUG_PS.as_bytes(),
-                Some("shadowkeep_light_debug"),
-                &[],
-                "mainPS",
-                d3d11::fxc::ShaderTarget::Pixel,
-            )?;
-            Some(renderer.gpu.create_pixel_shader(&blob)?)
-        } else {
-            None
-        };
-
 
         Ok(Box::new(Self {
             data: Arc::new(LightRendererData {
@@ -220,7 +202,6 @@ impl LightRenderer {
                 // technique_light_probe_apply: Technique::load(&renderer.gpu, technique_light_probe)?,
                 vb,
                 ib,
-                debug_pixel_shader,
             }),
             submission_path,
             local_to_world: Mat4::IDENTITY,
@@ -240,11 +221,7 @@ impl LightRenderer {
         let volume = self.local_to_world * self.light_space_transform;
 
         cmd.externs.simple_geometry = Some(Box::new(SimpleGeometry {
-            local_to_world: if self.data.debug_pixel_shader.is_some() {
-                Mat4::IDENTITY
-            } else {
-                global_externs.view.world_to_projective * volume
-            },
+            local_to_world: global_externs.view.world_to_projective * volume,
         }));
 
         let node_relative = Mat4::from_translation(-view_position) * self.local_to_world;
@@ -323,11 +300,7 @@ impl LightRenderer {
         } else {
             &self.data.technique_lighting_apply
         };
-        cmd.set_override_pixel_shader(self.data.debug_pixel_shader.clone());
         technique.bind(cmd).unwrap();
-        if let Some(shader) = self.data.debug_pixel_shader.as_ref() {
-            cmd.pixel_set_shader(shader);
-        }
         if SHADOWKEEP_LIGHT_BINDING_REPORTED
             .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
@@ -345,7 +318,6 @@ impl LightRenderer {
 
         cmd.input_assembler_set_index_buffer(&self.data.ib, dxgi::Format::R16Uint, 0);
         cmd.draw_indexed(geometry::CUBE_INDICES.len() as u32, 0, 0);
-        cmd.set_override_pixel_shader(None);
         if SHADOWKEEP_DEFERRED_LIGHT_DRAW_REPORTED
             .compare_exchange(false, true, Ordering::Relaxed, Ordering::Relaxed)
             .is_ok()
@@ -360,7 +332,6 @@ impl LightRenderer {
         cmd.flush_states();
     }
 }
-
 
 #[profiling::all_functions]
 impl FeatureRenderer for LightRenderer {

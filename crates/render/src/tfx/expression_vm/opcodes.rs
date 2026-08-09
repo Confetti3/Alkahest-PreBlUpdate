@@ -314,8 +314,9 @@ pub fn get_texture_externs_from_bytecode(
         let opcode_size = opcode.size();
         match opcode {
             Opcode::PushExternInputTextureView => {
-                let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
-                    .context("Invalid extern index")?;
+                let extern_id = ExternIndex::try_from(ptr[1])
+                    .ok()
+                    .context("Invalid normalized extern index")?;
                 let offset = ptr[2] as u32 * 8;
 
                 last_extern = Some((extern_id, offset));

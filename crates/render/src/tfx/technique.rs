@@ -227,6 +227,7 @@ impl Deref for Technique {
 pub struct TechniqueStage {
     pub shader: STechniqueShader,
     pub stage: ShaderStage,
+    pub technique_hash: TagHash,
 
     pub shader_module: ShaderModule,
     pub dynamic_constants: DynamicConstants,
@@ -284,6 +285,7 @@ impl TechniqueStage {
         Ok(Some(Self {
             shader: shader.clone(),
             stage,
+            technique_hash,
 
             dynamic_constants,
             shader_module,
@@ -319,6 +321,7 @@ impl TechniqueStage {
         Ok(Some(Self {
             shader: normalize_shadowkeep_shader(shader),
             stage,
+            technique_hash,
             dynamic_constants,
             shader_module,
         }))
@@ -335,7 +338,13 @@ impl TechniqueStage {
         );
 
         self.shader_module.bind(cmd);
-        self.dynamic_constants.bind(cmd, self.stage, channels)?;
+        self.dynamic_constants.bind(
+            cmd,
+            self.technique_hash,
+            self.shader.shader,
+            self.stage,
+            channels,
+        )?;
 
         Ok(())
     }

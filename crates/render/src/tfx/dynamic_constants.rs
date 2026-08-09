@@ -5,7 +5,7 @@ use alkahest_data::tfx::{ExternIndex, SDynamicConstants, ShaderStage, shadowkeep
 use anyhow::Context;
 use glam::Vec4;
 use itertools::Itertools;
-use tiger_pkg::package_manager;
+use tiger_pkg::{TagHash, package_manager};
 
 use super::expression_vm::{self, interpreter::InterpreterState};
 use crate::{
@@ -180,6 +180,9 @@ impl DynamicConstants {
         &self,
         cmd: &mut CommandList,
         channels: Option<&AHashMap<u32, ObjectChannel>>,
+        stage: ShaderStage,
+        technique_hash: TagHash,
+        shader_hash: TagHash,
     ) -> anyhow::Result<()> {
         if self.writes_cbuffer {
             if let Some(ref cbuffer) = self.cbuffer {
@@ -192,11 +195,18 @@ impl DynamicConstants {
 
                 // Copy the initial constants
                 data[..self.initial_constants.len()].copy_from_slice(&self.initial_constants);
-                self.evaluate_expressions(cmd, Some(data), channels);
+                self.evaluate_expressions(
+                    cmd,
+                    Some(data),
+                    channels,
+                    stage,
+                    technique_hash,
+                    shader_hash,
+                );
                 cmd.unmap(cbuffer.buffer(), 0);
             }
         } else {
-            self.evaluate_expressions(cmd, None, channels);
+            self.evaluate_expressions(cmd, None, channels, stage, technique_hash, shader_hash);
         }
 
         Ok(())
@@ -207,6 +217,9 @@ impl DynamicConstants {
         cmd: &mut CommandList,
         output: Option<&mut [Vec4]>,
         channels: Option<&AHashMap<u32, ObjectChannel>>,
+        stage: ShaderStage,
+        technique_hash: TagHash,
+        shader_hash: TagHash,
     ) {
         // profiling::scope!(
         //     "evaluate_expression_bytecode",
@@ -219,31 +232,49 @@ impl DynamicConstants {
         if let Some(channels) = channels {
             interpreter = interpreter.with_object_channels(channels);
         }
-        if let Err(e) = interpreter.evaluate(
+        let constant_buffer_len = output.as_ref().map_or(0, |data| data.len());
+        if let Err(expression_error) = interpreter.evaluate(
             &self.bytecode_constants,
             &self.samplers,
             output.unwrap_or(&mut []),
         ) {
-            error!("Failed to evaluate expression bytecode: {:?}", e);
+            let raw_opcode = self.bytecode.get(interpreter.ip).copied();
+            let (extern_index, extern_offset) =
+                match raw_opcode.and_then(|raw| Opcode::try_from(raw).ok()) {
+                    Some(
+                        Opcode::PushExternInputFloat
+                        | Opcode::PushExternInputVec4
+                        | Opcode::PushExternInputMat4
+                        | Opcode::PushExternInputTextureView
+                        | Opcode::PushExternInputUav,
+                    ) => (
+                        self.bytecode.get(interpreter.ip + 1).copied(),
+                        self.bytecode.get(interpreter.ip + 2).copied(),
+                    ),
+                    _ => (None, None),
+                };
+            error!(
+                technique = %technique_hash,
+                shader_stage = ?stage,
+                shader = %shader_hash,
+                instruction_pointer = interpreter.ip,
+                raw_opcode = ?raw_opcode,
+                translated_bytecode = ?self.bytecode,
+                extern_index = ?extern_index,
+                extern_offset = ?extern_offset,
+                constant_buffer_slot = self.cbuffer_slot,
+                constant_buffer_len,
+                error = ?expression_error,
+                "Failed to evaluate expression bytecode"
+            );
 
             let bytecode_listing = match expression_vm::disassemble(&self.bytecode) {
                 Ok(ops) => ops.into_iter().map(|v| format!("    {v}")).join("\n"),
-                Err(e) => {
-                    format!("Failed to disassemble bytecode: {e:?}")
+                Err(disassembly_error) => {
+                    format!("Failed to disassemble bytecode: {disassembly_error:?}")
                 }
             };
             debug!("Bytecode:\n{}", bytecode_listing);
-
-            if interpreter.ip < self.bytecode.len() {
-                // Patch the bytecode to disable the expression
-                unsafe {
-                    self.bytecode
-                        .as_ptr()
-                        .add(interpreter.ip)
-                        .cast_mut()
-                        .write(expression_vm::opcodes::Opcode::ExtReturn as u8);
-                }
-            }
         }
     }
 
@@ -251,11 +282,13 @@ impl DynamicConstants {
     pub fn bind(
         &self,
         cmd: &mut CommandList,
+        technique_hash: TagHash,
+        shader_hash: TagHash,
         stage: ShaderStage,
         channels: Option<&AHashMap<u32, ObjectChannel>>,
     ) -> anyhow::Result<()> {
         if !self.bytecode.is_empty() {
-            self.prepare_constants(cmd, channels)?;
+            self.prepare_constants(cmd, channels, stage, technique_hash, shader_hash)?;
         }
 
         if self.cbuffer_slot != u32::MAX {
@@ -354,10 +387,9 @@ fn translate_shadowkeep_bytecode(source: &[u8]) -> anyhow::Result<Vec<u8>> {
             0x48 => (0x57, 2),
             0x49 => (0x58, 2),
             0x4a => (0x59, 2),
-            0x4b => (0x5a, 2),
+            0x4b => (Opcode::PushGlobalChannelVector as u8, 2),
             0x4c => (0x5b, 2),
-            0x4d => (0x5c, 2),
-            0x4e => (0x5d, 2),
+            0x4d | 0x4e => (Opcode::PushGlobalChannelVector as u8, 2),
             _ => anyhow::bail!("unsupported Shadowkeep expression opcode 0x{legacy:02X} at 0x{cursor:X}"),
         };
         let end = cursor + size;
@@ -389,7 +421,7 @@ fn translate_shadowkeep_bytecode(source: &[u8]) -> anyhow::Result<Vec<u8>> {
                 }
                 _ => {}
             }
-            translated.extend_from_slice(&[source[cursor + 1], offset]);
+            translated.extend_from_slice(&[extern_index as u8, offset]);
         } else {
             translated.extend_from_slice(&source[cursor + 1..end]);
         }
@@ -400,7 +432,7 @@ fn translate_shadowkeep_bytecode(source: &[u8]) -> anyhow::Result<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExternIndex, translate_shadowkeep_bytecode};
+    use super::{ExternIndex, Opcode, translate_shadowkeep_bytecode};
 
     #[test]
     fn shadowkeep_bytecode_relocates_sampler_and_extern_opcodes() {
@@ -421,7 +453,7 @@ mod tests {
         // the extern accessor handles them without moving the opcode.
         assert_eq!(
             translate_shadowkeep_bytecode(&[0x3f, 43, 0x02]).unwrap(),
-            vec![0x4d, 43, 0x02],
+            vec![0x4d, ExternIndex::ObjectEffect as u8, 0x02],
         );
         // View camera_to_projective at legacy 0x60 -> normalized 0x80.
         assert_eq!(
@@ -434,6 +466,25 @@ mod tests {
         assert_eq!(
             translate_shadowkeep_bytecode(&[0x3e, ExternIndex::View as u8, 0x0e]).unwrap(),
             vec![0x4c, ExternIndex::View as u8, 0x10],
+        );
+    }
+
+    #[test]
+    fn shadowkeep_bytecode_normalizes_legacy_global_channels() {
+        for legacy in [0x4b, 0x4d, 0x4e] {
+            assert_eq!(
+                translate_shadowkeep_bytecode(&[legacy, 37]).unwrap(),
+                vec![Opcode::PushGlobalChannelVector as u8, 37],
+            );
+        }
+    }
+
+    #[test]
+    fn shadowkeep_bytecode_normalizes_extern_indices_once() {
+        let encoded_global_lighting = ExternIndex::GlobalLighting as u8 - 1;
+        assert_eq!(
+            translate_shadowkeep_bytecode(&[0x3f, encoded_global_lighting, 0x02]).unwrap(),
+            vec![0x4d, ExternIndex::GlobalLighting as u8, 0x02],
         );
     }
 }

@@ -513,8 +513,9 @@ impl<'a> InterpreterState<'a> {
                     let slot = ptr[1] & 0x1F;
                     let bits = cached_top.x.to_bits();
 
-                    let index = alkahest_data::tfx::shadowkeep::decode_extern_index((bits >> 24) as u8)
-                        .context("Invalid extern index on pop texture view")?;
+                    let index = ExternIndex::try_from((bits >> 24) as u8)
+                        .ok()
+                        .context("Invalid normalized extern index on pop texture view")?;
                     let offset = bits & 0xFFFFFF;
 
                     externs
@@ -571,8 +572,9 @@ impl<'a> InterpreterState<'a> {
                     let slot = ptr[1] & 0x1F;
                     let bits = cached_top.x.to_bits();
 
-                    let index = alkahest_data::tfx::shadowkeep::decode_extern_index((bits >> 24) as u8)
-                        .context("Invalid extern index on pop texture view")?;
+                    let index = ExternIndex::try_from((bits >> 24) as u8)
+                        .ok()
+                        .context("Invalid normalized extern index on pop UAV")?;
                     let offset = bits & 0xFFFFFF;
 
                     externs
@@ -614,8 +616,9 @@ impl<'a> InterpreterState<'a> {
                         anyhow::bail!("No externs set");
                     };
 
-                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
-                        .context("Invalid extern index")?;
+                    let extern_id = ExternIndex::try_from(ptr[1])
+                        .ok()
+                        .context("Invalid normalized extern index")?;
                     let offset = ptr[2];
                     let val = externs
                         .get_extern_value::<f32>(extern_id, offset as usize * 4)
@@ -634,8 +637,9 @@ impl<'a> InterpreterState<'a> {
                         anyhow::bail!("No externs set");
                     };
 
-                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
-                        .context("Invalid extern index")?;
+                    let extern_id = ExternIndex::try_from(ptr[1])
+                        .ok()
+                        .context("Invalid normalized extern index")?;
                     let offset = ptr[2];
 
                     let val = match externs.get_extern_value::<Vec4>(
@@ -663,8 +667,9 @@ impl<'a> InterpreterState<'a> {
                         anyhow::bail!("No externs set");
                     };
 
-                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
-                        .context("Invalid extern index")?;
+                    let extern_id = ExternIndex::try_from(ptr[1])
+                        .ok()
+                        .context("Invalid normalized extern index")?;
                     let offset = ptr[2];
 
                     let val = externs
@@ -683,16 +688,18 @@ impl<'a> InterpreterState<'a> {
                     cached_top = self.push(val.w_axis)?;
                 }
                 Opcode::PushExternInputTextureView => {
-                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
-                        .context("Invalid extern index")?;
+                    let extern_id = ExternIndex::try_from(ptr[1])
+                        .ok()
+                        .context("Invalid normalized extern index")?;
                     let offset = ptr[2] as u32 * 8;
 
                     let bits = (extern_id as u32) << 24 | (offset & 0xFFFFFF);
                     cached_top = self.push(Vec4::new(f32::from_bits(bits), 0.0, 0.0, 0.0))?;
                 }
                 Opcode::PushExternInputUav => {
-                    let extern_id = alkahest_data::tfx::shadowkeep::decode_extern_index(ptr[1])
-                        .context("Invalid extern index")?;
+                    let extern_id = ExternIndex::try_from(ptr[1])
+                        .ok()
+                        .context("Invalid normalized extern index")?;
                     let offset = ptr[2] as u32 * 8;
 
                     let bits = (extern_id as u32) << 24 | (offset & 0xFFFFFF);
