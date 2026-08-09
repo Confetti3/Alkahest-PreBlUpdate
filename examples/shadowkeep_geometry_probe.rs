@@ -2,7 +2,10 @@
 //!
 //! Usage: `cargo run --example shadowkeep_geometry_probe -- <packages-dir>`.
 
-use std::io::{Cursor, Seek, SeekFrom};
+use std::{
+    collections::BTreeMap,
+    io::{Cursor, Seek, SeekFrom},
+};
 
 use alkahest_data::{
     shadowkeep::{
@@ -29,6 +32,7 @@ struct Scan {
     dynamics: usize,
     explicit_nulls: usize,
     max_layout: u16,
+    resource_types: BTreeMap<u32, usize>,
     first_error: Option<String>,
 }
 
@@ -54,6 +58,10 @@ impl Scan {
             self.explicit_nulls,
             self.max_layout,
         );
+        println!("map resource types:");
+        for (resource_type, count) in &self.resource_types {
+            println!("  0x{resource_type:08X}: {count}");
+        }
         if let Some(error) = &self.first_error {
             bail!("Shadowkeep core geometry scan failed: {error}");
         }
@@ -195,6 +203,10 @@ fn scan_map_table(scan: &mut Scan, table_hash: TagHash, layout_count: usize) -> 
             continue;
         }
         let offset = entry.data_resource.offset;
+        *scan
+            .resource_types
+            .entry(entry.data_resource.resource_type)
+            .or_default() += 1;
         let mut cursor = Cursor::new(bytes.as_slice());
         match entry.data_resource.resource_type {
             0x808071B3 => {

@@ -861,7 +861,7 @@ impl Scene {
             if self.view.settings().sun_shadows
                 && matches!(
                     self.render_mode,
-                    RenderMode::ShadedNoAtm | RenderMode::Shaded
+                    RenderMode::ShadedNoAtm | RenderMode::Shaded | RenderMode::ShadingOnly
                 )
             {
                 self.draw_sun_shadows(&mut cmd);
@@ -971,8 +971,15 @@ impl Scene {
     fn draw_sun_shadows(&mut self, cmd: &mut CommandList) {
         let mut sun_dir = self
             .renderer
-            .externs
-            .get_global_channel_by_name("sun_light_direction")
+            .frame_packet
+            .read()
+            .misc
+            .shadowkeep_sun_direction
+            .unwrap_or_else(|| {
+                self.renderer
+                    .externs
+                    .get_global_channel_by_name("sun_light_direction")
+            })
             .xyz();
         if sun_dir.length() < 0.01 {
             sun_dir = Vec3::Z;

@@ -51,6 +51,11 @@ const SHADOW_MAP_SHADER: &str = include_str!("../builtin/shaders/shadow_map.hlsl
 const BLIT_SHADER: &str = include_str!("../builtin/shaders/blit_srgb.hlsl");
 const OVERDRAW_SHADER: &str = include_str!("../builtin/shaders/overdraw.hlsl");
 const HZB_DOWNSAMPLE_SHADER: &str = include_str!("../builtin/shaders/hzb_downsample.hlsl");
+const SHADOWKEEP_CUBEMAP_SHADER: &str =
+    include_str!("../builtin/shaders/shadowkeep_cubemap.hlsl");
+const SHADOWKEEP_IBL_COMPOSITE_SHADER: &str =
+    include_str!("../builtin/shaders/shadowkeep_ibl_composite.hlsl");
+const SHADOWKEEP_SKY_SHADER: &str = include_str!("../builtin/shaders/shadowkeep_sky.hlsl");
 
 pub struct Renderer {
     pub gpu: Arc<Gpu>,
@@ -78,6 +83,13 @@ pub struct Renderer {
     clear_ao_all_ps: d3d11::PixelShader,
     shadow_map_vs: d3d11::VertexShader,
     shadow_map_ps: d3d11::PixelShader,
+    pub(crate) shadowkeep_cubemap_vs: d3d11::VertexShader,
+    pub(crate) shadowkeep_cubemap_ps: d3d11::PixelShader,
+    pub(crate) shadowkeep_ibl_composite_vs: d3d11::VertexShader,
+    pub(crate) shadowkeep_ibl_composite_ps: d3d11::PixelShader,
+    pub(crate) shadowkeep_sky_vs: d3d11::VertexShader,
+    pub(crate) shadowkeep_sky_ps: d3d11::PixelShader,
+    pub(crate) shadowkeep_sky_constants: ConstantBuffer<[Vec4; 9]>,
     cascade_scope: ConstantBuffer<CascadeScope>,
     hzb_downsample_cs: d3d11::ComputeShader,
     hzb_downsample_params: ConstantBuffer<HzbDownsampleParams>,
@@ -183,6 +195,25 @@ impl Renderer {
 
         let (shadow_map_vs, shadow_map_ps) =
             gpu.compile_shader_vs_ps("shadow_map", SHADOW_MAP_SHADER, "mainVS", "mainPS")?;
+        let (shadowkeep_cubemap_vs, shadowkeep_cubemap_ps) = gpu.compile_shader_vs_ps(
+            "shadowkeep_cubemap",
+            SHADOWKEEP_CUBEMAP_SHADER,
+            "mainVS",
+            "mainPS",
+        )?;
+        let (shadowkeep_ibl_composite_vs, shadowkeep_ibl_composite_ps) = gpu
+            .compile_shader_vs_ps(
+                "shadowkeep_ibl_composite",
+                SHADOWKEEP_IBL_COMPOSITE_SHADER,
+                "mainVS",
+                "mainPS",
+            )?;
+        let (shadowkeep_sky_vs, shadowkeep_sky_ps) = gpu.compile_shader_vs_ps(
+            "shadowkeep_sky",
+            SHADOWKEEP_SKY_SHADER,
+            "mainVS",
+            "mainPS",
+        )?;
 
         let hzb_downsample_cs =
             gpu.compile_shader_cs("hzb_downsample", HZB_DOWNSAMPLE_SHADER, "main")?;
@@ -231,6 +262,13 @@ impl Renderer {
             clear_ao_all_ps,
             shadow_map_vs,
             shadow_map_ps,
+            shadowkeep_cubemap_vs,
+            shadowkeep_cubemap_ps,
+            shadowkeep_ibl_composite_vs,
+            shadowkeep_ibl_composite_ps,
+            shadowkeep_sky_vs,
+            shadowkeep_sky_ps,
+            shadowkeep_sky_constants: ConstantBuffer::create(&gpu, None)?,
             hzb_downsample_cs,
             hzb_downsample_params: ConstantBuffer::create(&gpu, None)?,
             cascade_scope: ConstantBuffer::create(&gpu, None)?,
@@ -412,8 +450,8 @@ pub struct CommonResources {
 
     pub disable_skinning_vs: d3d11::VertexShader,
 
-    sampler_point: d3d11::SamplerState,
-    sampler_linear: d3d11::SamplerState,
+    pub(crate) sampler_point: d3d11::SamplerState,
+    pub(crate) sampler_linear: d3d11::SamplerState,
 }
 
 impl CommonResources {

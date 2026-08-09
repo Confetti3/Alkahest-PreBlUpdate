@@ -30,6 +30,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## Unreleased / Rolling Release
 
+### Added
+
+- Restored Shadowkeep freeroam scenario discovery, map cubemap reflections, a depth-masked sky and sun, and the cascaded sun-shadow mask path.
+
+
 ## 0.5.2 - 2025-02-11
 
 ### Changed

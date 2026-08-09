@@ -420,6 +420,11 @@ fn quantize_clear_rgb(format: dxgi::Format, clear: [f32; 4]) -> anyhow::Result<[
             decode_unsigned_float(encode_unsigned_float(clear[1], 6), 6),
             decode_unsigned_float(encode_unsigned_float(clear[2], 5), 5),
         ]),
+        dxgi::Format::R8g8Typeless | dxgi::Format::R8g8Unorm => Ok([
+            (clear[0].clamp(0.0, 1.0) * 255.0).round() / 255.0,
+            (clear[1].clamp(0.0, 1.0) * 255.0).round() / 255.0,
+            0.0,
+        ]),
         _ => bail!("Clear-value statistics are unsupported for format {format:?}"),
     }
 }
@@ -464,8 +469,10 @@ fn bytes_per_pixel(format: dxgi::Format) -> anyhow::Result<usize> {
         | dxgi::Format::R8g8b8a8UnormSrgb
         | dxgi::Format::R10g10b10a2Typeless
         | dxgi::Format::R10g10b10a2Unorm
-        | dxgi::Format::R11g11b10Float => Ok(4),
+        | dxgi::Format::R11g11b10Float
+        | dxgi::Format::R32Typeless => Ok(4),
         dxgi::Format::R16g16b16a16Typeless | dxgi::Format::R16g16b16a16Float => Ok(8),
+        dxgi::Format::R8g8Typeless | dxgi::Format::R8g8Unorm => Ok(2),
         dxgi::Format::R32g8x24Typeless => Ok(8),
         _ => bail!("Unsupported provenance format {format:?}"),
     }
@@ -487,6 +494,12 @@ fn format_has_alpha(format: dxgi::Format) -> bool {
 fn decode_pixel(format: dxgi::Format, bytes: &[u8]) -> anyhow::Result<[f32; 4]> {
     let packed = || u32::from_le_bytes(bytes[..4].try_into().unwrap());
     match format {
+        dxgi::Format::R8g8Typeless | dxgi::Format::R8g8Unorm => Ok([
+            bytes[0] as f32 / 255.0,
+            bytes[1] as f32 / 255.0,
+            0.0,
+            0.0,
+        ]),
         dxgi::Format::R8g8b8a8Typeless
         | dxgi::Format::R8g8b8a8Unorm
         | dxgi::Format::R8g8b8a8UnormSrgb => Ok([
@@ -519,6 +532,10 @@ fn decode_pixel(format: dxgi::Format, bytes: &[u8]) -> anyhow::Result<[f32; 4]> 
             decode_f16(u16::from_le_bytes(bytes[4..6].try_into().unwrap())),
             decode_f16(u16::from_le_bytes(bytes[6..8].try_into().unwrap())),
         ]),
+        dxgi::Format::R32Typeless => {
+            let depth = f32::from_le_bytes(bytes[..4].try_into().unwrap());
+            Ok([depth, depth, depth, 0.0])
+        }
         dxgi::Format::R32g8x24Typeless => {
             let depth = f32::from_le_bytes(bytes[..4].try_into().unwrap());
             Ok([depth, depth, depth, 0.0])
@@ -625,6 +642,19 @@ mod tests {
 
         assert_eq!(stats.pixels_different_from_clear_value, Some(1));
     }
+    #[test]
+    fn counts_pixels_different_from_r8g8_clear_value() {
+        let stats = compute_stats(
+            dxgi::Format::R8g8Typeless,
+            &[255, 255, 128, 255],
+            Some([1.0, 1.0, 1.0, 1.0]),
+        )
+        .unwrap();
+
+        assert_eq!(stats.maximum_rgb, Some([1.0, 1.0, 0.0]));
+        assert_eq!(stats.pixels_different_from_clear_value, Some(1));
+    }
+
     #[test]
     fn counts_non_finite_and_saturated_rgb_pixels() {
         let stats = compute_stats(

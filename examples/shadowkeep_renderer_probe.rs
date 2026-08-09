@@ -49,6 +49,20 @@ fn main() -> anyhow::Result<()> {
             .with_context(|| format!("failed to parse Shadowkeep technique {name} ({tag})"))?;
     }
     println!("all referenced scopes and techniques parsed; {} scopes and {} techniques are explicitly null", absent_scopes.len(), absent_pipelines.len());
+    let mut atmosphere_pipelines = bootstrap
+        .pipelines
+        .iter()
+        .filter(|(name, _)| {
+            name.contains("sky")
+                || name.contains("atmosphere")
+                || name.starts_with("cubemap_apply_cube_")
+        })
+        .collect::<Vec<_>>();
+    atmosphere_pipelines.sort_unstable_by_key(|(name, _)| name.as_str());
+    println!("sky/atmosphere pipelines:");
+    for (name, tag) in atmosphere_pipelines {
+        println!("  {name}={tag}");
+    }
     for name in [
         "global_lighting",
         "deferred_shading",
@@ -57,6 +71,10 @@ fn main() -> anyhow::Result<()> {
         "fxaa",
         "downsample_depth_buffer",
         "uber_depth_default",
+        "sky_generate_sky_mask",
+        "sky_lookup_generate_near",
+        "sky_lookup_generate_far",
+        "sky",
     ] {
         match bootstrap.pipelines.get(name) {
             Some(tag) if tag.is_some() => println!("pipeline {name}=ready ({tag})"),

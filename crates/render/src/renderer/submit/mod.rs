@@ -109,12 +109,43 @@ impl Renderer {
         );
         shadowmap.bind_single(cmd);
 
-        self.submit_stage_parallel_apply(
-            cmd,
-            view.index,
-            RenderStage::ShadowGenerate,
-            FeatureRendererSubscription::all(),
-        );
+        if self.era() == crate::renderer::RendererEra::Shadowkeep {
+            self.submit_stage(
+                cmd,
+                view.index,
+                RenderStage::ShadowGenerate,
+                FeatureRendererSubscription::all(),
+            );
+        } else {
+            self.submit_stage_parallel_apply(
+                cmd,
+                view.index,
+                RenderStage::ShadowGenerate,
+                FeatureRendererSubscription::all(),
+            );
+        }
+        if self.era() == crate::renderer::RendererEra::Shadowkeep
+            && ConVars::get_flag("render.shadowkeep_buffer_provenance")
+        {
+            match capture_surface(
+                cmd,
+                shadowmap,
+                Path::new("artifacts/shadowkeep-buffer-provenance"),
+                None,
+                None,
+            ) {
+                Ok(capture) => tracing::info!(
+                    view = view.index,
+                    ?capture,
+                    "Captured Shadowkeep sun cascade"
+                ),
+                Err(error) => tracing::error!(
+                    view = view.index,
+                    ?error,
+                    "Failed to capture Shadowkeep sun cascade"
+                ),
+            }
+        }
     }
 
     fn submit_view_shaded(
@@ -543,6 +574,7 @@ impl Renderer {
         self.clear_surface(cmd, view.lighting.light_specular, [0.0; 4]);
         self.clear_surface(cmd, view.lighting.light_specular_ibl, [0.0; 4]);
         self.clear_surface(cmd, view.shadow_mask, [1.0; 4]);
+        self.compute_shadow_map(cmd, view);
 
         // Arrivals fills the diffuse/specular targets with local/deferred
         // lights before the optional fullscreen global-lighting technique.
@@ -568,6 +600,24 @@ impl Renderer {
         let lighting_apply_stage_submitted = true;
         let light_capture =
             capture_provenance.then(crate::feature::light::finish_shadowkeep_light_capture);
+        {
+            cmd_event_span!(cmd, "shadowkeep/cubemaps");
+            let _gpu_span = self.profiler.scope(cmd, "shadowkeep/cubemaps");
+            view.lighting.bind_diffuse_ibl(cmd, &view.surfaces);
+            cmd.pixel_set_shader_resources(
+                3,
+                &[view.surfaces.get(view.gbuffers.depth).srv(0)],
+            );
+            cmd.state = PipelineState::new(Some(23), Some(1), Some(3), Some(1));
+            cmd.flush_states();
+            self.submit_stage(
+                cmd,
+                View::MAIN,
+                RenderStage::Cubemaps,
+                FeatureRendererSubscription::all(),
+            );
+            cmd.state_override = PipelineState::default();
+        }
         if capture_directional_light_ab {
             self.capture_shadowkeep_directional_light_ab(cmd, view, &pipelines.global_lighting);
         }
@@ -650,6 +700,8 @@ impl Renderer {
                     Some([0.001, 0.001, 0.001, 0.0]),
                 ),
                 (view.lighting.light_specular, Some([0.0; 4])),
+                (view.lighting.light_specular_ibl, Some([0.0; 4])),
+                (view.shadow_mask, Some([1.0; 4])),
             ] {
                 match capture_surface(
                     cmd,
@@ -679,6 +731,75 @@ impl Renderer {
             &pipelines.deferred_shading_no_atm,
             "shadowkeep/deferred_shading_no_atm",
         );
+        {
+            cmd_event_span!(cmd, "shadowkeep/specular_ibl_composite");
+            cmd.vertex_set_shader(Some(&self.shadowkeep_ibl_composite_vs));
+            cmd.pixel_set_shader(Some(&self.shadowkeep_ibl_composite_ps));
+            cmd.pixel_set_shader_resources(
+                0,
+                &[view
+                    .surfaces
+                    .get(view.lighting.light_specular_ibl)
+                    .srv(0)],
+            );
+            cmd.state = PipelineState::new(Some(23), Some(0), Some(0), Some(0));
+            cmd.flush_states();
+            cmd.set_input_topology(PrimitiveType::TriangleStrip);
+            cmd.draw(4, 0);
+        }
+        if ConVars::get_flag("render.sky") {
+            cmd_event_span!(cmd, "shadowkeep/sky");
+            let sun_direction = self
+                .frame_packet
+                .read()
+                .misc
+                .shadowkeep_sun_direction
+                .unwrap_or(Vec4::Z);
+            let target_pixel_to_world = self.externs.view.target_pixel_to_world;
+            let zenith_color = Vec4::new(0.10, 0.22, 0.46, 1.0)
+                * self.externs.get_global_channel_by_name("up_ambient_color")
+                * self
+                    .externs
+                    .get_global_channel_by_name("up_ambient_intensity")
+                    .x;
+            let horizon_color = Vec4::new(0.44, 0.32, 0.22, 1.0)
+                * self.externs.get_global_channel_by_name("down_ambient_color")
+                * self
+                    .externs
+                    .get_global_channel_by_name("down_ambient_intensity")
+                    .x;
+            let sun_color = Vec4::new(1.0, 0.82, 0.56, 1.0)
+                * self.externs.get_global_channel_by_name("sun_color")
+                * (self.externs.get_global_channel_by_name("sun_intensity").x * 0.1);
+            self.shadowkeep_sky_constants
+                .write(
+                    cmd,
+                    &[
+                        target_pixel_to_world.x_axis,
+                        target_pixel_to_world.y_axis,
+                        target_pixel_to_world.z_axis,
+                        target_pixel_to_world.w_axis,
+                        self.externs.view.position,
+                        sun_direction,
+                        zenith_color,
+                        horizon_color,
+                        sun_color,
+                    ],
+                )
+                .expect("Failed to write Shadowkeep sky constants");
+            self.shadowkeep_sky_constants
+                .bind(cmd, ShaderStage::Pixel, 11);
+            cmd.vertex_set_shader(Some(&self.shadowkeep_sky_vs));
+            cmd.pixel_set_shader(Some(&self.shadowkeep_sky_ps));
+            cmd.pixel_set_shader_resources(
+                0,
+                &[Some(&view.gbuffers.depth_proxy.lock().srv)],
+            );
+            cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+            cmd.flush_states();
+            cmd.set_input_topology(PrimitiveType::TriangleStrip);
+            cmd.draw(4, 0);
+        }
         self.capture_shadowkeep_final_combine_no_film_curve(cmd, view);
 
         self.blit_surface(
@@ -1693,13 +1814,15 @@ impl Renderer {
             // era-specific frame state rather than guessed channel semantics.
             *ext.global_lighting = GlobalLighting {
                 unk08: self.gpu.placeholder_white.view.clone().into(),
-                // Neutral direct color and ambient colors retain the broad fill
-                // restored in a5a27f8 while direction supplies the sun lobe.
-                unk10: Vec4::ONE,
+                unk10: ext.get_global_channel_by_name("sun_color")
+                    * ext.get_global_channel_by_name("sun_intensity").x,
                 unk30: sun_direction,
                 unk50: sun_direction,
-                unk70: Vec4::ONE,
-                unk80: Vec4::ONE,
+                unk70: ext.get_global_channel_by_name("up_ambient_color")
+                    * ext.get_global_channel_by_name("up_ambient_intensity").x,
+                unk80: ext.get_global_channel_by_name("down_ambient_color")
+                    * ext.get_global_channel_by_name("down_ambient_intensity").x,
+                unk90: ext.get_global_channel_by_name("up_ambient_sharpness").x,
                 unk94: -0.5,
                 ..Default::default()
             };
@@ -1902,19 +2025,17 @@ impl Renderer {
         ext.decal.unk30 = vec4(fb_res.0 as f32, fb_res.1 as f32, 0.0, 0.0);
 
         if self.era() == crate::renderer::RendererEra::Shadowkeep {
-            // The preserved Arrivals lighting pass seeds all three shadow
-            // inputs with white until its optional shadow/SSAO producers run.
-            // Do the same for the admitted fullscreen pass; binding the
-            // modern mask/depth surfaces here makes a null legacy input look
-            // like a valid but empty light buffer.
             let white: TextureView = self.gpu.placeholder_white.view.clone().into();
-            ext.shadow_mask.unk00 = white.clone();
-            ext.shadow_mask.unk08 = white.clone();
-            ext.shadow_mask.unk10 = white;
+            ext.shadow_mask.unk00 = if view.settings.sun_shadows {
+                view.shadow_mask.into()
+            } else {
+                white.clone()
+            };
+            ext.shadow_mask.unk08 = white;
+            ext.shadow_mask.unk10 = view.gbuffers.uber_depth_half.into();
             ext.shadow_mask.unk20 = view.surfaces.get(view.shadow_mask).resolution_with_recip();
         } else {
             ext.shadow_mask.unk00 = view.shadow_mask.into();
-            // ext.shadow_mask.unk08 = view.lighting.ssao.into();
             ext.shadow_mask.unk10 = view.gbuffers.uber_depth_half.into();
             ext.shadow_mask.unk20 = view.surfaces.get(view.shadow_mask).resolution_with_recip();
         }
@@ -1988,7 +2109,11 @@ impl Renderer {
         }
         .into();
 
-        ext.cubemaps.unk00 = view.lighting.vertex_ao.into();
+        ext.cubemaps.unk00 = if self.era() == crate::renderer::RendererEra::Shadowkeep {
+            self.gpu.placeholder_white.view.clone().into()
+        } else {
+            view.lighting.vertex_ao.into()
+        };
 
         *ext.transparent = externs::Transparent {
             unk00: view.atmosphere.sky_lookup_near.into(),

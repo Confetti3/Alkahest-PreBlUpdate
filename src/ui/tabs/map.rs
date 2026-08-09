@@ -115,26 +115,27 @@ impl MapTab {
                 ui.collapsing("Shadowkeep map load report", |ui| {
                     ui.label(
                         RichText::new(
-                            "Presentation: local-light/deferred shading only → deferred_shading_no_atm → direct sRGB output",
+                            "Presentation: Shadowkeep deferred lighting → cubemap IBL → visible sky/sun → direct sRGB output",
                         )
-                        .color(Color32::from_rgb(224, 192, 96)),
+                        .color(Color32::from_rgb(160, 208, 160)),
                     );
                     ui.weak(
-                        "Global lighting, IBL, atmosphere, and activity-layer scene content remain incomplete.",
+                        "Global directional lighting remains opt-in; available freeroam scenario tables are admitted automatically.",
                     );
                     ui.label(format!(
-                        "{} tables, {} entries in {:.2?}; {} static, {} terrain, {} rigid render objects",
-                        report.tables, report.entries, report.elapsed,
-                        report.static_placements, report.terrain_placements, report.rigid_render_objects,
+                        "{} map/activity tables ({} scenario), {} entries in {:.2?}; {} static, {} terrain, {} rigid, {} cubemap render objects",
+                        report.tables, report.activity_tables, report.entries, report.elapsed,
+                        report.static_placements, report.terrain_placements,
+                        report.rigid_render_objects, report.cubemap_render_objects,
                     ));
                     if report.cancelled {
                         ui.label(RichText::new("Load cancelled at a safe resource boundary").color(Color32::YELLOW));
                     }
                     ui.label(format!(
-                        "Loaded: {} static, {} terrain, {} rigid; {} duplicate references reused, {} resources deferred",
+                        "Loaded: {} static, {} terrain, {} rigid, {} cubemap; {} duplicate references reused, {} resources deferred",
                         report.static_render_objects, report.terrain_render_objects,
-                        report.rigid_render_objects, report.deduplicated_resources,
-                        report.deferred_resources,
+                        report.rigid_render_objects, report.cubemap_render_objects,
+                        report.deduplicated_resources, report.deferred_resources,
                     ));
                     if let Some(bounds) = report.world_bounds {
                         ui.monospace(format!(

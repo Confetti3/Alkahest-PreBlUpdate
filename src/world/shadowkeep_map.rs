@@ -13,9 +13,10 @@ use std::{
 
 use alkahest_data::{
     shadowkeep::{
-        SShadowkeepBubbleDefinition, SShadowkeepBubbleParent, SShadowkeepEntity,
-        SShadowkeepLightCollection, SShadowkeepMapDataTable, SShadowkeepOcclusionBounds,
-        SShadowkeepShadowingLight, SShadowkeepStaticPlacement, SShadowkeepTerrainPlacement,
+        SShadowkeepBubbleDefinition, SShadowkeepBubbleParent, SShadowkeepCubemapPlacement,
+        SShadowkeepEntity, SShadowkeepLightCollection, SShadowkeepMapDataTable,
+        SShadowkeepOcclusionBounds, SShadowkeepShadowingLight, SShadowkeepStaticPlacement,
+        SShadowkeepTerrainPlacement,
     },
     tfx::{TfxFeatureRenderer, common::AxisAlignedBBox},
 };
@@ -32,9 +33,8 @@ use crate::world::{
 use alkahest_render::{
     Renderer,
     feature::{
-        light::LightRenderer,
-        rigid_model::DynamicModel, static_geometry::StaticInstancesRenderer,
-        terrain_patches::TerrainPatchesRenderer,
+        cubemap::CubemapRenderer, light::LightRenderer, rigid_model::DynamicModel,
+        static_geometry::StaticInstancesRenderer, terrain_patches::TerrainPatchesRenderer,
     },
     object::RenderObject,
 };
@@ -43,6 +43,7 @@ const STATIC_PLACEMENT: u32 = 0x8080_71B3;
 const TERRAIN_PLACEMENT: u32 = 0x8080_714B;
 const LIGHT_COLLECTION: u32 = 0x8080_6F5A;
 const SHADOWING_LIGHT: u32 = 0x8080_7133;
+const CUBEMAP_VOLUME: u32 = 0x8080_6B7F;
 
 fn bounded_offset(table_len: usize, offset: u64, required: usize) -> anyhow::Result<usize> {
     let offset = usize::try_from(offset).context("resource offset exceeds addressable memory")?;
@@ -51,6 +52,53 @@ fn bounded_offset(table_len: usize, offset: u64, required: usize) -> anyhow::Res
         .context("resource offset overflows while checking table bounds")?;
     anyhow::ensure!(end <= table_len, "resource range {offset:#X}..{end:#X} exceeds table length {table_len:#X}");
     Ok(offset)
+}
+fn referenced_tags_with_class(bytes: &[u8], reference: u32) -> HashSet<TagHash> {
+    let manager = package_manager();
+    bytes
+        .chunks_exact(4)
+        .map(|chunk| TagHash(u32::from_le_bytes(chunk.try_into().unwrap())))
+        .filter(|tag| {
+            tag.is_some()
+                && manager
+                    .get_entry(*tag)
+                    .is_some_and(|entry| entry.reference == reference)
+        })
+        .collect()
+}
+
+fn shadowkeep_scenario_tables(map: TagHash) -> anyhow::Result<(Option<TagHash>, Vec<TagHash>)> {
+    let manager = package_manager();
+    let package_name = &manager.package_paths[&map.pkg_id()].name;
+    let scenario_name = format!("{package_name}_freeroam:scenario_client");
+    let Some(scenario) = manager
+        .get_named_tags_by_class(0x8080_9994)
+        .into_iter()
+        .find_map(|(name, tag)| (name == scenario_name).then_some(tag))
+    else {
+        return Ok((None, Vec::new()));
+    };
+
+    let phase_records = referenced_tags_with_class(&manager.read_tag(scenario)?, 0x8080_925B);
+    let mut phase_roots = HashSet::new();
+    for tag in phase_records {
+        phase_roots.extend(referenced_tags_with_class(&manager.read_tag(tag)?, 0x8080_925E));
+    }
+    let mut entity_resources = HashSet::new();
+    for tag in phase_roots {
+        entity_resources.extend(referenced_tags_with_class(&manager.read_tag(tag)?, 0x8080_9462));
+    }
+    let mut wrappers = HashSet::new();
+    for tag in entity_resources {
+        wrappers.extend(referenced_tags_with_class(&manager.read_tag(tag)?, 0x8080_9468));
+    }
+    let mut tables = HashSet::new();
+    for tag in wrappers {
+        tables.extend(referenced_tags_with_class(&manager.read_tag(tag)?, 0x8080_99D6));
+    }
+    let mut tables = tables.into_iter().collect::<Vec<_>>();
+    tables.sort_unstable();
+    Ok((Some(scenario), tables))
 }
 
 /// Thread-safe map-load counters, updated by both decoding and asset setup.
@@ -114,6 +162,8 @@ pub struct MapLoadDiagnostic {
 pub struct MapLoadReport {
     pub map: TagHash,
     pub containers: usize,
+    pub scenario: Option<TagHash>,
+    pub activity_tables: usize,
     pub tables: usize,
     pub entries: usize,
     pub static_placements: usize,
@@ -123,9 +173,11 @@ pub struct MapLoadReport {
     pub light_collections: usize,
     pub light_render_objects: usize,
     pub shadowing_lights: usize,
+    pub cubemap_volumes: usize,
     pub static_render_objects: usize,
     pub terrain_render_objects: usize,
     pub rigid_render_objects: usize,
+    pub cubemap_render_objects: usize,
     pub deduplicated_resources: usize,
     pub deferred_resources: usize,
     pub skipped_resources: usize,
@@ -169,23 +221,37 @@ pub fn load_shadowkeep_map_into_world(
         .read_tag_struct(parent.child_map)
         .context("Failed to read Shadowkeep bubble definition")?;
     let mut report = MapLoadReport { map: tag, ..Default::default() };
-    progress.total_tables.store(
-        definition.map_resources.iter().map(|container| container.data_tables.len()).sum(),
-        Ordering::Relaxed,
-    );
+    report.containers = definition.map_resources.len();
+    let mut table_hashes = definition
+        .map_resources
+        .iter()
+        .flat_map(|container| container.data_tables.iter().copied())
+        .collect::<Vec<_>>();
+    match shadowkeep_scenario_tables(tag) {
+        Ok((scenario, tables)) => {
+            report.scenario = scenario;
+            report.activity_tables = tables.len();
+            table_hashes.extend(tables);
+        }
+        Err(error) => report.diagnostic(progress, MapLoadDiagnostic {
+            table: tag,
+            entry_offset: 0,
+            resource_class: 0x8080_9994,
+            error: format!("could not decode freeroam scenario layers: {error:#}"),
+        }),
+    }
+    let mut unique_tables = HashSet::new();
+    table_hashes.retain(|table| unique_tables.insert(*table));
+    progress
+        .total_tables
+        .store(table_hashes.len(), Ordering::Relaxed);
     let mut world = hecs::World::new();
     let mut bound_points = Vec::new();
     let mut loaded_static_collections = HashSet::new();
     let mut loaded_terrain_resources = HashSet::new();
     let mut visual_bounds: Option<AxisAlignedBBox> = None;
 
-    for container in &definition.map_resources {
-        if progress.is_cancelled() {
-            report.cancelled = true;
-            break;
-        }
-        report.containers += 1;
-        for &table_hash in &container.data_tables {
+    for table_hash in table_hashes {
             if progress.is_cancelled() {
                 report.cancelled = true;
                 break;
@@ -277,6 +343,48 @@ pub fn load_shadowkeep_map_into_world(
                 }
 
                 match entry.data_resource.resource_type {
+                    CUBEMAP_VOLUME => {
+                        report.cubemap_volumes += 1;
+                        let result = (|| -> anyhow::Result<()> {
+                            bounded_offset(
+                                table_bytes.len(),
+                                entry.data_resource.offset,
+                                0x1A4,
+                            )?;
+                            let mut cursor = Cursor::new(&table_bytes[..]);
+                            cursor.seek(SeekFrom::Start(entry.data_resource.offset))?;
+                            let placement = SShadowkeepCubemapPlacement::read_ds(&mut cursor)?;
+                            let component = placement.normalized();
+                            let cubemap = CubemapRenderer::load(&renderer.gpu, &component)?;
+                            progress.gpu_assets_requested.fetch_add(1, Ordering::Relaxed);
+                            let (_, volume_rotation, volume_translation) =
+                                component.unkb0.to_scale_rotation_translation();
+                            world.spawn((
+                                Transform::new(volume_translation, volume_rotation, Vec3::ONE),
+                                DynamicRenderObject::new(renderer.add_object(RenderObject::new(
+                                    TfxFeatureRenderer::Cubemaps,
+                                    Box::new(cubemap),
+                                ))),
+                            ));
+                            progress
+                                .visual_resources_loaded
+                                .fetch_add(1, Ordering::Relaxed);
+                            report.cubemap_render_objects += 1;
+                            Ok(())
+                        })();
+                        if let Err(error) = result {
+                            report.skipped_resources += 1;
+                            report.diagnostic(
+                                progress,
+                                MapLoadDiagnostic {
+                                    table: table_hash,
+                                    entry_offset: entry.data_resource.offset,
+                                    resource_class: CUBEMAP_VOLUME,
+                                    error: format!("cubemap volume: {error:#}"),
+                                },
+                            );
+                        }
+                    }
                     LIGHT_COLLECTION => {
                         report.light_collections += 1;
                         let result = (|| -> anyhow::Result<()> {
@@ -478,14 +586,17 @@ pub fn load_shadowkeep_map_into_world(
                 }
             }
         }
-    }
     report.placement_bounds = (!bound_points.is_empty())
         .then(|| AxisAlignedBBox::from_points(&bound_points));
     report.world_bounds = visual_bounds.or(report.placement_bounds);
     tracing::info!(
         map = %tag,
+        scenario = ?report.scenario,
+        activity_tables = report.activity_tables,
         light_collections = report.light_collections,
         light_render_objects = report.light_render_objects,
+        cubemap_volumes = report.cubemap_volumes,
+        cubemap_render_objects = report.cubemap_render_objects,
         shadowing_lights = report.shadowing_lights,
         skipped_resources = report.skipped_resources,
         ?report.world_bounds,

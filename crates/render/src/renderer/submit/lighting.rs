@@ -292,7 +292,7 @@ impl Renderer {
     //     );
     // }
 
-    fn compute_shadow_map(&self, cmd: &mut CommandList, view: &MainView) {
+    pub(crate) fn compute_shadow_map(&self, cmd: &mut CommandList, view: &MainView) {
         if !view.settings.sun_shadows {
             view.surfaces
                 .get(view.shadow_mask)
@@ -318,8 +318,11 @@ impl Renderer {
         let target_pixel_to_world = self.externs.view.projective_to_world * viewport_to_projective;
 
         let mut sun_dir = self
-            .externs
-            .get_global_channel_by_name("sun_light_direction")
+            .frame_packet
+            .read()
+            .misc
+            .shadowkeep_sun_direction
+            .unwrap_or_else(|| self.externs.get_global_channel_by_name("sun_light_direction"))
             .xyz();
         if sun_dir.length() < 0.01 {
             sun_dir = Vec3::Z;

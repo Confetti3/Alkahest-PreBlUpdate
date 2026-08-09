@@ -366,7 +366,7 @@ impl RenderSettings {
             settings.bloom = false;
             settings.volumetrics = false;
             settings.shadows = false;
-            settings.sun_shadows = false;
+            settings.sun_shadows = true;
             settings.anti_aliasing = false;
             settings.multithreading = false;
             settings.hzb_culling = false;
@@ -407,7 +407,7 @@ mod tests {
         assert!(!settings.bloom);
         assert!(!settings.volumetrics);
         assert!(!settings.shadows);
-        assert!(!settings.sun_shadows);
+        assert!(settings.sun_shadows);
         assert!(!settings.anti_aliasing);
         assert!(!settings.multithreading);
         assert!(!settings.hzb_culling);

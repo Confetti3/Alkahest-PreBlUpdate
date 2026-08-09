@@ -28,7 +28,15 @@ fn main() -> Result<()> {
         );
     }
     let bootstrap = ShadowkeepEraProfile.load_bootstrap()?;
-    for name in ["global_lighting", "deferred_shading", "deferred_shading_no_atm"] {
+    for name in [
+        "global_lighting",
+        "deferred_shading",
+        "deferred_shading_no_atm",
+        "sky_generate_sky_mask",
+        "sky_lookup_generate",
+        "sky_direction_lookup_generate",
+        "sky",
+    ] {
         let tag = bootstrap.pipelines.get(name).copied().with_context(|| format!("{name} is absent"))?;
         let technique: SShadowkeepTechnique = package_manager().read_tag_struct(tag)?;
         println!("{name} tag={tag} bind={:?} states=0x{:08x} scopes=0x{:08x}", technique.bind_mode, technique.states.0, technique.used_scopes.0);

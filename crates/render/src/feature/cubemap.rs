@@ -1,7 +1,7 @@
-use std::sync::Arc;
+use std::{sync::Arc, sync::atomic::{AtomicBool, Ordering}};
 
 use alkahest_data::tfx::{
-    PrimitiveType, RenderStage, ShaderStage,
+    PipelineState, PrimitiveType, RenderStage, ShaderStage,
     common::AxisAlignedBBox,
     features::{cubemap::SCubemapComponent, dynamic::RenderStageSubscription},
 };
@@ -19,12 +19,15 @@ use crate::{
     util::geometry,
 };
 
+static SHADOWKEEP_CUBEMAP_DRAW_REPORTED: AtomicBool = AtomicBool::new(false);
+
 pub struct CubemapRenderer {
     vb: d3d11::Buffer,
     ib: d3d11::Buffer,
 
     cb_vs: ConstantBuffer<CubemapTransform>,
     cb_ps: ConstantBuffer<CubemapPixelConstants>,
+    cb_shadowkeep: ConstantBuffer<ShadowkeepCubemapConstants>,
 
     texture_cubemap_specular: Handle<Texture>,
     texture_cubemap_alpha: Handle<Texture>,
@@ -59,6 +62,7 @@ impl CubemapRenderer {
             ib,
             cb_vs: ConstantBuffer::create(gpu, None)?,
             cb_ps: ConstantBuffer::create(gpu, None)?,
+            cb_shadowkeep: ConstantBuffer::create(gpu, None)?,
             texture_cubemap_specular: Renderer::instance()
                 .asset_manager
                 .load(cubemap.texture_cube_specular_ibl),
@@ -107,6 +111,29 @@ impl FeatureRenderer for CubemapRenderer {
                 },
             )
             .unwrap();
+        if renderer.era() == crate::renderer::RendererEra::Shadowkeep {
+            let view = &Renderer::instance().externs.get().view;
+            let model_to_world =
+                local_to_world * Mat4::from_scale(-self.cubemap.volume_extents.xyz());
+            self.cb_shadowkeep
+                .write(
+                    &renderer.gpu.context(),
+                    &ShadowkeepCubemapConstants {
+                        model_to_world,
+                        world_to_model: model_to_world.inverse(),
+                        target_pixel_to_world: view.target_pixel_to_world,
+                        world_to_projective: view.world_to_projective,
+                        camera_position: view.position,
+                        target_resolution: Vec4::new(
+                            view.target_width,
+                            view.target_height,
+                            0.0,
+                            0.0,
+                        ),
+                    },
+                )
+                .unwrap();
+        }
 
         let cubemap_local_to_world =
             local_to_world * Mat4::from_scale(self.cubemap.volume_extents.xyz());
@@ -294,28 +321,74 @@ impl FeatureRenderer for CubemapRenderer {
                 // self.cubemap.use_parallax(),
             );
 
-        self.cb_vs.bind(cmd, ShaderStage::Vertex, 11);
-        self.cb_ps.bind(cmd, ShaderStage::Pixel, 11);
+        if Renderer::instance().era() == crate::renderer::RendererEra::Shadowkeep
+            && !SHADOWKEEP_CUBEMAP_DRAW_REPORTED.swap(true, Ordering::Relaxed)
+        {
+            tracing::warn!(
+                technique = %tech.hash,
+                specular = %self.texture_cubemap_specular.hash(),
+                specular_ready = self.texture_cubemap_specular.get().is_some(),
+                alpha = %self.texture_cubemap_alpha.hash(),
+                alpha_ready = self.texture_cubemap_alpha.get().is_some(),
+                voxel = %self.texture_voxel_diffuse.hash(),
+                voxel_ready = self.texture_voxel_diffuse.get().is_some(),
+                probes = self.cubemap.use_probes(),
+                relighting = self.cubemap.use_relighting(),
+                "Shadowkeep cubemap reached Cubemaps and issued DrawIndexed"
+            );
+        }
 
-        tech.bind(cmd).unwrap();
+        if Renderer::instance().era() == crate::renderer::RendererEra::Shadowkeep {
+            let renderer = Renderer::instance();
+            cmd.state = PipelineState::new(Some(8), Some(0), Some(2), Some(2));
+            cmd.flush_states();
+            self.cb_shadowkeep.bind(cmd, ShaderStage::Vertex, 11);
+            self.cb_shadowkeep.bind(cmd, ShaderStage::Pixel, 11);
+            cmd.vertex_set_shader(Some(&renderer.shadowkeep_cubemap_vs));
+            cmd.pixel_set_shader(Some(&renderer.shadowkeep_cubemap_ps));
+            cmd.pixel_set_samplers(1, &[Some(&renderer.common.sampler_linear)]);
+
+            let specular = self.texture_cubemap_specular.get();
+            let voxel = self.texture_voxel_diffuse.get();
+            let mut normal = None;
+            renderer
+                .externs
+                .get()
+                .deferred
+                .deferred_rt1
+                .get_srv(|srv| normal = Some(srv.clone()));
+            cmd.pixel_set_shader_resources(
+                0,
+                &[
+                    specular.as_ref().map(|texture| &texture.view),
+                    voxel.as_ref().map(|texture| &texture.view),
+                    normal.as_ref(),
+                ],
+            );
+        } else {
+            self.cb_vs.bind(cmd, ShaderStage::Vertex, 11);
+            self.cb_ps.bind(cmd, ShaderStage::Pixel, 11);
+            tech.bind(cmd).unwrap();
+        }
 
         cmd.set_input_topology(PrimitiveType::Triangles);
         cmd.set_input_layout(1); // float3 v0 : POSITION0, // Format DXGI_FORMAT_R32G32B32_FLOAT size 12
-
         cmd.input_assembler_set_index_buffer(&self.ib, dxgi::Format::R16Uint, 0);
         cmd.input_assembler_set_vertex_buffers(0, &[Some(&self.vb)], Some(&[12]), Some(&[0]))
             .unwrap();
 
-        cmd.pixel_set_shader_resources(1, &[None]); // Unbind t1
-        self.texture_cubemap_specular
-            .get()
-            .inspect(|t| t.bind(cmd, 0, alkahest_data::tfx::ShaderStage::Pixel));
-        self.texture_cubemap_alpha
-            .get()
-            .inspect(|t| t.bind(cmd, 1, alkahest_data::tfx::ShaderStage::Pixel));
-        self.texture_voxel_diffuse
-            .get()
-            .inspect(|t| t.bind(cmd, 2, alkahest_data::tfx::ShaderStage::Pixel));
+        if Renderer::instance().era() != crate::renderer::RendererEra::Shadowkeep {
+            cmd.pixel_set_shader_resources(1, &[None]); // Unbind t1
+            self.texture_cubemap_specular
+                .get()
+                .inspect(|t| t.bind(cmd, 0, alkahest_data::tfx::ShaderStage::Pixel));
+            self.texture_cubemap_alpha
+                .get()
+                .inspect(|t| t.bind(cmd, 1, alkahest_data::tfx::ShaderStage::Pixel));
+            self.texture_voxel_diffuse
+                .get()
+                .inspect(|t| t.bind(cmd, 2, alkahest_data::tfx::ShaderStage::Pixel));
+        }
 
         cmd.draw_indexed(geometry::CUBE_INDICES.len() as u32, 0, 0);
         cmd.flush_states();
@@ -328,6 +401,16 @@ impl FeatureRenderer for CubemapRenderer {
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
     }
+}
+
+#[repr(C)]
+pub struct ShadowkeepCubemapConstants {
+    pub model_to_world: Mat4,
+    pub world_to_model: Mat4,
+    pub target_pixel_to_world: Mat4,
+    pub world_to_projective: Mat4,
+    pub camera_position: Vec4,
+    pub target_resolution: Vec4,
 }
 
 #[repr(C)]
