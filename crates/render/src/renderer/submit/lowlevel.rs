@@ -38,6 +38,61 @@ impl Renderer {
             }
         }
     }
+    pub(super) fn has_stage_objects(
+        &self,
+        stage: RenderStage,
+        mut features: FeatureRendererSubscription,
+    ) -> bool {
+        features = self.active_feature_renderers.load().intersection(features);
+        if features.is_empty() {
+            return false;
+        }
+        let packet = self.frame_packet.read();
+        let objects = self.objects.read();
+        packet.frame_nodes.iter().any(|node| {
+            objects
+                .get(node.render_object_handle.into())
+                .is_some_and(|object| {
+                    object.stages.is_subscribed(stage)
+                        && features.is_subscribed(object.feature_type)
+                })
+        })
+    }
+
+    /// Transparent sky geometry must be submitted far-to-near so authored
+    /// alpha layers composite in the same order as the preserved renderer.
+    pub(super) fn submit_stage_back_to_front(
+        &self,
+        cmd: &mut CommandList,
+        view_index: usize,
+        stage: RenderStage,
+        mut features: FeatureRendererSubscription,
+    ) {
+        features = self.active_feature_renderers.load().intersection(features);
+        if features.is_empty() {
+            return;
+        }
+
+        let packet = self.frame_packet.read();
+        let objects = self.objects.read();
+        let mut sorted = packet
+            .frame_nodes
+            .iter()
+            .filter_map(|node| {
+                objects
+                    .get(node.render_object_handle.into())
+                    .filter(|object| {
+                        object.stages.is_subscribed(stage)
+                            && features.is_subscribed(object.feature_type)
+                    })
+                    .map(|object| (node.distance, object))
+            })
+            .collect::<Vec<_>>();
+        sorted.sort_unstable_by(|(a, _), (b, _)| b.total_cmp(a));
+        for (_, object) in sorted {
+            object.submit(cmd, view_index, stage);
+        }
+    }
 
     pub fn submit_stage(
         &self,

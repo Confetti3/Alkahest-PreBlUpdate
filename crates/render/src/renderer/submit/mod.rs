@@ -26,7 +26,8 @@ use super::{
         FinalCombineProvenance, GlobalLightingAbManifest, GlobalLightingChannelValue,
         GlobalLightingDependencyManifest, GlobalLightingDependencyStage, GlobalLightingExternRead,
         GlobalLightingExternValue, ProvenanceManifest, ShadowkeepLightingProvenance,
-        SurfaceProvenance, capture_surface, capture_surface_named,
+        SkyObjectsAbManifest, SurfaceProvenance, begin_shadowkeep_sky_objects_capture,
+        capture_surface, capture_surface_named, finish_shadowkeep_sky_objects_capture,
     },
     surface::SurfaceHandle,
 };
@@ -545,6 +546,7 @@ impl Renderer {
             ConVars::get_flag("render.shadowkeep_global_lighting_ab");
         let directional_light_ab_requested =
             ConVars::get_flag("render.shadowkeep_directional_light_ab");
+        let sky_objects_ab_requested = ConVars::get_flag("render.shadowkeep_sky_objects_ab");
         let requested_feature_subscriptions = self.frame_packet.read().misc.subscribed_features;
         let asset_summary = self.asset_manager.diagnostic_summary();
         let capture_provenance =
@@ -555,6 +557,8 @@ impl Renderer {
             && wants_global_lighting
             && asset_summary.queued == 0
             && asset_summary.loading == 0;
+        let capture_sky_objects_ab =
+            sky_objects_ab_requested && asset_summary.queued == 0 && asset_summary.loading == 0;
         if capture_provenance {
             let _ = ConVars::set("render.shadowkeep_buffer_provenance", false.into());
         }
@@ -564,9 +568,18 @@ impl Renderer {
         if capture_directional_light_ab {
             let _ = ConVars::set("render.shadowkeep_directional_light_ab", false.into());
         }
+        if capture_sky_objects_ab {
+            let _ = ConVars::set("render.shadowkeep_sky_objects_ab", false.into());
+        }
         let global_lighting_ab_directory = Path::new("artifacts/shadowkeep-global-lighting-ab");
         let mut global_lighting_ab_before = Vec::new();
         let mut global_lighting_ab_after = Vec::new();
+        let requested_sky_collection =
+            ConVars::get::<u32>("render.shadowkeep_sky_object_collection").unwrap_or_default();
+        let sky_objects_ab_directory =
+            format!("artifacts/shadowkeep-sky-objects-isolated-{requested_sky_collection:08X}");
+        let mut sky_objects_ab_before = Vec::new();
+        let mut sky_objects_ab_stats = None;
 
         // The preserved renderer starts these buffers at a small non-zero
         // diffuse floor before applying its global-lighting fullscreen pass.
@@ -973,8 +986,26 @@ impl Renderer {
                 }
             }
         }
+        if capture_sky_objects_ab {
+            self.blit_surface(
+                cmd,
+                view.shading_result,
+                view.output,
+                true,
+                "shadowkeep/sky_objects_ab_before_final",
+            );
+            sky_objects_ab_before = self.capture_shadowkeep_sky_object_surfaces(
+                cmd,
+                view,
+                Path::new(&sky_objects_ab_directory).join("before"),
+            );
+            begin_shadowkeep_sky_objects_capture();
+        }
         if wants_sky_objects {
             self.submit_shadowkeep_sky_objects(cmd, view);
+        }
+        if capture_sky_objects_ab {
+            sky_objects_ab_stats = Some(finish_shadowkeep_sky_objects_capture());
         }
         self.capture_shadowkeep_final_combine_no_film_curve(cmd, view);
 
@@ -985,6 +1016,28 @@ impl Renderer {
             true,
             "shadowkeep/final_shading",
         );
+        if capture_sky_objects_ab {
+            let after = self.capture_shadowkeep_sky_object_surfaces(
+                cmd,
+                view,
+                Path::new(&sky_objects_ab_directory).join("after"),
+            );
+            let manifest = SkyObjectsAbManifest {
+                schema: "alkahest-shadowkeep-sky-objects-isolated/v1",
+                requested_collection: format!("0x{requested_sky_collection:08X}"),
+                stats: sky_objects_ab_stats.take().unwrap_or_default(),
+                before_sky_objects: std::mem::take(&mut sky_objects_ab_before),
+                after_sky_objects: after,
+            };
+            if let Err(error) = manifest.write(Path::new(&sky_objects_ab_directory)) {
+                error!(error = ?error, "Failed to write Shadowkeep sky-object A/B manifest");
+            } else {
+                info!(
+                    directory = %sky_objects_ab_directory,
+                    "Wrote Shadowkeep sky-object A/B manifest"
+                );
+            }
+        }
         if capture_global_lighting_ab {
             let global_lighting_ab_after_final = self.capture_shadowkeep_global_lighting_surfaces(
                 cmd,
@@ -1216,6 +1269,59 @@ impl Renderer {
         if let Err(error) = manifest.write(directory) {
             error!(error = ?error, "Failed to write Shadowkeep directional-light A/B manifest");
         }
+    }
+    fn capture_shadowkeep_sky_object_surfaces(
+        &self,
+        cmd: &CommandList,
+        view: &MainView,
+        directory: impl AsRef<Path>,
+    ) -> Vec<SurfaceProvenance> {
+        let directory = directory.as_ref();
+        let mut captures = Vec::new();
+        for (handle, name, clear_value) in [
+            (
+                view.shading_result,
+                "shading_result",
+                Some([0.0, 0.0, 0.0, 1.0]),
+            ),
+            (view.output, "final_output", None),
+            (view.gbuffers.depth, "gbuffer_depth", None),
+            (view.atmosphere.sky_lookup_far, "sky_lookup_far", None),
+            (view.atmosphere.sky_lookup_near, "sky_lookup_near", None),
+            (
+                view.lighting.light_diffuse,
+                "light_diffuse",
+                Some([0.001, 0.001, 0.001, 0.0]),
+            ),
+            (
+                view.lighting.light_specular,
+                "light_specular",
+                Some([0.0; 4]),
+            ),
+            (
+                view.lighting.light_specular_ibl,
+                "light_specular_ibl",
+                Some([0.0; 4]),
+            ),
+            (view.shadow_mask, "shadow_mask", Some([1.0; 4])),
+        ] {
+            match capture_surface_named(
+                cmd,
+                view.surfaces.get(handle),
+                directory,
+                name,
+                clear_value,
+                None,
+            ) {
+                Ok(capture) => captures.push(capture),
+                Err(error) => error!(
+                    surface = name,
+                    error = ?error,
+                    "Failed to capture Shadowkeep sky-object A/B surface"
+                ),
+            }
+        }
+        captures
     }
 
     fn reset_shadowkeep_local_lighting(&self, cmd: &mut CommandList, view: &MainView) {

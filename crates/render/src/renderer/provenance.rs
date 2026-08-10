@@ -1,12 +1,28 @@
-use std::{fs, path::Path};
+use std::{collections::BTreeMap, fs, path::Path, sync::LazyLock};
 
+use ahash::AHashMap;
+use alkahest_core::ConVars;
+use alkahest_data::tfx::{ExternIndex, shadowkeep::SShadowkeepTechnique};
 use anyhow::{Context, bail};
 use d3d11::{BindFlags, CpuAccessFlags, Texture2dDesc, dxgi};
+use parking_lot::Mutex;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
+use tiger_parse::PackageManagerExt;
+use tiger_pkg::{TagHash, package_manager};
 
-use super::surface::Surface;
-use crate::gpu::command_list::CommandList;
+use super::{Renderer, surface::Surface};
+use crate::{
+    gpu::command_list::CommandList,
+    tfx::{
+        expression_vm::{
+            self,
+            opcodes::{Opcode, OpcodeIterator},
+        },
+        sequencer_vm::ObjectChannel,
+        technique::Technique,
+    },
+};
 
 #[derive(Debug, Serialize)]
 pub struct SurfaceProvenance {
@@ -61,7 +77,7 @@ pub struct ShadowkeepLightingProvenance {
     pub local_light_technique_hashes: Vec<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct GlobalLightingExternRead {
     pub extern_index: String,
     pub value_type: String,
@@ -95,6 +111,352 @@ pub struct GlobalLightingDependencyManifest {
     pub technique: String,
     pub draw_6_reached: bool,
     pub stages: Vec<GlobalLightingDependencyStage>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct SkyTechniqueGlobalChannelRead {
+    pub index: u8,
+    pub resolved_hash: Option<String>,
+    pub value: Option<[String; 4]>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct SkyTechniqueTextureRead {
+    pub slot: u32,
+    pub texture: String,
+    pub loaded: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct SkyTechniqueObjectChannelRead {
+    pub hash: String,
+    pub supplied_by_model: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct SkyTechniqueDependencyStage {
+    pub stage: String,
+    pub shader: String,
+    pub translated_expression_disassembly: String,
+    pub global_channel_reads: Vec<SkyTechniqueGlobalChannelRead>,
+    pub object_channel_reads: Vec<SkyTechniqueObjectChannelRead>,
+    pub extern_reads: Vec<GlobalLightingExternRead>,
+    pub constant_buffer_slot: u32,
+    pub constant_buffer_len: usize,
+    pub sampler_slots: Vec<usize>,
+    pub texture_slots: Vec<u32>,
+    pub expression_evaluation_result: String,
+    pub textures: Vec<SkyTechniqueTextureRead>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct SkyTechniqueDependency {
+    pub collection: String,
+    pub model: String,
+    pub technique: String,
+    pub stages: Vec<SkyTechniqueDependencyStage>,
+}
+
+#[derive(Debug, Serialize)]
+struct SkyTechniqueDependencyManifest {
+    schema: &'static str,
+    map: String,
+    collection: String,
+    techniques: Vec<SkyTechniqueDependency>,
+}
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct SkyObjectsCaptureStats {
+    pub draw_indexed_calls: usize,
+    pub decals_additive_submission_reached: bool,
+    pub transparents_submission_reached: bool,
+    pub maps: Vec<String>,
+    pub collections: Vec<String>,
+    pub models: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SkyObjectsAbManifest {
+    pub schema: &'static str,
+    pub requested_collection: String,
+    pub stats: SkyObjectsCaptureStats,
+    pub before_sky_objects: Vec<SurfaceProvenance>,
+    pub after_sky_objects: Vec<SurfaceProvenance>,
+}
+
+#[derive(Default)]
+struct SkyObjectsCaptureState {
+    active: bool,
+    draw_indexed_calls: usize,
+    decals_additive_submission_reached: bool,
+    transparents_submission_reached: bool,
+    maps: BTreeMap<TagHash, ()>,
+    collections: BTreeMap<TagHash, ()>,
+    models: BTreeMap<TagHash, ()>,
+}
+
+static SKY_OBJECTS_CAPTURE: LazyLock<Mutex<SkyObjectsCaptureState>> =
+    LazyLock::new(|| Mutex::new(SkyObjectsCaptureState::default()));
+
+pub fn begin_shadowkeep_sky_objects_capture() {
+    *SKY_OBJECTS_CAPTURE.lock() = SkyObjectsCaptureState {
+        active: true,
+        ..Default::default()
+    };
+}
+
+pub fn record_shadowkeep_sky_objects_submission(stage: alkahest_data::tfx::RenderStage) {
+    let mut capture = SKY_OBJECTS_CAPTURE.lock();
+    if !capture.active {
+        return;
+    }
+    match stage {
+        alkahest_data::tfx::RenderStage::DecalsAdditive => {
+            capture.decals_additive_submission_reached = true;
+        }
+        alkahest_data::tfx::RenderStage::Transparents => {
+            capture.transparents_submission_reached = true;
+        }
+        _ => {}
+    }
+}
+
+pub fn record_shadowkeep_sky_object_draw(map: TagHash, collection: TagHash, model: TagHash) {
+    let mut capture = SKY_OBJECTS_CAPTURE.lock();
+    if !capture.active {
+        return;
+    }
+    capture.draw_indexed_calls += 1;
+    capture.maps.insert(map, ());
+    capture.collections.insert(collection, ());
+    capture.models.insert(model, ());
+}
+
+pub fn finish_shadowkeep_sky_objects_capture() -> SkyObjectsCaptureStats {
+    let mut capture = SKY_OBJECTS_CAPTURE.lock();
+    capture.active = false;
+    SkyObjectsCaptureStats {
+        draw_indexed_calls: capture.draw_indexed_calls,
+        decals_additive_submission_reached: capture.decals_additive_submission_reached,
+        transparents_submission_reached: capture.transparents_submission_reached,
+        maps: capture.maps.keys().map(ToString::to_string).collect(),
+        collections: capture
+            .collections
+            .keys()
+            .map(ToString::to_string)
+            .collect(),
+        models: capture.models.keys().map(ToString::to_string).collect(),
+    }
+}
+
+static SKY_TECHNIQUE_DEPENDENCIES: LazyLock<
+    Mutex<BTreeMap<(TagHash, TagHash), BTreeMap<(TagHash, TagHash), SkyTechniqueDependency>>>,
+> = LazyLock::new(|| Mutex::new(BTreeMap::new()));
+
+pub fn record_shadowkeep_sky_technique_dependency(
+    map: TagHash,
+    collection: TagHash,
+    model: TagHash,
+    technique: &Technique,
+    object_channels: &AHashMap<u32, ObjectChannel>,
+) {
+    if !ConVars::get_flag("render.shadowkeep_sky_diagnostics") {
+        return;
+    }
+
+    let renderer = Renderer::instance();
+    let externs = renderer.externs.get();
+    let global_channel_hashes = &renderer.globals.channels.channel_ids;
+    let global_channel_values = &externs.globals;
+    let legacy_technique = package_manager()
+        .read_tag_struct::<SShadowkeepTechnique>(technique.hash)
+        .ok();
+    let stages = technique
+        .all_stages()
+        .into_iter()
+        .filter_map(|(_, stage)| stage)
+        .map(|stage| {
+            let bytecode = &stage.dynamic_constants.bytecode;
+            let mut global_channel_reads = OpcodeIterator::new(bytecode)
+                .filter_map(|(opcode, args)| {
+                    (opcode == Opcode::PushGlobalChannelVector)
+                        .then(|| args.first().copied())
+                        .flatten()
+                })
+                .map(|index| SkyTechniqueGlobalChannelRead {
+                    index,
+                    resolved_hash: global_channel_hashes
+                        .get(index as usize)
+                        .map(|hash| format!("0x{hash:08X}")),
+                    value: global_channel_values
+                        .get(index as usize)
+                        .map(|value| value.to_array().map(|component| format!("{component:?}"))),
+                })
+                .collect::<Vec<_>>();
+            global_channel_reads.sort_by_key(|read| read.index);
+            global_channel_reads.dedup_by_key(|read| read.index);
+            let textures = legacy_technique
+                .as_ref()
+                .and_then(|technique| {
+                    technique
+                        .shaders()
+                        .into_iter()
+                        .map(|(shader, _)| shader)
+                        .find(|shader| shader.shader == stage.shader.shader)
+                })
+                .into_iter()
+                .flat_map(|shader| &shader.textures)
+                .map(|texture| SkyTechniqueTextureRead {
+                    slot: texture.slot,
+                    texture: texture.texture.to_string(),
+                    loaded: stage
+                        .dynamic_constants
+                        .textures
+                        .iter()
+                        .find(|(slot, _)| *slot == texture.slot)
+                        .and_then(|(_, handle)| handle.as_ref())
+                        .is_some_and(|handle| handle.is_loaded()),
+                })
+                .collect::<Vec<_>>();
+
+            let mut object_channel_reads = OpcodeIterator::new(bytecode)
+                .filter_map(|(opcode, args)| {
+                    if opcode != Opcode::PushObjectChannelVector || args.len() < 4 {
+                        return None;
+                    }
+                    let hash = u32::from_be_bytes(args[..4].try_into().ok()?);
+                    Some(SkyTechniqueObjectChannelRead {
+                        hash: format!("0x{hash:08X}"),
+                        supplied_by_model: object_channels.contains_key(&hash),
+                    })
+                })
+                .collect::<Vec<_>>();
+            object_channel_reads.sort_by(|left, right| left.hash.cmp(&right.hash));
+            object_channel_reads.dedup_by(|left, right| left.hash == right.hash);
+
+            let mut extern_reads = OpcodeIterator::new(bytecode)
+                .filter_map(|(opcode, args)| {
+                    let (value_type, scalar_width) = match opcode {
+                        Opcode::PushExternInputFloat => ("float", 4),
+                        Opcode::PushExternInputVec4 => ("vec4", 16),
+                        Opcode::PushExternInputMat4 => ("mat4", 16),
+                        Opcode::PushExternInputTextureView => ("texture_view", 8),
+                        Opcode::PushExternInputU32 => ("u32", 4),
+                        Opcode::PushExternInputUav => ("uav", 8),
+                        _ => return None,
+                    };
+                    let raw_index = args.first().copied()?;
+                    let byte_offset = u32::from(args.get(1).copied().unwrap_or_default())
+                        .saturating_mul(scalar_width);
+                    let extern_index = ExternIndex::try_from(raw_index)
+                        .map(|index| format!("{index:?}"))
+                        .unwrap_or_else(|_| format!("0x{raw_index:02X}"));
+                    Some(GlobalLightingExternRead {
+                        extern_index,
+                        value_type: value_type.to_owned(),
+                        byte_offset,
+                    })
+                })
+                .collect::<Vec<_>>();
+            extern_reads.sort_by(|left, right| {
+                left.extern_index
+                    .cmp(&right.extern_index)
+                    .then(left.byte_offset.cmp(&right.byte_offset))
+                    .then(left.value_type.cmp(&right.value_type))
+            });
+            extern_reads.dedup_by(|left, right| left == right);
+
+            let expression_slots = |opcode| {
+                OpcodeIterator::new(bytecode)
+                    .filter_map(|(candidate, args)| {
+                        (candidate == opcode)
+                            .then(|| args.first().map(|encoded| encoded & 0x1f))
+                            .flatten()
+                    })
+                    .collect::<Vec<_>>()
+            };
+            let mut sampler_slots = expression_slots(Opcode::PopSamplerState)
+                .into_iter()
+                .map(usize::from)
+                .chain(
+                    stage
+                        .dynamic_constants
+                        .samplers
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(slot, sampler)| sampler.is_some().then_some(slot)),
+                )
+                .collect::<Vec<_>>();
+            sampler_slots.sort_unstable();
+            sampler_slots.dedup();
+            let mut texture_slots = expression_slots(Opcode::PopTextureView)
+                .into_iter()
+                .map(u32::from)
+                .chain(
+                    stage
+                        .dynamic_constants
+                        .textures
+                        .iter()
+                        .map(|(slot, _)| *slot),
+                )
+                .collect::<Vec<_>>();
+            texture_slots.sort_unstable();
+            texture_slots.dedup();
+
+            SkyTechniqueDependencyStage {
+                stage: stage.stage.short_name().to_owned(),
+                shader: stage.shader.shader.to_string(),
+                translated_expression_disassembly: expression_vm::disassemble(bytecode)
+                    .map(|lines| lines.join("\n"))
+                    .unwrap_or_else(|error| format!("ERROR: {error:#}")),
+                global_channel_reads,
+                object_channel_reads,
+                extern_reads,
+                constant_buffer_slot: stage.dynamic_constants.cbuffer_slot,
+                constant_buffer_len: stage.dynamic_constants.constant_buffer_len(),
+                sampler_slots,
+                texture_slots,
+                expression_evaluation_result: format!(
+                    "{:?}",
+                    stage.dynamic_constants.expression_evaluation_result()
+                ),
+                textures,
+            }
+        })
+        .collect();
+    let dependency = SkyTechniqueDependency {
+        collection: collection.to_string(),
+        model: model.to_string(),
+        technique: technique.hash.to_string(),
+        stages,
+    };
+
+    let mut all_dependencies = SKY_TECHNIQUE_DEPENDENCIES.lock();
+    let dependencies = all_dependencies.entry((map, collection)).or_default();
+    let key = (model, technique.hash);
+    if dependencies.get(&key) == Some(&dependency) {
+        return;
+    }
+    dependencies.insert(key, dependency);
+    let manifest = SkyTechniqueDependencyManifest {
+        schema: "alkahest-shadowkeep-sky-technique-dependencies/v1",
+        map: map.to_string(),
+        collection: collection.to_string(),
+        techniques: dependencies.values().cloned().collect(),
+    };
+    if let Err(error) = (|| -> anyhow::Result<()> {
+        fs::create_dir_all("artifacts")?;
+        let path =
+            format!("artifacts/shadowkeep-sky-technique-dependencies-{map}-{collection}.json");
+        fs::write(path, serde_json::to_vec_pretty(&manifest)?)?;
+        Ok(())
+    })() {
+        tracing::error!(
+            %map,
+            %collection,
+            error = ?error,
+            "failed to write Shadowkeep sky technique dependencies"
+        );
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -205,6 +567,16 @@ impl ProvenanceManifest {
             serde_json::to_vec_pretty(self).context("Failed to serialize provenance manifest")?;
         fs::write(directory.join("manifest.json"), json)
             .context("Failed to write provenance manifest")
+    }
+}
+
+impl SkyObjectsAbManifest {
+    pub fn write(&self, directory: &Path) -> anyhow::Result<()> {
+        fs::create_dir_all(directory).context("Failed to create sky-object A/B directory")?;
+        let json = serde_json::to_vec_pretty(self)
+            .context("Failed to serialize sky-object A/B manifest")?;
+        fs::write(directory.join("manifest.json"), json)
+            .context("Failed to write sky-object A/B manifest")
     }
 }
 

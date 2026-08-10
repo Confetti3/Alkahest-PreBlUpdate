@@ -3,6 +3,7 @@ use std::sync::Arc;
 use alkahest_data::tfx::{
     FeatureRendererSubscription, PipelineState, RenderStage, TfxFeatureRenderer,
 };
+use glam::Vec4;
 
 use super::Renderer;
 use crate::{
@@ -111,6 +112,12 @@ impl Renderer {
     pub(super) fn submit_shadowkeep_sky_objects(&self, cmd: &mut CommandList, view: &MainView) {
         cmd_event_span!(cmd, "shadowkeep/sky_objects");
         let _gpu_span = self.profiler.scope(cmd, "shadowkeep/sky_objects");
+        let sky_feature = FeatureRendererSubscription::SKY_TRANSPARENT;
+        let has_decals_additive = self.has_stage_objects(RenderStage::DecalsAdditive, sky_feature);
+        let has_transparents = self.has_stage_objects(RenderStage::Transparents, sky_feature);
+        if !has_decals_additive && !has_transparents {
+            return;
+        }
 
         view.shading_result_read
             .lock()
@@ -137,21 +144,29 @@ impl Renderer {
                 unk50: self.gpu.placeholder_black.view.clone().into(),
                 unk58: self.gpu.placeholder_light_grey.view.clone().into(),
                 unk60: shading_read,
+                // The modern main-view setup writes post-BL atmospheric coefficients here.
+                // Arrivals initialized these legacy transparent vectors to one; retaining
+                // the modern zeroed `unkb0.zw` divides the sky-fog shader by zero.
+                unk70: Vec4::ONE,
+                unk80: Vec4::ONE,
+                unk90: Vec4::ONE,
+                unka0: Vec4::ONE,
+                unkb0: Vec4::ONE,
                 ..(*ext.transparent).clone()
             };
         }
 
         self.globals.scopes.view.bind(cmd).unwrap();
         self.globals.scopes.transparent.bind(cmd).unwrap();
-
         self.bind_surfaces(cmd, &[view.shading_result], Some(view.gbuffers.depth));
+
+        // Submit the authored stage even when this collection has no additive parts;
+        // this preserves pass ordering and makes the zero-draw stage explicit.
         cmd.state = PipelineState::new(Some(8), Some(15), Some(2), Some(1));
         cmd.flush_states();
-        self.submit_stage(
-            cmd,
-            View::MAIN,
+        self.submit_stage_back_to_front(cmd, View::MAIN, RenderStage::DecalsAdditive, sky_feature);
+        crate::renderer::provenance::record_shadowkeep_sky_objects_submission(
             RenderStage::DecalsAdditive,
-            FeatureRendererSubscription::SKY_TRANSPARENT,
         );
         tracing::trace!("Shadowkeep sky objects reached DecalsAdditive submission");
 
@@ -164,15 +179,19 @@ impl Renderer {
             ext.transparent.unk48 = read.clone();
             ext.transparent.unk60 = read;
         }
-
         cmd.state = PipelineState::new(Some(8), Some(15), Some(2), Some(1));
         cmd.flush_states();
-        self.submit_stage(
-            cmd,
-            View::MAIN,
-            RenderStage::Transparents,
-            FeatureRendererSubscription::SKY_TRANSPARENT,
-        );
-        tracing::trace!("Shadowkeep sky objects reached Transparents submission");
+        if has_transparents {
+            self.submit_stage_back_to_front(
+                cmd,
+                View::MAIN,
+                RenderStage::Transparents,
+                sky_feature,
+            );
+            crate::renderer::provenance::record_shadowkeep_sky_objects_submission(
+                RenderStage::Transparents,
+            );
+            tracing::trace!("Shadowkeep sky objects reached Transparents submission");
+        }
     }
 }

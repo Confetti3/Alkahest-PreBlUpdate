@@ -82,7 +82,17 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
         CapabilityRecord {
             name: "Map-authored sky-object models",
             state: CapabilityState::Ready,
-            evidence: "0x80806F91 placements select 0x80806F95 collections and submit their entity models only through the legacy SkyTransparent additive/transparent pass".into(),
+            evidence: "package-matched 0x80806F95 collections render through the isolated legacy SkyTransparent pass; frozen Europa/EDZ A/B captures change shaded color with finite HDR output while preserving depth, atmosphere, local-light, IBL, and shadow-mask buffers".into(),
+        },
+        CapabilityRecord {
+            name: "Phase-specific sky-object environment selection",
+            state: CapabilityState::Degraded,
+            evidence: "exact collection overrides and package-name selection are deterministic; activity-owned overlays remain deferred when no table/world pairing proves they belong to the active phase".into(),
+        },
+        CapabilityRecord {
+            name: "Sky-object LightShaftOcclusion",
+            state: CapabilityState::Blocked,
+            evidence: "authored 0x200 subscriptions are reported and deferred because the legacy light-shaft occlusion target/pass is not restored".into(),
         },
         CapabilityRecord {
             name: "Shadowkeep material AO compatibility finalizer",

@@ -25,7 +25,12 @@ use crate::{
     Renderer,
     asset::{Handle, handle::is_technique_loaded},
     gpu::{cbuffer::ConstantBuffer, command_list::CommandList},
-    renderer::visibility::OpaqueView,
+    renderer::{
+        provenance::{
+            record_shadowkeep_sky_object_draw, record_shadowkeep_sky_technique_dependency,
+        },
+        visibility::OpaqueView,
+    },
     tfx::{packet::CompactTransform, sequencer_vm::ObjectChannel, technique::Technique},
     util::threading::CommandListSetId,
 };
@@ -54,6 +59,7 @@ pub struct DynamicModel {
     cbuffer_slot: u32,
     pub channels: AHashMap<u32, ObjectChannel>,
     pub transform: Mat4,
+    sky_owner: Option<(TagHash, TagHash)>,
 }
 
 impl DynamicModel {
@@ -143,6 +149,7 @@ impl DynamicModel {
             cbuffer_slot: 1,
             channels: AHashMap::default(),
             transform: Mat4::IDENTITY,
+            sky_owner: None,
         }))
     }
 
@@ -302,7 +309,12 @@ impl DynamicModel {
                 .vertex_slot() as u32,
             channels: AHashMap::default(),
             transform: Mat4::IDENTITY,
+            sky_owner: None,
         }))
+    }
+
+    pub fn set_sky_owner(&mut self, map: TagHash, collection: TagHash) {
+        self.sky_owner = Some((map, collection));
     }
 
     pub fn mesh_count(&self) -> usize {
@@ -408,6 +420,15 @@ impl DynamicModel {
                     technique
                         .bind_with_channels(cmd, Some(&self.channels))
                         .expect("Failed to bind technique");
+                    if let Some((map, collection)) = self.sky_owner {
+                        record_shadowkeep_sky_technique_dependency(
+                            map,
+                            collection,
+                            self.hash,
+                            technique,
+                            &self.channels,
+                        );
+                    }
                     all_scopes |= technique.used_scopes;
                 });
 
@@ -415,6 +436,15 @@ impl DynamicModel {
                     technique.get_ref(|tech| {
                         tech.bind_with_channels(cmd, Some(&self.channels))
                             .expect("Failed to bind variant technique");
+                        if let Some((map, collection)) = self.sky_owner {
+                            record_shadowkeep_sky_technique_dependency(
+                                map,
+                                collection,
+                                self.hash,
+                                tech,
+                                &self.channels,
+                            );
+                        }
                         all_scopes |= tech.used_scopes;
                     });
                 }
@@ -470,7 +500,12 @@ impl FeatureRenderer for DynamicModel {
                         self.model.texcoord_offset.x,
                         self.model.texcoord_offset.y,
                     ),
-                    dynamic_sh_ao_values: Vec4::new(0.0, 0.0, 0.0, 0.8),
+                    dynamic_sh_ao_values: Vec4::new(
+                        0.0,
+                        0.0,
+                        0.0,
+                        if self.sky_owner.is_some() { 1.0 } else { 0.8 },
+                    ),
                 },
             )
             .unwrap();
@@ -480,9 +515,17 @@ impl FeatureRenderer for DynamicModel {
     fn submit(&self, cmd: &mut CommandList, _view_index: usize, stage: RenderStage) {
         profiling::scope!("DynamicModel::draw");
 
-        self.draw_wrapped(cmd, stage, self.identifier_mask, |_, cmd, _, (_, part)| {
-            cmd.draw_indexed(part.index_count, part.index_start, 0);
-        });
+        self.draw_wrapped(
+            cmd,
+            stage,
+            self.identifier_mask,
+            |model, cmd, _, (_, part)| {
+                if let Some((map, collection)) = model.sky_owner {
+                    record_shadowkeep_sky_object_draw(map, collection, model.hash);
+                }
+                cmd.draw_indexed(part.index_count, part.index_start, 0);
+            },
+        );
     }
 
     fn submit_parallel(
@@ -503,7 +546,10 @@ impl FeatureRenderer for DynamicModel {
                 cmd,
                 stage,
                 identifier_maswk,
-                |_model, cmd, (_mesh_index, _mesh), (_part_index, part)| {
+                |model, cmd, (_mesh_index, _mesh), (_part_index, part)| {
+                    if let Some((map, collection)) = model.sky_owner {
+                        record_shadowkeep_sky_object_draw(map, collection, model.hash);
+                    }
                     cmd.draw_indexed(part.index_count, part.index_start, 0);
                 },
             );

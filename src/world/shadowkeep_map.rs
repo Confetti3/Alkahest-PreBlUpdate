@@ -5,7 +5,8 @@
 //! the rest of a bubble from becoming viewable.
 
 use std::{
-    collections::{BTreeMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashSet},
+    fs,
     io::{Cursor, Seek, SeekFrom},
     sync::{
         Arc,
@@ -18,10 +19,10 @@ use alkahest_core::ConVars;
 use alkahest_data::{
     shadowkeep::{
         SShadowkeepBubbleDefinition, SShadowkeepBubbleParent, SShadowkeepCubemapPlacement,
-        SShadowkeepEntity, SShadowkeepLightCollection, SShadowkeepMapDataTable,
-        SShadowkeepOcclusionBounds, SShadowkeepRigidModelComponent, SShadowkeepShadowingLight,
-        SShadowkeepSkyObjectCollection, SShadowkeepStaticPlacement, SShadowkeepTerrainPlacement,
-        SShadowkeepTextureHeader,
+        SShadowkeepDynamicModel, SShadowkeepEntity, SShadowkeepLightCollection,
+        SShadowkeepMapDataTable, SShadowkeepOcclusionBounds, SShadowkeepRigidModelComponent,
+        SShadowkeepShadowingLight, SShadowkeepSkyObjectCollection, SShadowkeepStaticPlacement,
+        SShadowkeepTerrainPlacement, SShadowkeepTextureHeader,
     },
     tfx::{
         RenderStage, TfxFeatureRenderer, atmosphere::SShadowkeepAtmospherePlacement,
@@ -29,8 +30,9 @@ use alkahest_data::{
     },
 };
 use anyhow::Context;
-use glam::{Mat4, Vec3, Vec4Swizzles};
+use glam::{Mat4, Vec3, Vec4, Vec4Swizzles};
 use parking_lot::Mutex;
+use serde::Serialize;
 use tiger_parse::{PackageManagerExt, TigerReadable};
 use tiger_pkg::{TagHash, package_manager};
 
@@ -198,27 +200,606 @@ pub struct EntityResourceExample {
     pub translation: Vec3,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShadowkeepTableOrigin {
-    BaseBubble,
-    FreeroamScenario,
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ShadowkeepTableSources {
+    pub base_containers: BTreeSet<TagHash>,
+    pub referenced_by_freeroam_scenario: bool,
 }
 
-impl ShadowkeepTableOrigin {
-    fn label(self) -> &'static str {
-        match self {
-            Self::BaseBubble => "base bubble",
-            Self::FreeroamScenario => "freeroam scenario",
+impl ShadowkeepTableSources {
+    fn label(&self) -> &'static str {
+        match (
+            self.base_containers.is_empty(),
+            self.referenced_by_freeroam_scenario,
+        ) {
+            (false, true) => "base bubble + freeroam scenario",
+            (false, false) => "base bubble",
+            (true, true) => "freeroam scenario",
+            (true, false) => "unknown",
         }
+    }
+
+    fn is_base(&self) -> bool {
+        !self.base_containers.is_empty()
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct SkyObjectPlacementCandidate {
     collection: TagHash,
     table: TagHash,
     entry_offset: u64,
-    origin: ShadowkeepTableOrigin,
+    sources: ShadowkeepTableSources,
+    entity: TagHash,
+    world_id: u64,
+    entry_translation: Vec3,
+}
+
+#[derive(Debug, Clone, Default)]
+struct SkyObjectCollectionEvidence {
+    placements: Vec<SkyObjectPlacementCandidate>,
+    object_count: usize,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct SkyObjectSelection {
+    selected: Vec<TagHash>,
+    deferred: Vec<TagHash>,
+    diagnostic: Option<String>,
+}
+
+fn select_sky_object_collections(
+    candidates: &BTreeMap<TagHash, SkyObjectCollectionEvidence>,
+    selector: u32,
+    map_package_name: Option<&str>,
+    collection_package_names: &BTreeMap<TagHash, String>,
+) -> SkyObjectSelection {
+    if selector != 0 {
+        let selected = TagHash(selector);
+        if candidates.contains_key(&selected) {
+            return SkyObjectSelection {
+                selected: vec![selected],
+                deferred: candidates
+                    .keys()
+                    .copied()
+                    .filter(|candidate| *candidate != selected)
+                    .collect(),
+                diagnostic: None,
+            };
+        }
+        return SkyObjectSelection {
+            selected: Vec::new(),
+            deferred: candidates.keys().copied().collect(),
+            diagnostic: Some(format!(
+                "requested sky-object collection {selected} was not discovered"
+            )),
+        };
+    }
+
+    let non_empty = candidates
+        .iter()
+        .filter(|(_, candidate)| candidate.object_count != 0)
+        .map(|(tag, candidate)| (*tag, candidate))
+        .collect::<Vec<_>>();
+    let package_matches = map_package_name
+        .map(|map_package_name| {
+            non_empty
+                .iter()
+                .filter(|(tag, _)| {
+                    collection_package_names
+                        .get(tag)
+                        .is_some_and(|package| package == map_package_name)
+                })
+                .map(|(tag, _)| *tag)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let selected = if package_matches.len() == 1 {
+        vec![package_matches[0]]
+    } else if package_matches.is_empty() && non_empty.len() == 1 {
+        vec![non_empty[0].0]
+    } else {
+        Vec::new()
+    };
+    let deferred = candidates
+        .keys()
+        .copied()
+        .filter(|candidate| !selected.contains(candidate))
+        .collect();
+    let diagnostic = if package_matches.len() > 1 {
+        Some(format!(
+            "multiple non-empty sky-object collections match map package {} ({}); \
+             select an exact collection",
+            map_package_name.unwrap_or("<unknown>"),
+            package_matches
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    } else if package_matches.is_empty() && non_empty.len() > 1 {
+        Some(format!(
+            "multiple unresolved non-empty sky-object collections ({}); \
+             select an exact collection",
+            non_empty
+                .iter()
+                .map(|(tag, _)| tag.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
+    } else {
+        None
+    };
+
+    SkyObjectSelection {
+        selected,
+        deferred,
+        diagnostic,
+    }
+}
+fn select_atmosphere_candidate(
+    atmospheres: &[AtmospherePlacementCandidate],
+    sky_candidates: &BTreeMap<TagHash, SkyObjectCollectionEvidence>,
+    selected_sky: &[TagHash],
+) -> (Option<usize>, Option<String>) {
+    if atmospheres.len() <= 1 {
+        return (atmospheres.len().checked_sub(1), None);
+    }
+
+    let strong_matches = atmospheres
+        .iter()
+        .enumerate()
+        .filter(|(_, atmosphere)| {
+            selected_sky.iter().any(|collection| {
+                sky_candidates
+                    .get(collection)
+                    .into_iter()
+                    .flat_map(|candidate| &candidate.placements)
+                    .any(|placement| {
+                        placement.table == atmosphere.table
+                            || placement.world_id == atmosphere.world_id
+                    })
+            })
+        })
+        .map(|(index, _)| index)
+        .collect::<Vec<_>>();
+    if strong_matches.len() == 1 {
+        return (Some(strong_matches[0]), None);
+    }
+
+    (
+        None,
+        Some(format!(
+            "could not select one atmosphere from {} candidates using shared table/world evidence",
+            atmospheres.len()
+        )),
+    )
+}
+
+#[derive(Debug, Clone)]
+struct AtmospherePlacementCandidate {
+    table: TagHash,
+    entry_offset: u64,
+    sources: ShadowkeepTableSources,
+    world_id: u64,
+    lookup_volume_0: TagHash,
+    lookup_volume_1: TagHash,
+    lookup_vertical: TagHash,
+    lookup_table: TagHash,
+    lookup_parameters: [Vec4; 4],
+}
+
+#[derive(Debug, Serialize)]
+struct EnvironmentPlacementManifest {
+    source_table: String,
+    entry_offset: u64,
+    base_containers: Vec<String>,
+    referenced_by_freeroam_scenario: bool,
+    world_id: u64,
+    entity: String,
+    entry_translation: [f32; 3],
+}
+
+#[derive(Debug, Serialize)]
+struct SkyCollectionManifest {
+    collection: String,
+    occlusion_bound_count: usize,
+    identifier_count: usize,
+    object_count: usize,
+    model_tags: Vec<String>,
+    source_tables: Vec<String>,
+    base_containers: Vec<String>,
+    base_container_package_names: Vec<String>,
+    referenced_by_freeroam_scenario: bool,
+    placements: Vec<EnvironmentPlacementManifest>,
+    object_records: Vec<SkyObjectRecordManifest>,
+    identifiers: Vec<u32>,
+    authored_aggregate_stage_mask: u32,
+    package_name: Option<String>,
+    package_path: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct SkyObjectRecordManifest {
+    index: usize,
+    identifier: Option<u32>,
+    transform: [f32; 16],
+    bounds_min: [f32; 4],
+    bounds_max: [f32; 4],
+    parallel_occlusion_bounds_min: Option<[f32; 4]>,
+    parallel_occlusion_bounds_max: Option<[f32; 4]>,
+    model_wrapper: String,
+    entity_model: String,
+    authored_stage_mask: u32,
+    unk64: f32,
+    unk68: u32,
+    unk6c: i16,
+    unk6e: u16,
+    unk70: u32,
+    unk74: f32,
+    unk78: u32,
+    unk7c: String,
+}
+
+#[derive(Debug, Serialize)]
+struct AtmosphereCandidateManifest {
+    source_table: String,
+    entry_offset: u64,
+    base_containers: Vec<String>,
+    referenced_by_freeroam_scenario: bool,
+    world_id: u64,
+    lookup_volume_0: String,
+    lookup_volume_1: String,
+    lookup_vertical: String,
+    lookup_table: String,
+    lookup_parameters: [[f32; 4]; 4],
+}
+
+#[derive(Debug, Serialize)]
+struct EnvironmentPairingManifest {
+    collection: String,
+    atmosphere_table: String,
+    same_source_table: bool,
+    shared_base_containers: Vec<String>,
+    same_world_id: bool,
+    same_source_set: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct ShadowkeepEnvironmentCensusManifest {
+    schema: &'static str,
+    map: String,
+    scenario: Option<String>,
+    map_package_name: Option<String>,
+    map_package_path: Option<String>,
+    selected_sky_collections: Vec<String>,
+    deferred_sky_collections: Vec<String>,
+    selected_atmosphere_table: Option<String>,
+    sky_collections: Vec<SkyCollectionManifest>,
+    atmosphere_candidates: Vec<AtmosphereCandidateManifest>,
+    possible_pairings: Vec<EnvironmentPairingManifest>,
+}
+
+fn tag_package_metadata(tag: TagHash) -> (Option<String>, Option<String>) {
+    package_manager()
+        .package_paths
+        .get(&tag.pkg_id())
+        .map(|package| (Some(package.name.clone()), Some(package.path.clone())))
+        .unwrap_or_default()
+}
+
+fn shadowkeep_model_stage_mask(model_tag: TagHash) -> Option<u32> {
+    let model = package_manager()
+        .read_tag_struct::<SShadowkeepDynamicModel>(model_tag)
+        .ok()?;
+    Some(
+        model
+            .meshes
+            .iter()
+            .fold(RenderStageSubscription::empty(), |mask, mesh| {
+                mask | RenderStageSubscription::from_partrange_list(
+                    &mesh.part_range_per_render_stage,
+                )
+            })
+            .bits(),
+    )
+}
+
+fn sky_collection_stage_mask(collection: &SShadowkeepSkyObjectCollection) -> u32 {
+    collection
+        .objects
+        .iter()
+        .map(|object| object.model.entity_model)
+        .filter(|tag| tag.is_some())
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .filter_map(shadowkeep_model_stage_mask)
+        .fold(0, |mask, stages| mask | stages)
+}
+
+fn write_environment_census(
+    map: TagHash,
+    scenario: Option<TagHash>,
+    candidates: &BTreeMap<TagHash, SkyObjectCollectionEvidence>,
+    decoded_collections: &BTreeMap<TagHash, SShadowkeepSkyObjectCollection>,
+    atmospheres: &[AtmospherePlacementCandidate],
+    selection: &SkyObjectSelection,
+    selected_atmosphere: Option<usize>,
+) -> anyhow::Result<()> {
+    if !ConVars::get_flag("render.shadowkeep_environment_census") {
+        return Ok(());
+    }
+
+    let (map_package_name, map_package_path) = tag_package_metadata(map);
+    let sky_collections = candidates
+        .iter()
+        .map(|(collection_tag, evidence)| {
+            let collection = decoded_collections.get(collection_tag);
+            let model_tags = collection
+                .into_iter()
+                .flat_map(|collection| &collection.objects)
+                .map(|object| object.model.entity_model)
+                .filter(|tag| tag.is_some())
+                .collect::<BTreeSet<_>>();
+            let model_stage_masks = model_tags
+                .iter()
+                .filter_map(|model| {
+                    shadowkeep_model_stage_mask(*model).map(|stages| (*model, stages))
+                })
+                .collect::<BTreeMap<_, _>>();
+            let object_records = collection
+                .into_iter()
+                .flat_map(|collection| collection.objects.iter().enumerate())
+                .map(|(index, object)| {
+                    let parallel_bounds =
+                        collection.and_then(|collection| collection.occlusion_bounds.get(index));
+                    SkyObjectRecordManifest {
+                        index,
+                        identifier: collection
+                            .and_then(|collection| collection.identifiers.get(index).copied()),
+                        transform: object.transform,
+                        bounds_min: object.bounds.min.to_array(),
+                        bounds_max: object.bounds.max.to_array(),
+                        parallel_occlusion_bounds_min: parallel_bounds
+                            .map(|bounds| bounds.bb.min.to_array()),
+                        parallel_occlusion_bounds_max: parallel_bounds
+                            .map(|bounds| bounds.bb.max.to_array()),
+                        model_wrapper: object.model.taghash().to_string(),
+                        entity_model: object.model.entity_model.to_string(),
+                        authored_stage_mask: model_stage_masks
+                            .get(&object.model.entity_model)
+                            .copied()
+                            .unwrap_or_default(),
+                        unk64: object.unk64,
+                        unk68: object.unk68,
+                        unk6c: object.unk6c,
+                        unk6e: object.unk6e,
+                        unk70: object.unk70,
+                        unk74: object.unk74,
+                        unk78: object.unk78,
+                        unk7c: object.unk7c.to_string(),
+                    }
+                })
+                .collect();
+            let source_tables = evidence
+                .placements
+                .iter()
+                .map(|placement| placement.table)
+                .collect::<BTreeSet<_>>();
+            let base_containers = evidence
+                .placements
+                .iter()
+                .flat_map(|placement| placement.sources.base_containers.iter().copied())
+                .collect::<BTreeSet<_>>();
+            let (package_name, package_path) = tag_package_metadata(*collection_tag);
+            SkyCollectionManifest {
+                collection: collection_tag.to_string(),
+                occlusion_bound_count: collection
+                    .map_or(0, |collection| collection.occlusion_bounds.len()),
+                identifier_count: collection.map_or(0, |collection| collection.identifiers.len()),
+                object_count: collection.map_or(0, |collection| collection.objects.len()),
+                model_tags: model_tags.iter().map(ToString::to_string).collect(),
+                source_tables: source_tables.iter().map(ToString::to_string).collect(),
+                base_containers: base_containers.iter().map(ToString::to_string).collect(),
+                base_container_package_names: base_containers
+                    .iter()
+                    .filter_map(|tag| tag_package_metadata(*tag).0)
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect(),
+                referenced_by_freeroam_scenario: evidence
+                    .placements
+                    .iter()
+                    .any(|placement| placement.sources.referenced_by_freeroam_scenario),
+                placements: evidence
+                    .placements
+                    .iter()
+                    .map(|placement| EnvironmentPlacementManifest {
+                        source_table: placement.table.to_string(),
+                        entry_offset: placement.entry_offset,
+                        base_containers: placement
+                            .sources
+                            .base_containers
+                            .iter()
+                            .map(ToString::to_string)
+                            .collect(),
+                        referenced_by_freeroam_scenario: placement
+                            .sources
+                            .referenced_by_freeroam_scenario,
+                        world_id: placement.world_id,
+                        entity: placement.entity.to_string(),
+                        entry_translation: placement.entry_translation.to_array(),
+                    })
+                    .collect(),
+                object_records,
+                identifiers: collection
+                    .map(|collection| collection.identifiers.clone())
+                    .unwrap_or_default(),
+                authored_aggregate_stage_mask: collection
+                    .map(sky_collection_stage_mask)
+                    .unwrap_or_default(),
+                package_name,
+                package_path,
+            }
+        })
+        .collect();
+    let atmosphere_candidates = atmospheres
+        .iter()
+        .map(|candidate| AtmosphereCandidateManifest {
+            source_table: candidate.table.to_string(),
+            entry_offset: candidate.entry_offset,
+            base_containers: candidate
+                .sources
+                .base_containers
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            referenced_by_freeroam_scenario: candidate.sources.referenced_by_freeroam_scenario,
+            world_id: candidate.world_id,
+            lookup_volume_0: candidate.lookup_volume_0.to_string(),
+            lookup_volume_1: candidate.lookup_volume_1.to_string(),
+            lookup_vertical: candidate.lookup_vertical.to_string(),
+            lookup_table: candidate.lookup_table.to_string(),
+            lookup_parameters: candidate.lookup_parameters.map(|value| value.to_array()),
+        })
+        .collect();
+    let possible_pairings = candidates
+        .iter()
+        .flat_map(|(collection, evidence)| {
+            atmospheres.iter().map(move |atmosphere| {
+                let shared_base_containers = evidence
+                    .placements
+                    .iter()
+                    .flat_map(|placement| {
+                        placement
+                            .sources
+                            .base_containers
+                            .intersection(&atmosphere.sources.base_containers)
+                            .copied()
+                    })
+                    .collect::<BTreeSet<_>>();
+                EnvironmentPairingManifest {
+                    collection: collection.to_string(),
+                    atmosphere_table: atmosphere.table.to_string(),
+                    same_source_table: evidence
+                        .placements
+                        .iter()
+                        .any(|placement| placement.table == atmosphere.table),
+                    shared_base_containers: shared_base_containers
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect(),
+                    same_world_id: evidence
+                        .placements
+                        .iter()
+                        .any(|placement| placement.world_id == atmosphere.world_id),
+                    same_source_set: evidence
+                        .placements
+                        .iter()
+                        .any(|placement| placement.sources == atmosphere.sources),
+                }
+            })
+        })
+        .collect();
+    let manifest = ShadowkeepEnvironmentCensusManifest {
+        schema: "alkahest-shadowkeep-environment-census/v1",
+        map: map.to_string(),
+        scenario: scenario.map(|tag| tag.to_string()),
+        map_package_name,
+        map_package_path,
+        selected_sky_collections: selection.selected.iter().map(ToString::to_string).collect(),
+        deferred_sky_collections: selection.deferred.iter().map(ToString::to_string).collect(),
+        selected_atmosphere_table: selected_atmosphere
+            .and_then(|index| atmospheres.get(index))
+            .map(|candidate| candidate.table.to_string()),
+        sky_collections,
+        atmosphere_candidates,
+        possible_pairings,
+    };
+    fs::create_dir_all("artifacts")?;
+    let path = format!("artifacts/shadowkeep-environment-census-{map}.json");
+    fs::write(&path, serde_json::to_vec_pretty(&manifest)?)?;
+    tracing::info!(%path, "wrote Shadowkeep environment census");
+    Ok(())
+}
+fn load_shadowkeep_atmosphere(
+    renderer: &Renderer,
+    candidate: &AtmospherePlacementCandidate,
+) -> anyhow::Result<AtmosphereData> {
+    let read_lookup_header = |tag| {
+        package_manager()
+            .read_tag_struct::<SShadowkeepTextureHeader>(tag)
+            .with_context(|| format!("failed to read atmosphere texture header {tag}"))
+    };
+    let lookup_volume_0 = read_lookup_header(candidate.lookup_volume_0)?;
+    let lookup_volume_1 = read_lookup_header(candidate.lookup_volume_1)?;
+    let lookup_vertical = read_lookup_header(candidate.lookup_vertical)?;
+    let lookup_table_entry = package_manager()
+        .get_entry(candidate.lookup_table)
+        .context("lookup table package entry disappeared")?;
+    let lookup_table_bytes = package_manager().read_tag(candidate.lookup_table)?;
+    anyhow::ensure!(
+        lookup_table_bytes.len() == SHADOWKEEP_LOOKUP_TABLE_BYTES,
+        "lookup table {} has {} bytes; expected {}",
+        candidate.lookup_table,
+        lookup_table_bytes.len(),
+        SHADOWKEEP_LOOKUP_TABLE_BYTES,
+    );
+    let lookup_table = Texture::load_2d_raw(
+        &renderer.gpu.device,
+        64,
+        64,
+        &lookup_table_bytes,
+        d3d11::dxgi::Format::R8g8b8a8UnormSrgb,
+        Some("Shadowkeep atmosphere lookup table"),
+        false,
+    )?;
+    let lookup_table_min = lookup_table_bytes.iter().copied().min().unwrap_or(0);
+    let lookup_table_max = lookup_table_bytes.iter().copied().max().unwrap_or(0);
+    let lookup_table_mean = lookup_table_bytes
+        .iter()
+        .map(|&value| f64::from(value))
+        .sum::<f64>()
+        / lookup_table_bytes.len() as f64;
+    tracing::info!(
+        table = %candidate.table,
+        entry_offset = candidate.entry_offset,
+        lookup_table = %candidate.lookup_table,
+        lookup_table_class = format_args!("0x{:08X}", lookup_table_entry.reference),
+        lookup_table_format = "R8G8B8A8_UNORM_SRGB",
+        lookup_table_min,
+        lookup_table_max,
+        lookup_table_mean,
+        lookup_volume_0 = ?(
+            lookup_volume_0.width,
+            lookup_volume_0.height,
+            lookup_volume_0.depth,
+            lookup_volume_0.format,
+        ),
+        lookup_volume_1 = ?(
+            lookup_volume_1.width,
+            lookup_volume_1.height,
+            lookup_volume_1.depth,
+            lookup_volume_1.format,
+        ),
+        lookup_vertical = ?(
+            lookup_vertical.width,
+            lookup_vertical.height,
+            lookup_vertical.depth,
+            lookup_vertical.format,
+        ),
+        lookup_parameters = ?candidate.lookup_parameters,
+        "loaded authored Shadowkeep atmosphere inputs"
+    );
+    Ok(AtmosphereData {
+        shadowkeep_lookup_volume_0: renderer.asset_manager.load(candidate.lookup_volume_0),
+        shadowkeep_lookup_volume_1: renderer.asset_manager.load(candidate.lookup_volume_1),
+        shadowkeep_lookup_vertical: renderer.asset_manager.load(candidate.lookup_vertical),
+        shadowkeep_lookup_table: Some(lookup_table),
+        shadowkeep_lookup_parameters: candidate.lookup_parameters,
+        ..Default::default()
+    })
 }
 
 #[derive(Debug, Clone, Default)]
@@ -228,7 +809,7 @@ pub struct MapLoadReport {
     pub scenario: Option<TagHash>,
     pub activity_tables: usize,
     pub tables: usize,
-    pub table_origins: BTreeMap<TagHash, ShadowkeepTableOrigin>,
+    pub table_sources: BTreeMap<TagHash, ShadowkeepTableSources>,
     pub entries: usize,
     pub static_placements: usize,
     pub terrain_placements: usize,
@@ -250,6 +831,10 @@ pub struct MapLoadReport {
     pub sky_object_model_tags: Vec<TagHash>,
     pub deferred_sky_object_collections: Vec<TagHash>,
     pub sky_object_stage_subscriptions: Vec<(TagHash, u32)>,
+    /// Authored stages that contribute sky color in the dedicated pass.
+    pub sky_object_color_stage_mask: u32,
+    /// Authored stages intentionally deferred because the legacy target is not restored.
+    pub sky_object_deferred_stage_mask: u32,
     pub static_render_objects: usize,
     pub terrain_render_objects: usize,
     pub rigid_render_objects: usize,
@@ -379,26 +964,27 @@ pub fn load_shadowkeep_map_into_world(
         ..Default::default()
     };
     report.containers = definition.map_resources.len();
-    let mut table_records = definition
-        .map_resources
-        .iter()
-        .flat_map(|container| {
-            container
-                .data_tables
-                .iter()
-                .copied()
-                .map(|table| (table, ShadowkeepTableOrigin::BaseBubble))
-        })
-        .collect::<Vec<_>>();
+    let mut table_sources = BTreeMap::<TagHash, ShadowkeepTableSources>::new();
+    for container in &definition.map_resources {
+        let container_tag = container.1;
+        for table in &container.data_tables {
+            table_sources
+                .entry(*table)
+                .or_default()
+                .base_containers
+                .insert(container_tag);
+        }
+    }
     match shadowkeep_scenario_tables(tag) {
         Ok((scenario, tables)) => {
             report.scenario = scenario;
             report.activity_tables = tables.len();
-            table_records.extend(
-                tables
-                    .into_iter()
-                    .map(|table| (table, ShadowkeepTableOrigin::FreeroamScenario)),
-            );
+            for table in tables {
+                table_sources
+                    .entry(table)
+                    .or_default()
+                    .referenced_by_freeroam_scenario = true;
+            }
         }
         Err(error) => report.diagnostic(
             progress,
@@ -410,12 +996,10 @@ pub fn load_shadowkeep_map_into_world(
             },
         ),
     }
-    let mut unique_tables = HashSet::new();
-    table_records.retain(|(table, _)| unique_tables.insert(*table));
-    report.table_origins.extend(table_records.iter().copied());
+    report.table_sources = table_sources.clone();
     progress
         .total_tables
-        .store(table_records.len(), Ordering::Relaxed);
+        .store(table_sources.len(), Ordering::Relaxed);
     let mut world = hecs::World::new();
     let mut bound_points = Vec::new();
     let mut entity_bound_points = Vec::new();
@@ -423,8 +1007,9 @@ pub fn load_shadowkeep_map_into_world(
     let mut loaded_terrain_resources = HashSet::new();
     let mut visual_bounds: Option<AxisAlignedBBox> = None;
     let mut sky_object_candidates = Vec::new();
+    let mut atmosphere_candidates = Vec::new();
 
-    for (table_hash, table_origin) in table_records {
+    for (table_hash, table_sources) in table_sources {
         if progress.is_cancelled() {
             report.cancelled = true;
             break;
@@ -620,12 +1205,19 @@ pub fn load_shadowkeep_map_into_world(
                             collection: collection_tag,
                             table: table_hash,
                             entry_offset: entry.data_resource.offset,
-                            origin: table_origin,
+                            sources: table_sources.clone(),
+                            entity: entry.entity,
+                            world_id: entry.world_id,
+                            entry_translation: entry.translation.xyz(),
                         });
                         tracing::info!(
                             table = %table_hash,
-                            origin = table_origin.label(),
+                            origin = table_sources.label(),
+                            base_containers = ?table_sources.base_containers,
+                            scenario_referenced = table_sources.referenced_by_freeroam_scenario,
                             collection = %collection_tag,
+                            world_id = entry.world_id,
+                            entity = %entry.entity,
                             "discovered Shadowkeep sky-object collection"
                         );
                         Ok(())
@@ -645,10 +1237,6 @@ pub fn load_shadowkeep_map_into_world(
                 }
                 ATMOSPHERE_PLACEMENT => {
                     report.atmosphere_placements += 1;
-                    if world.query::<&AtmosphereData>().iter().next().is_some() {
-                        report.deduplicated_resources += 1;
-                        continue;
-                    }
                     let result = (|| -> anyhow::Result<()> {
                         bounded_offset(table_bytes.len(), entry.data_resource.offset, 0xF8)?;
                         let mut cursor = Cursor::new(&table_bytes[..]);
@@ -666,102 +1254,17 @@ pub fn load_shadowkeep_map_into_world(
                                 "{name} tag {tag} is not present in the package set"
                             );
                         }
-
-                        let read_lookup_header = |tag| {
-                            package_manager()
-                                .read_tag_struct::<SShadowkeepTextureHeader>(tag)
-                                .with_context(|| {
-                                    format!("failed to read atmosphere texture header {tag}")
-                                })
-                        };
-                        let lookup_volume_0 = read_lookup_header(placement.lookup_volume_0)?;
-                        let lookup_volume_1 = read_lookup_header(placement.lookup_volume_1)?;
-                        let lookup_vertical = read_lookup_header(placement.lookup_vertical)?;
-                        let lookup_table_entry = package_manager()
-                            .get_entry(placement.lookup_table)
-                            .context("lookup table package entry disappeared")?;
-                        let lookup_table_bytes =
-                            package_manager().read_tag(placement.lookup_table)?;
-                        anyhow::ensure!(
-                            lookup_table_bytes.len() == SHADOWKEEP_LOOKUP_TABLE_BYTES,
-                            "lookup table {} has {} bytes; expected {}",
-                            placement.lookup_table,
-                            lookup_table_bytes.len(),
-                            SHADOWKEEP_LOOKUP_TABLE_BYTES,
-                        );
-                        // This raw table has no texture header. Its companion
-                        // vertical lookup is authored as sRGB, and frozen A/B
-                        // captures reject the large color shift from linear
-                        // UNORM sampling.
-                        let lookup_table = Texture::load_2d_raw(
-                            &renderer.gpu.device,
-                            64,
-                            64,
-                            &lookup_table_bytes,
-                            d3d11::dxgi::Format::R8g8b8a8UnormSrgb,
-                            Some("Shadowkeep atmosphere lookup table"),
-                            false,
-                        )?;
-                        let lookup_table_min =
-                            lookup_table_bytes.iter().copied().min().unwrap_or(0);
-                        let lookup_table_max =
-                            lookup_table_bytes.iter().copied().max().unwrap_or(0);
-                        let lookup_table_mean = lookup_table_bytes
-                            .iter()
-                            .map(|&value| f64::from(value))
-                            .sum::<f64>()
-                            / lookup_table_bytes.len() as f64;
-                        tracing::info!(
-                            table = %table_hash,
-                            entry_offset = entry.data_resource.offset,
-                            lookup_table = %placement.lookup_table,
-                            lookup_table_class = format_args!("0x{:08X}", lookup_table_entry.reference),
-                            lookup_table_format = "R8G8B8A8_UNORM_SRGB",
-                            lookup_table_min,
-                            lookup_table_max,
-                            lookup_table_mean,
-                            lookup_volume_0 = ?(
-                                lookup_volume_0.width,
-                                lookup_volume_0.height,
-                                lookup_volume_0.depth,
-                                lookup_volume_0.format,
-                            ),
-                            lookup_volume_1 = ?(
-                                lookup_volume_1.width,
-                                lookup_volume_1.height,
-                                lookup_volume_1.depth,
-                                lookup_volume_1.format,
-                            ),
-                            lookup_vertical = ?(
-                                lookup_vertical.width,
-                                lookup_vertical.height,
-                                lookup_vertical.depth,
-                                lookup_vertical.format,
-                            ),
-                            lookup_parameters = ?placement.lookup_parameters,
-                            "loaded authored Shadowkeep atmosphere inputs"
-                        );
-                        let atmosphere = AtmosphereData {
-                            shadowkeep_lookup_volume_0: renderer
-                                .asset_manager
-                                .load(placement.lookup_volume_0),
-                            shadowkeep_lookup_volume_1: renderer
-                                .asset_manager
-                                .load(placement.lookup_volume_1),
-                            shadowkeep_lookup_vertical: renderer
-                                .asset_manager
-                                .load(placement.lookup_vertical),
-                            shadowkeep_lookup_table: Some(lookup_table),
-                            shadowkeep_lookup_parameters: placement.lookup_parameters,
-                            ..Default::default()
-                        };
-                        world.spawn((atmosphere,));
-                        progress
-                            .gpu_assets_requested
-                            .fetch_add(4, Ordering::Relaxed);
-                        progress
-                            .visual_resources_loaded
-                            .fetch_add(1, Ordering::Relaxed);
+                        atmosphere_candidates.push(AtmospherePlacementCandidate {
+                            table: table_hash,
+                            entry_offset: entry.data_resource.offset,
+                            sources: table_sources.clone(),
+                            world_id: entry.world_id,
+                            lookup_volume_0: placement.lookup_volume_0,
+                            lookup_volume_1: placement.lookup_volume_1,
+                            lookup_vertical: placement.lookup_vertical,
+                            lookup_table: placement.lookup_table,
+                            lookup_parameters: placement.lookup_parameters,
+                        });
                         Ok(())
                     })();
                     if let Err(error) = result {
@@ -1054,104 +1557,141 @@ pub fn load_shadowkeep_map_into_world(
             }
         }
     }
-    let mut candidates_by_collection = BTreeMap::new();
+    let mut candidates_by_collection = BTreeMap::<TagHash, SkyObjectCollectionEvidence>::new();
     for candidate in sky_object_candidates {
-        let occupied = candidates_by_collection.get(&candidate.collection).copied();
-        if occupied.is_some() {
-            report.deduplicated_resources += 1;
-        }
-        if occupied.is_none_or(|existing: SkyObjectPlacementCandidate| {
-            candidate.origin == ShadowkeepTableOrigin::BaseBubble
-                && existing.origin == ShadowkeepTableOrigin::FreeroamScenario
-        }) {
-            candidates_by_collection.insert(candidate.collection, candidate);
-        }
+        candidates_by_collection
+            .entry(candidate.collection)
+            .or_default()
+            .placements
+            .push(candidate);
     }
     report.sky_object_collections = candidates_by_collection.len();
 
-    let base_collections = candidates_by_collection
-        .values()
-        .filter(|candidate| candidate.origin == ShadowkeepTableOrigin::BaseBubble)
-        .map(|candidate| candidate.collection)
-        .collect::<Vec<_>>();
+    let mut decoded_sky_collections = BTreeMap::new();
+    for (collection_tag, evidence) in &mut candidates_by_collection {
+        match package_manager().read_tag_struct::<SShadowkeepSkyObjectCollection>(*collection_tag) {
+            Ok(collection) => {
+                evidence.object_count = collection.objects.len();
+                decoded_sky_collections.insert(*collection_tag, collection);
+            }
+            Err(error) => {
+                report.skipped_resources += 1;
+                let candidate = evidence
+                    .placements
+                    .first()
+                    .expect("every collection has at least one placement");
+                report.diagnostic(
+                    progress,
+                    MapLoadDiagnostic {
+                        table: candidate.table,
+                        entry_offset: candidate.entry_offset,
+                        resource_class: SKY_OBJECT_COLLECTION,
+                        error: format!(
+                            "sky-object collection {collection_tag}: could not decode: {error:#}"
+                        ),
+                    },
+                );
+            }
+        }
+    }
+
     let selector =
         ConVars::get::<u32>("render.shadowkeep_sky_object_collection").unwrap_or_default();
-    let selected_collections = if !base_collections.is_empty() {
-        report.deferred_sky_object_collections = candidates_by_collection
-            .keys()
-            .copied()
-            .filter(|collection| !base_collections.contains(collection))
-            .collect();
-        base_collections
-    } else if candidates_by_collection.len() == 1 {
-        candidates_by_collection.keys().copied().collect()
-    } else if candidates_by_collection.len() > 1 {
-        let selected = TagHash(selector);
-        if selector != 0 && candidates_by_collection.contains_key(&selected) {
-            report.deferred_sky_object_collections = candidates_by_collection
-                .keys()
-                .copied()
-                .filter(|collection| *collection != selected)
-                .collect();
-            vec![selected]
-        } else {
-            report.deferred_sky_object_collections =
-                candidates_by_collection.keys().copied().collect();
-            let candidate_tags = report
-                .deferred_sky_object_collections
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(", ");
-            let candidate = candidates_by_collection
-                .values()
-                .next()
-                .expect("non-empty candidate set");
-            report.diagnostic(
-                progress,
-                MapLoadDiagnostic {
-                    table: candidate.table,
-                    entry_offset: candidate.entry_offset,
-                    resource_class: SKY_OBJECT_PLACEMENT,
-                    error: format!(
-                        "multiple scenario sky-object collections ({candidate_tags}); set \
-                         render.shadowkeep_sky_object_collection to one exact tag"
-                    ),
-                },
-            );
-            Vec::new()
+    let (map_package_name, _) = tag_package_metadata(tag);
+    let collection_package_names = candidates_by_collection
+        .keys()
+        .filter_map(|collection| {
+            tag_package_metadata(*collection)
+                .0
+                .map(|package| (*collection, package))
+        })
+        .collect();
+    let selection = select_sky_object_collections(
+        &candidates_by_collection,
+        selector,
+        map_package_name.as_deref(),
+        &collection_package_names,
+    );
+    report.deferred_sky_object_collections = selection.deferred.clone();
+    if let Some(error) = &selection.diagnostic {
+        report.diagnostic(
+            progress,
+            MapLoadDiagnostic {
+                table: tag,
+                entry_offset: 0,
+                resource_class: SKY_OBJECT_PLACEMENT,
+                error: error.clone(),
+            },
+        );
+    }
+    report.sky_object_collection_tags = selection.selected.clone();
+    let (selected_atmosphere, atmosphere_diagnostic) = select_atmosphere_candidate(
+        &atmosphere_candidates,
+        &candidates_by_collection,
+        &selection.selected,
+    );
+    if let Some(error) = atmosphere_diagnostic {
+        report.diagnostic(
+            progress,
+            MapLoadDiagnostic {
+                table: tag,
+                entry_offset: 0,
+                resource_class: ATMOSPHERE_PLACEMENT,
+                error,
+            },
+        );
+    }
+    if let Some(index) = selected_atmosphere {
+        let candidate = &atmosphere_candidates[index];
+        match load_shadowkeep_atmosphere(renderer, candidate) {
+            Ok(atmosphere) => {
+                world.spawn((atmosphere,));
+                progress
+                    .gpu_assets_requested
+                    .fetch_add(4, Ordering::Relaxed);
+                progress
+                    .visual_resources_loaded
+                    .fetch_add(1, Ordering::Relaxed);
+            }
+            Err(error) => {
+                report.skipped_resources += 1;
+                report.diagnostic(
+                    progress,
+                    MapLoadDiagnostic {
+                        table: candidate.table,
+                        entry_offset: candidate.entry_offset,
+                        resource_class: ATMOSPHERE_PLACEMENT,
+                        error: format!("atmosphere placement: {error:#}"),
+                    },
+                );
+            }
         }
-    } else {
-        Vec::new()
-    };
-    report.sky_object_collection_tags = selected_collections.clone();
+    }
+    if let Err(error) = write_environment_census(
+        tag,
+        report.scenario,
+        &candidates_by_collection,
+        &decoded_sky_collections,
+        &atmosphere_candidates,
+        &selection,
+        selected_atmosphere,
+    ) {
+        tracing::error!(error = ?error, "failed to write Shadowkeep environment census");
+    }
 
-    for collection_tag in selected_collections {
+    for collection_tag in selection.selected.iter().copied() {
         if progress.is_cancelled() {
             report.cancelled = true;
             break;
         }
-        let candidate = candidates_by_collection[&collection_tag];
-        let collection: SShadowkeepSkyObjectCollection =
-            match package_manager().read_tag_struct(collection_tag) {
-                Ok(collection) => collection,
-                Err(error) => {
-                    report.skipped_resources += 1;
-                    report.diagnostic(
-                        progress,
-                        MapLoadDiagnostic {
-                            table: candidate.table,
-                            entry_offset: candidate.entry_offset,
-                            resource_class: SKY_OBJECT_COLLECTION,
-                            error: format!(
-                                "sky-object collection {collection_tag}: could not decode: \
-                                 {error:#}"
-                            ),
-                        },
-                    );
-                    continue;
-                }
-            };
+        let evidence = &candidates_by_collection[&collection_tag];
+        let candidate = evidence
+            .placements
+            .first()
+            .expect("every collection has at least one placement");
+        let Some(collection) = decoded_sky_collections.get(&collection_tag) else {
+            continue;
+        };
         let object_count = collection.objects.len();
         let occlusion_count = collection.occlusion_bounds.len();
         let identifier_count = collection.identifiers.len();
@@ -1159,7 +1699,7 @@ pub fn load_shadowkeep_map_into_world(
         report.sky_object_records += object_count;
         tracing::info!(
             collection = %collection_tag,
-            origin = candidate.origin.label(),
+            origin = candidate.sources.label(),
             objects = object_count,
             occlusion_bounds = occlusion_count,
             identifiers = identifier_count,
@@ -1231,7 +1771,8 @@ pub fn load_shadowkeep_map_into_world(
                 );
                 let (scale, rotation, translation) = matrix.to_scale_rotation_translation();
                 let transform = Transform::new(translation, rotation, scale);
-                let model = DynamicModel::load_shadowkeep(model_tag, Vec::new(), Vec::new())?;
+                let mut model = DynamicModel::load_shadowkeep(model_tag, Vec::new(), Vec::new())?;
+                model.set_sky_owner(tag, collection_tag);
                 let (model_center, model_radius) = model.model.bounding_sphere();
                 let mut render_object =
                     RenderObject::new(TfxFeatureRenderer::SkyTransparent, model);
@@ -1239,16 +1780,29 @@ pub fn load_shadowkeep_map_into_world(
                 report
                     .sky_object_stage_subscriptions
                     .push((model_tag, authored_stages.bits()));
-                let permitted_stages = RenderStageSubscription::DECALS_ADDITIVE
-                    | RenderStageSubscription::TRANSPARENTS;
-                let rejected_stages = authored_stages & !permitted_stages;
-                if !rejected_stages.is_empty() {
+                let color_stages = authored_stages
+                    & (RenderStageSubscription::DECALS_ADDITIVE
+                        | RenderStageSubscription::TRANSPARENTS);
+                let deferred_stages =
+                    authored_stages & RenderStageSubscription::LIGHT_SHAFT_OCCLUSION;
+                let unsupported_stages = authored_stages & !(color_stages | deferred_stages);
+                report.sky_object_color_stage_mask |= color_stages.bits();
+                report.sky_object_deferred_stage_mask |= deferred_stages.bits();
+                if !deferred_stages.is_empty() {
+                    tracing::info!(
+                        collection = %collection_tag,
+                        model = %model_tag,
+                        deferred_stage_mask = format_args!("0x{:08X}", deferred_stages.bits()),
+                        "deferred Shadowkeep sky-object stages whose legacy target is not restored"
+                    );
+                }
+                if !unsupported_stages.is_empty() {
                     tracing::warn!(
                         collection = %collection_tag,
                         model = %model_tag,
                         authored_stage_mask = format_args!("0x{:08X}", authored_stages.bits()),
-                        rejected_stage_mask = format_args!("0x{:08X}", rejected_stages.bits()),
-                        "removed non-transparent stages from Shadowkeep sky object"
+                        unsupported_stage_mask = format_args!("0x{:08X}", unsupported_stages.bits()),
+                        "removed unsupported stages from Shadowkeep sky object"
                     );
                     report.diagnostic(
                         progress,
@@ -1257,14 +1811,14 @@ pub fn load_shadowkeep_map_into_world(
                             entry_offset: candidate.entry_offset,
                             resource_class: SKY_OBJECT_COLLECTION,
                             error: format!(
-                                "sky-object model {model_tag} subscribed to rejected stage mask \
-                                 0x{:08X}; retained only DecalsAdditive/Transparents",
-                                rejected_stages.bits(),
+                                "sky-object model {model_tag} subscribed to unsupported stage mask \
+                                 0x{:08X}; retained color stages and deferred LightShaftOcclusion",
+                                unsupported_stages.bits(),
                             ),
                         },
                     );
                 }
-                render_object.stages &= permitted_stages;
+                render_object.stages = color_stages;
                 anyhow::ensure!(
                     !render_object.stages.is_empty(),
                     "sky-object model subscribes to no DecalsAdditive or Transparents stage"
@@ -1283,7 +1837,7 @@ pub fn load_shadowkeep_map_into_world(
                     .fetch_add(1, Ordering::Relaxed);
                 tracing::info!(
                     collection = %collection_tag,
-                    origin = candidate.origin.label(),
+                    origin = candidate.sources.label(),
                     index,
                     identifier,
                     model = %model_tag,
@@ -1294,6 +1848,8 @@ pub fn load_shadowkeep_map_into_world(
                     authored_stage_mask = format_args!("0x{:08X}", authored_stages.bits()),
                     decals_additive = authored_stages.is_subscribed(RenderStage::DecalsAdditive),
                     transparents = authored_stages.is_subscribed(RenderStage::Transparents),
+                    light_shaft_occlusion_deferred = deferred_stages
+                        .is_subscribed(RenderStage::LightShaftOcclusion),
                     admitted_stage_mask = format_args!("0x{admitted_stage_mask:08X}"),
                     "loaded Shadowkeep sky object"
                 );
@@ -1353,7 +1909,7 @@ pub fn load_shadowkeep_map_into_world(
         sky_object_skipped_kind_5 = report.sky_object_skipped_kind_5,
         sky_object_collection_tags = ?report.sky_object_collection_tags,
         deferred_sky_object_collections = ?report.deferred_sky_object_collections,
-        table_origins = ?report.table_origins,
+        table_sources = ?report.table_sources,
         cubemap_render_objects = report.cubemap_render_objects,
         shadowing_lights = report.shadowing_lights,
         skipped_resources = report.skipped_resources,
@@ -1370,10 +1926,43 @@ pub fn load_shadowkeep_map_into_world(
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeMap, BTreeSet};
+
     use glam::Vec3;
     use tiger_pkg::TagHash;
 
-    use super::{EntityResourceExample, MapLoadProgress, MapLoadReport, bounded_offset};
+    use super::{
+        EntityResourceExample, MapLoadProgress, MapLoadReport, ShadowkeepTableSources,
+        SkyObjectCollectionEvidence, SkyObjectPlacementCandidate, bounded_offset,
+        select_sky_object_collections,
+    };
+
+    fn collection_candidate(
+        collection: TagHash,
+        object_count: usize,
+        base_container: Option<TagHash>,
+        scenario: bool,
+    ) -> SkyObjectCollectionEvidence {
+        let mut base_containers = BTreeSet::new();
+        if let Some(container) = base_container {
+            base_containers.insert(container);
+        }
+        SkyObjectCollectionEvidence {
+            placements: vec![SkyObjectPlacementCandidate {
+                collection,
+                table: TagHash(0x8080_1000),
+                entry_offset: 0x20,
+                sources: ShadowkeepTableSources {
+                    base_containers,
+                    referenced_by_freeroam_scenario: scenario,
+                },
+                entity: TagHash::NONE,
+                world_id: 7,
+                entry_translation: Vec3::ZERO,
+            }],
+            object_count,
+        }
+    }
 
     #[test]
     fn bounded_resource_offsets_reject_overflow_and_truncation() {
@@ -1415,5 +2004,137 @@ mod tests {
         assert_eq!(report.deferred_entity_resource_classes[&class], 7);
         assert_eq!(report.entity_resource_examples[&class].len(), 5);
         assert!(report.entity_resource_accounting_is_complete());
+    }
+    #[test]
+    fn exact_sky_selector_overrides_multiple_base_candidates() {
+        let first = TagHash(0x8080_2001);
+        let selected = TagHash(0x8080_2002);
+        let candidates = BTreeMap::from([
+            (
+                first,
+                collection_candidate(first, 2, Some(TagHash(0x8080_3001)), false),
+            ),
+            (
+                selected,
+                collection_candidate(selected, 3, Some(TagHash(0x8080_3002)), false),
+            ),
+        ]);
+
+        let result = select_sky_object_collections(&candidates, selected.0, None, &BTreeMap::new());
+        assert_eq!(result.selected, vec![selected]);
+        assert_eq!(result.deferred, vec![first]);
+        assert_eq!(result.diagnostic, None);
+    }
+
+    #[test]
+    fn exact_sky_selector_can_select_scenario_candidate() {
+        let base = TagHash(0x8080_2001);
+        let scenario = TagHash(0x8080_2002);
+        let candidates = BTreeMap::from([
+            (
+                base,
+                collection_candidate(base, 2, Some(TagHash(0x8080_3001)), false),
+            ),
+            (scenario, collection_candidate(scenario, 3, None, true)),
+        ]);
+
+        let result = select_sky_object_collections(&candidates, scenario.0, None, &BTreeMap::new());
+        assert_eq!(result.selected, vec![scenario]);
+        assert_eq!(result.deferred, vec![base]);
+        assert_eq!(result.diagnostic, None);
+    }
+
+    #[test]
+    fn unknown_exact_sky_selector_selects_nothing_and_reports_diagnostic() {
+        let discovered = TagHash(0x8080_2001);
+        let requested = TagHash(0x8080_2002);
+        let candidates = BTreeMap::from([(
+            discovered,
+            collection_candidate(discovered, 2, Some(TagHash(0x8080_3001)), false),
+        )]);
+
+        let result =
+            select_sky_object_collections(&candidates, requested.0, None, &BTreeMap::new());
+        assert!(result.selected.is_empty());
+        assert_eq!(result.deferred, vec![discovered]);
+        assert!(
+            result
+                .diagnostic
+                .as_deref()
+                .is_some_and(|message| message.contains("was not discovered"))
+        );
+    }
+
+    #[test]
+    fn automatic_sky_selection_excludes_empty_collections() {
+        let empty = TagHash(0x8080_2001);
+        let non_empty = TagHash(0x8080_2002);
+        let candidates = BTreeMap::from([
+            (
+                empty,
+                collection_candidate(empty, 0, Some(TagHash(0x8080_3001)), false),
+            ),
+            (non_empty, collection_candidate(non_empty, 3, None, true)),
+        ]);
+
+        let result = select_sky_object_collections(&candidates, 0, None, &BTreeMap::new());
+        assert_eq!(result.selected, vec![non_empty]);
+        assert_eq!(result.deferred, vec![empty]);
+        assert_eq!(result.diagnostic, None);
+    }
+
+    #[test]
+    fn multiple_unresolved_sky_candidates_degrade_without_selection() {
+        let first = TagHash(0x8080_2001);
+        let second = TagHash(0x8080_2002);
+        let candidates = BTreeMap::from([
+            (
+                first,
+                collection_candidate(first, 2, Some(TagHash(0x8080_3001)), false),
+            ),
+            (
+                second,
+                collection_candidate(second, 3, Some(TagHash(0x8080_3002)), true),
+            ),
+        ]);
+
+        let result = select_sky_object_collections(&candidates, 0, None, &BTreeMap::new());
+        assert!(result.selected.is_empty());
+        assert_eq!(result.deferred, vec![first, second]);
+        assert!(
+            result
+                .diagnostic
+                .as_deref()
+                .is_some_and(|message| message.contains("multiple unresolved non-empty"))
+        );
+    }
+
+    #[test]
+    fn map_package_selects_matching_non_empty_collection() {
+        let common = TagHash(0x8080_2001);
+        let destination = TagHash(0x8080_2002);
+        let empty = TagHash(0x8080_2003);
+        let candidates = BTreeMap::from([
+            (common, collection_candidate(common, 2, None, true)),
+            (
+                destination,
+                collection_candidate(destination, 3, Some(TagHash(0x8080_3002)), false),
+            ),
+            (
+                empty,
+                collection_candidate(empty, 0, Some(TagHash(0x8080_3003)), false),
+            ),
+        ]);
+        let packages = BTreeMap::from([
+            (common, "activities".to_owned()),
+            (destination, "edz".to_owned()),
+            (empty, "edz".to_owned()),
+        ]);
+
+        let result = select_sky_object_collections(&candidates, 0, Some("edz"), &packages);
+
+        assert_eq!(result.selected, vec![destination]);
+        assert_eq!(result.deferred, vec![common, empty]);
+        assert_eq!(result.diagnostic, None);
     }
 }

@@ -168,7 +168,8 @@ impl RenderStageSubscription {
 
     pub fn from_partrange_list(part_ranges: &[u16]) -> Self {
         let mut flags = Self::empty();
-        for i in 0..RenderStage::COUNT {
+        let encoded_stage_count = part_ranges.len().saturating_sub(1);
+        for i in 0..encoded_stage_count.min(RenderStage::COUNT) {
             if part_ranges[i] != part_ranges[i + 1] {
                 flags |= Self::from_bits_truncate(1 << i);
             }
@@ -194,5 +195,21 @@ impl BitOr<RenderStage> for RenderStageSubscription {
 impl BitOrAssign<RenderStage> for RenderStageSubscription {
     fn bitor_assign(&mut self, rhs: RenderStage) {
         *self |= Self::from(rhs);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RenderStage, RenderStageSubscription};
+
+    #[test]
+    fn stage_subscription_accepts_legacy_part_ranges() {
+        let mut part_ranges = [0u16; 24];
+        part_ranges[8..].fill(1);
+
+        let stages = RenderStageSubscription::from_partrange_list(&part_ranges);
+
+        assert!(stages.is_subscribed(RenderStage::Transparents));
+        assert!(!stages.is_subscribed(RenderStage::ComputeSkinning));
     }
 }
