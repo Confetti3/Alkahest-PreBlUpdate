@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Once};
 
 use alkahest_data::tfx::PipelineState;
 use glam::{Vec4, vec4};
@@ -10,6 +10,13 @@ use crate::{
     gpu::command_list::CommandList,
     tfx::{externs, view::MainView},
 };
+
+const SHADOWKEEP_ATMOSPHERE_BASIS: [Vec4; 3] = [
+    vec4(-0.08323, 0.0, -0.99653, 1.0),
+    vec4(-0.03088, 0.99952, 0.00258, 1.0),
+    vec4(0.99605, 0.03098, -0.08319, 1.0),
+];
+static SHADOWKEEP_ATMOSPHERE_BASIS_LOGGED: Once = Once::new();
 
 #[derive(Default, Clone)]
 pub struct AtmosphereData {
@@ -24,6 +31,9 @@ pub struct AtmosphereData {
     pub shadowkeep_lookup_volume_1: Handle<Texture>,
     pub shadowkeep_lookup_vertical: Handle<Texture>,
     pub shadowkeep_lookup_table: Option<Texture>,
+    /// Sixteen monotonic authored scalars matching the depth of the two
+    /// atmosphere lookup volumes. No decoded shader/extern binding consumes
+    /// them, so retain them as provenance rather than treating them as a basis.
     pub shadowkeep_lookup_parameters: [Vec4; 4],
 }
 
@@ -77,13 +87,20 @@ impl Renderer {
             "shadowkeep/sky_direction_lookup_generate",
         );
 
+        SHADOWKEEP_ATMOSPHERE_BASIS_LOGGED.call_once(|| {
+            tracing::info!(
+                basis = ?SHADOWKEEP_ATMOSPHERE_BASIS,
+                source = "fixed renderer fallback; no compatible placement-local basis decoded",
+                "using Shadowkeep atmosphere-space basis"
+            );
+        });
         {
             let ext = self.externs.get_mut();
-            // Preserved atmosphere-space basis used by the admitted EDZ
-            // placement. Activity-driven basis automation is still separate.
-            ext.postprocess.unkc0 = vec4(-0.08323, 0.00, -0.99653, 1.0);
-            ext.postprocess.unkd0 = vec4(-0.03088, 0.99952, 0.00258, 1.0);
-            ext.postprocess.unke0 = vec4(0.99605, 0.03098, -0.08319, 1.0);
+            [
+                ext.postprocess.unkc0,
+                ext.postprocess.unkd0,
+                ext.postprocess.unke0,
+            ] = SHADOWKEEP_ATMOSPHERE_BASIS;
         }
         self.clear_surface(cmd, view.atmosphere.sky_lookup_near, [0.0; 4]);
         self.bind_surfaces(cmd, &[view.atmosphere.sky_lookup_near], None);

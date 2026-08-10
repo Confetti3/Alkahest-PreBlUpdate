@@ -19,7 +19,7 @@ use alkahest_data::{
         SShadowkeepBubbleDefinition, SShadowkeepBubbleParent, SShadowkeepCubemapPlacement,
         SShadowkeepEntity, SShadowkeepLightCollection, SShadowkeepMapDataTable,
         SShadowkeepOcclusionBounds, SShadowkeepShadowingLight, SShadowkeepStaticPlacement,
-        SShadowkeepTerrainPlacement,
+        SShadowkeepTerrainPlacement, SShadowkeepTextureHeader,
     },
     tfx::{
         TfxFeatureRenderer, atmosphere::SShadowkeepAtmospherePlacement, common::AxisAlignedBBox,
@@ -432,6 +432,19 @@ pub fn load_shadowkeep_map_into_world(
                             );
                         }
 
+                        let read_lookup_header = |tag| {
+                            package_manager()
+                                .read_tag_struct::<SShadowkeepTextureHeader>(tag)
+                                .with_context(|| {
+                                    format!("failed to read atmosphere texture header {tag}")
+                                })
+                        };
+                        let lookup_volume_0 = read_lookup_header(placement.lookup_volume_0)?;
+                        let lookup_volume_1 = read_lookup_header(placement.lookup_volume_1)?;
+                        let lookup_vertical = read_lookup_header(placement.lookup_vertical)?;
+                        let lookup_table_entry = package_manager()
+                            .get_entry(placement.lookup_table)
+                            .context("lookup table package entry disappeared")?;
                         let lookup_table_bytes =
                             package_manager().read_tag(placement.lookup_table)?;
                         anyhow::ensure!(
@@ -441,6 +454,10 @@ pub fn load_shadowkeep_map_into_world(
                             lookup_table_bytes.len(),
                             SHADOWKEEP_LOOKUP_TABLE_BYTES,
                         );
+                        // This raw table has no texture header. Its companion
+                        // vertical lookup is authored as sRGB, and frozen A/B
+                        // captures reject the large color shift from linear
+                        // UNORM sampling.
                         let lookup_table = Texture::load_2d_raw(
                             &renderer.gpu.device,
                             64,
@@ -450,6 +467,45 @@ pub fn load_shadowkeep_map_into_world(
                             Some("Shadowkeep atmosphere lookup table"),
                             false,
                         )?;
+                        let lookup_table_min =
+                            lookup_table_bytes.iter().copied().min().unwrap_or(0);
+                        let lookup_table_max =
+                            lookup_table_bytes.iter().copied().max().unwrap_or(0);
+                        let lookup_table_mean = lookup_table_bytes
+                            .iter()
+                            .map(|&value| f64::from(value))
+                            .sum::<f64>()
+                            / lookup_table_bytes.len() as f64;
+                        tracing::info!(
+                            table = %table_hash,
+                            entry_offset = entry.data_resource.offset,
+                            lookup_table = %placement.lookup_table,
+                            lookup_table_class = format_args!("0x{:08X}", lookup_table_entry.reference),
+                            lookup_table_format = "R8G8B8A8_UNORM_SRGB",
+                            lookup_table_min,
+                            lookup_table_max,
+                            lookup_table_mean,
+                            lookup_volume_0 = ?(
+                                lookup_volume_0.width,
+                                lookup_volume_0.height,
+                                lookup_volume_0.depth,
+                                lookup_volume_0.format,
+                            ),
+                            lookup_volume_1 = ?(
+                                lookup_volume_1.width,
+                                lookup_volume_1.height,
+                                lookup_volume_1.depth,
+                                lookup_volume_1.format,
+                            ),
+                            lookup_vertical = ?(
+                                lookup_vertical.width,
+                                lookup_vertical.height,
+                                lookup_vertical.depth,
+                                lookup_vertical.format,
+                            ),
+                            lookup_parameters = ?placement.lookup_parameters,
+                            "loaded authored Shadowkeep atmosphere inputs"
+                        );
                         let atmosphere = AtmosphereData {
                             shadowkeep_lookup_volume_0: renderer
                                 .asset_manager

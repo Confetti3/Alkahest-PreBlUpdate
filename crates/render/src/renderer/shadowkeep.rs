@@ -80,9 +80,9 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
             evidence: "authored map atmosphere placements feed preserved lookup-generation, atmosphere-aware deferred-shading, and sky techniques".into(),
         },
         CapabilityRecord {
-            name: "Shadowkeep material AO and solar fallback",
+            name: "Shadowkeep material AO compatibility finalizer and solar fallback",
             state: CapabilityState::Ready,
-            evidence: "the era-specific finalizer preserves Arrivals material channels, normalizes RT2 material occlusion, and the scene clock drives a continuous sun/sky cycle".into(),
+            evidence: "the validated compatibility finalizer preserves Arrivals material channels and normalizes RT2 material occlusion; the scene clock drives the renderer's synthetic sun/sky fallback".into(),
         },
         CapabilityRecord {
             name: "Transparent stages, decals, water, and volumetrics",
@@ -219,9 +219,9 @@ pub fn pass_status_ledger(pipelines: &GlobalPipelines) -> Vec<ShadowkeepPassReco
             evidence: "package-authored atmosphere inputs populate both lookup targets; the preserved atmosphere-aware deferred and sky techniques produce finite output",
         },
         ShadowkeepPassRecord {
-            name: "procedural sky / sun fallback and material AO",
+            name: "procedural solar fallback",
             state: ShadowkeepPassState::Degraded,
-            evidence: "the fallback remains active while authored atmosphere inputs load; era-correct material AO remains incomplete",
+            evidence: "the synthetic scene-clock solar path remains explicit because the admitted target maps contain no decodable authored sun-angle track",
         },
         ShadowkeepPassRecord {
             name: "direct presentation",
