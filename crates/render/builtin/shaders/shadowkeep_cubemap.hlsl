@@ -4,8 +4,10 @@ cbuffer ShadowkeepCubemapConstants : register(b11)
     float4x4 world_to_model;
     float4x4 target_pixel_to_world;
     float4x4 world_to_projective;
+    float4x4 world_to_cubemap;
     float4 camera_position;
-    float4 target_resolution;
+    float4 intensity;
+    float4 fade_params;
 };
 
 struct VSOutput
@@ -40,20 +42,59 @@ void mainPS(
     {
         discard;
     }
+
     float3 normal = packed_normal.xyz * 2.0 - 1.0;
     float smoothness = saturate(length(normal) * 4.0 - 3.0);
     float roughness = 1.0 - smoothness;
     float3 N = normalize(normal);
     float3 V = normalize(camera_position.xyz - world_position);
-    float3 reflected = 2.0 * max(0.0, dot(N, V)) * N - V;
+
+    float3 localPosition =
+        mul(world_to_model, float4(world_position, 1.0)).xyz;
+
+    float distanceToEdge =
+        1.0 - max(
+            max(abs(localPosition.x), abs(localPosition.y)),
+            abs(localPosition.z)
+        );
+
+    float volumeWeight =
+        pow(
+            saturate(distanceToEdge),
+            max(fade_params.x, 0.0001)
+        );
+
+    float3 reflected = reflect(-V, N);
+
+    float3 cubemapDirection =
+        normalize(
+            mul((float3x3)world_to_cubemap, reflected)
+        );
 
     uint width;
     uint height;
-    uint mip_count;
-    SpecularIbl.GetDimensions(0, width, height, mip_count);
+    uint mipCount;
+    SpecularIbl.GetDimensions(0, width, height, mipCount);
+
+    float maxMip =
+        max((float)mipCount - 1.0, 0.0);
+
+    float lod =
+        sqrt(saturate(roughness)) * maxMip;
+
+    float3 environment =
+        SpecularIbl.SampleLevel(
+            SamplerLinear,
+            cubemapDirection,
+            lod
+        ).rgb;
+
     lighting_specular = float4(
-        SpecularIbl.SampleLevel(SamplerLinear, reflected, sqrt(roughness) * mip_count).rgb,
-        1.0
+        environment
+            * max(intensity.x, 0.0)
+            * volumeWeight,
+        volumeWeight
     );
+
     lighting_diffuse = 0.0;
 }

@@ -1,12 +1,15 @@
-use std::{sync::Arc, sync::atomic::{AtomicBool, Ordering}};
+use std::{
+    sync::Arc,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 use alkahest_data::tfx::{
-    PipelineState, PrimitiveType, RenderStage, ShaderStage,
+    PrimitiveType, RenderStage, ShaderStage,
     common::AxisAlignedBBox,
     features::{cubemap::SCubemapComponent, dynamic::RenderStageSubscription},
 };
 use d3d11::dxgi;
-use glam::{Mat4, Quat, Vec3, Vec4, Vec4Swizzles, vec4};
+use glam::{Mat4, Quat, Vec3, Vec4, vec4};
 use itertools::Itertools;
 
 use super::FeatureRenderer;
@@ -35,6 +38,7 @@ pub struct CubemapRenderer {
 
     cubemap: SCubemapComponent,
     bounds: AxisAlignedBBox,
+    shadowkeep_model_to_world: Mat4,
 }
 
 impl CubemapRenderer {
@@ -74,6 +78,7 @@ impl CubemapRenderer {
                 .load(cubemap.texture_voxel_diffuse),
             cubemap: cubemap.clone(),
             bounds: AxisAlignedBBox::NONE,
+            shadowkeep_model_to_world: Mat4::IDENTITY,
         })
     }
 }
@@ -112,31 +117,10 @@ impl FeatureRenderer for CubemapRenderer {
             )
             .unwrap();
         if renderer.era() == crate::renderer::RendererEra::Shadowkeep {
-            let view = &Renderer::instance().externs.get().view;
-            let model_to_world =
-                local_to_world * Mat4::from_scale(-self.cubemap.volume_extents.xyz());
-            self.cb_shadowkeep
-                .write(
-                    &renderer.gpu.context(),
-                    &ShadowkeepCubemapConstants {
-                        model_to_world,
-                        world_to_model: model_to_world.inverse(),
-                        target_pixel_to_world: view.target_pixel_to_world,
-                        world_to_projective: view.world_to_projective,
-                        camera_position: view.position,
-                        target_resolution: Vec4::new(
-                            view.target_width,
-                            view.target_height,
-                            0.0,
-                            0.0,
-                        ),
-                    },
-                )
-                .unwrap();
+            self.shadowkeep_model_to_world = local_to_world;
         }
 
-        let cubemap_local_to_world =
-            local_to_world * Mat4::from_scale(self.cubemap.volume_extents.xyz());
+        let cubemap_local_to_world = local_to_world;
         let points = geometry::CUBE_VERTICES
             .iter()
             .map(|&v| cubemap_local_to_world.project_point3(v))
@@ -340,8 +324,25 @@ impl FeatureRenderer for CubemapRenderer {
 
         if Renderer::instance().era() == crate::renderer::RendererEra::Shadowkeep {
             let renderer = Renderer::instance();
-            cmd.state = PipelineState::new(Some(8), Some(0), Some(2), Some(2));
-            cmd.flush_states();
+            let externs = renderer.externs.get();
+            let view = &externs.view;
+            let model_to_world = self.shadowkeep_model_to_world;
+            let (_, cubemap_rotation, _) = self.cubemap.unk110.to_scale_rotation_translation();
+            self.cb_shadowkeep
+                .write(
+                    &renderer.gpu.context(),
+                    &ShadowkeepCubemapConstants {
+                        model_to_world,
+                        world_to_model: model_to_world.inverse(),
+                        target_pixel_to_world: view.target_pixel_to_world,
+                        world_to_projective: view.world_to_projective,
+                        world_to_cubemap: Mat4::from_quat(cubemap_rotation.conjugate()),
+                        camera_position: view.position,
+                        intensity: self.cubemap.unk160,
+                        fade_params: Vec4::new(self.cubemap.unk70.max(0.0001), 1.0, 0.0, 0.0),
+                    },
+                )
+                .unwrap();
             self.cb_shadowkeep.bind(cmd, ShaderStage::Vertex, 11);
             self.cb_shadowkeep.bind(cmd, ShaderStage::Pixel, 11);
             cmd.vertex_set_shader(Some(&renderer.shadowkeep_cubemap_vs));
@@ -351,18 +352,22 @@ impl FeatureRenderer for CubemapRenderer {
             let specular = self.texture_cubemap_specular.get();
             let voxel = self.texture_voxel_diffuse.get();
             let mut normal = None;
-            renderer
-                .externs
-                .get()
+            let mut depth = None;
+            externs
                 .deferred
                 .deferred_rt1
                 .get_srv(|srv| normal = Some(srv.clone()));
+            externs
+                .deferred
+                .deferred_depth
+                .get_srv(|srv| depth = Some(srv.clone()));
             cmd.pixel_set_shader_resources(
                 0,
                 &[
                     specular.as_ref().map(|texture| &texture.view),
                     voxel.as_ref().map(|texture| &texture.view),
                     normal.as_ref(),
+                    depth.as_ref(),
                 ],
             );
         } else {
@@ -404,13 +409,16 @@ impl FeatureRenderer for CubemapRenderer {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ShadowkeepCubemapConstants {
     pub model_to_world: Mat4,
     pub world_to_model: Mat4,
     pub target_pixel_to_world: Mat4,
     pub world_to_projective: Mat4,
+    pub world_to_cubemap: Mat4,
     pub camera_position: Vec4,
-    pub target_resolution: Vec4,
+    pub intensity: Vec4,
+    pub fade_params: Vec4,
 }
 
 #[repr(C)]

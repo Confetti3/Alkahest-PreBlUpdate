@@ -120,7 +120,7 @@ impl MapTab {
                         .color(Color32::from_rgb(160, 208, 160)),
                     );
                     ui.weak(
-                        "Global directional lighting remains opt-in; available freeroam scenario tables are admitted automatically.",
+                        "Global directional lighting and sun shadows are enabled by default; available freeroam scenario tables are admitted automatically.",
                     );
                     ui.label(format!(
                         "{} map/activity tables ({} scenario), {} entries in {:.2?}; {} static, {} terrain, {} rigid, {} cubemap render objects",

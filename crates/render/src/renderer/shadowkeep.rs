@@ -65,19 +65,29 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
             evidence: "shading_result is presented directly through the sRGB output target".into(),
         },
         CapabilityRecord {
-            name: "Exposure, final combine, global lighting, and material AO",
-            state: CapabilityState::Degraded,
-            evidence: "fixed exposure and direct presentation are stable fallbacks; era-correct ambient and AO producers remain incomplete".into(),
+            name: "Cubemap specular IBL",
+            state: CapabilityState::Ready,
+            evidence: "authored cubemap volumes populate light_specular_ibl before deferred shading".into(),
         },
         CapabilityRecord {
-            name: "IBL, atmosphere, shadows, transparent stages, decals, water, and volumetrics",
+            name: "Global directional lighting and cascaded sun shadows",
+            state: CapabilityState::Ready,
+            evidence: "the legacy global-lighting pass runs by default and consumes the screen-space cascade mask".into(),
+        },
+        CapabilityRecord {
+            name: "Procedural sky / sun fallback and material AO",
+            state: CapabilityState::Degraded,
+            evidence: "the procedural sky/sun fallback is active; authentic atmosphere lookup and era-correct material AO remain incomplete".into(),
+        },
+        CapabilityRecord {
+            name: "Atmosphere, transparent stages, decals, water, and volumetrics",
             state: CapabilityState::Blocked,
             evidence: "era-specific producers and pass ordering have not been connected".into(),
         },
         CapabilityRecord {
             name: "Activity and ambient scene layers",
-            state: CapabilityState::Blocked,
-            evidence: "the active loader currently ingests the base bubble tables only".into(),
+            state: CapabilityState::Degraded,
+            evidence: "base bubble and discovered freeroam scenario tables are admitted; sequencer and channel phase automation remain undecoded".into(),
         },
     ]
 }
@@ -156,7 +166,7 @@ pub struct ShadowkeepPassRecord {
 /// connected graph, not merely whether a bootstrap technique can be loaded.
 pub fn pass_status_ledger(pipelines: &GlobalPipelines) -> Vec<ShadowkeepPassRecord> {
     let global_lighting_state = if pipelines.global_lighting.is_available() {
-        ShadowkeepPassState::Degraded
+        ShadowkeepPassState::Ready
     } else {
         ShadowkeepPassState::DisabledAsAbsent
     };
@@ -172,9 +182,29 @@ pub fn pass_status_ledger(pipelines: &GlobalPipelines) -> Vec<ShadowkeepPassReco
             evidence: "local-light volume draws produce non-zero diffuse and specular MRT captures",
         },
         ShadowkeepPassRecord {
+            name: "cubemap specular IBL",
+            state: ShadowkeepPassState::Ready,
+            evidence: "authored cubemap volumes populate light_specular_ibl before deferred shading",
+        },
+        ShadowkeepPassRecord {
             name: "deferred shading",
             state: ShadowkeepPassState::Ready,
-            evidence: "deferred_shading_no_atm produces a non-zero shading_result capture",
+            evidence: "deferred_shading_no_atm consumes local and cubemap lighting into shading_result",
+        },
+        ShadowkeepPassRecord {
+            name: "global directional lighting",
+            state: global_lighting_state,
+            evidence: "the legacy global-lighting pass is connected and enabled by default for Shadowkeep",
+        },
+        ShadowkeepPassRecord {
+            name: "cascaded directional shadows",
+            state: ShadowkeepPassState::Ready,
+            evidence: "sun cascades produce a screen-space mask consumed through ShadowMask.unk00",
+        },
+        ShadowkeepPassRecord {
+            name: "procedural sky / sun and material AO",
+            state: ShadowkeepPassState::Degraded,
+            evidence: "the visible sky/sun fallback is active; authentic atmosphere lookup and era-correct material AO remain incomplete",
         },
         ShadowkeepPassRecord {
             name: "direct presentation",
@@ -182,12 +212,7 @@ pub fn pass_status_ledger(pipelines: &GlobalPipelines) -> Vec<ShadowkeepPassReco
             evidence: "shading_result is copied directly to the sRGB output target",
         },
         ShadowkeepPassRecord {
-            name: "global lighting / material AO",
-            state: global_lighting_state,
-            evidence: "legacy global-lighting inputs and static AO resources are not yet era-correct",
-        },
-        ShadowkeepPassRecord {
-            name: "IBL / transparent / decal / water / atmosphere / volumetrics",
+            name: "transparent / decal / water / atmosphere / volumetrics",
             state: ShadowkeepPassState::DisabledAsAbsent,
             evidence: "not admitted until an era-specific producer and pass-order capture is available",
         },

@@ -357,10 +357,10 @@ pub fn load_shadowkeep_map_into_world(
                             let component = placement.normalized();
                             let cubemap = CubemapRenderer::load(&renderer.gpu, &component)?;
                             progress.gpu_assets_requested.fetch_add(1, Ordering::Relaxed);
-                            let (_, volume_rotation, volume_translation) =
+                            let (volume_scale, volume_rotation, volume_translation) =
                                 component.unkb0.to_scale_rotation_translation();
                             world.spawn((
-                                Transform::new(volume_translation, volume_rotation, Vec3::ONE),
+                                Transform::new(volume_translation, volume_rotation, volume_scale),
                                 DynamicRenderObject::new(renderer.add_object(RenderObject::new(
                                     TfxFeatureRenderer::Cubemaps,
                                     Box::new(cubemap),
