@@ -1,9 +1,8 @@
 {
   "target_class": "0x808084D7",
   "occurrences": 2230,
-  "on_entities_with_loaded_rigid_geometry": 2066,
-  "on_entities_with_another_loaded_visual": 0,
-  "on_entities_with_no_loaded_visual": 164,
+  "on_entities_with_loaded_rigid_component": 2066,
+  "on_entities_without_loaded_rigid_component": 164,
   "sibling_class_counts": {
     "0x80802E91": 216,
     "0x80802FF8": 2,
@@ -106,8 +105,8 @@
     "0x808072B8,0x808084D7,0x808092D8": 6,
     "0x808084CB,0x808084D7": 19
   },
-  "projected_over_mostly_clear_depth": 0,
-  "projected_over_existing_geometry": 0,
+  "projected_over_mostly_clear_depth": 1575,
+  "projected_over_existing_geometry": 655,
   "off_screen": 0,
-  "capture_unavailable": 2230
+  "capture_unavailable": 0
 }

@@ -29,6 +29,7 @@ const RIGID_MODEL_COMPONENT: u32 = 0x8080_72B8;
 const DEFINITION_PREFIX_BYTES: usize = 0x40;
 const DEFINITION_DUMP_BYTES: usize = 0x200;
 const SCENARIO_CLASS: u32 = 0x8080_9994;
+const PAIRED_CANDIDATE_CLASSES: [u32; 2] = [0x8080_6730, 0x80C7_0EDC];
 
 #[derive(Debug, Parser)]
 struct Args {
@@ -133,7 +134,6 @@ struct ExampleRecord {
     placement: PlacementRecord,
     sibling_entity_resource_classes: Vec<String>,
     has_loaded_rigid_component: bool,
-    has_another_loaded_visual: bool,
     nested_resource_table: Vec<NestedPointerRecord>,
     unk80: String,
     unk80_package: Option<PackageRecord>,
@@ -165,7 +165,7 @@ struct ClassStats {
     entities: BTreeSet<String>,
     maps: BTreeSet<String>,
     on_entities_with_rigid: usize,
-    on_entities_without_loaded_visual: usize,
+    on_entities_without_loaded_rigid_component: usize,
     capture_unavailable: usize,
     projected_over_mostly_clear_depth: usize,
     projected_over_existing_geometry: usize,
@@ -175,6 +175,7 @@ struct ClassStats {
     child_class_counts: BTreeMap<String, usize>,
     nested_signatures: BTreeMap<String, usize>,
     sibling_signatures: BTreeMap<String, usize>,
+    reference_clusters: BTreeMap<usize, ReferenceClusterAccumulator>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -197,6 +198,33 @@ struct ClusterAccumulator {
     count: usize,
     maps: BTreeMap<String, usize>,
     representative: String,
+}
+
+#[derive(Debug, Default)]
+struct ReferenceClusterAccumulator {
+    occurrences: usize,
+    references: BTreeMap<(usize, String), StableReferenceAccumulator>,
+}
+
+#[derive(Debug, Default)]
+struct StableReferenceAccumulator {
+    occurrences_at_offset: usize,
+    tags: BTreeSet<String>,
+    contexts: BTreeSet<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct StableReferenceOffset {
+    definition_length: usize,
+    cluster: String,
+    offset: usize,
+    package_class: String,
+    cluster_occurrences: usize,
+    occurrences_at_offset: usize,
+    coverage_percentage: f64,
+    distinct_tags: usize,
+    example_tags: Vec<String>,
+    surrounding_bytes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -232,15 +260,32 @@ impl Default for RigidBaseline {
 struct CooccurrenceReport {
     target_class: String,
     occurrences: usize,
-    on_entities_with_loaded_rigid_geometry: usize,
-    on_entities_with_another_loaded_visual: usize,
-    on_entities_with_no_loaded_visual: usize,
+    on_entities_with_loaded_rigid_component: usize,
+    on_entities_without_loaded_rigid_component: usize,
     sibling_class_counts: BTreeMap<String, usize>,
     sibling_signatures: BTreeMap<String, usize>,
     projected_over_mostly_clear_depth: usize,
     projected_over_existing_geometry: usize,
     off_screen: usize,
     capture_unavailable: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct ClassPairEvidence {
+    class_a: String,
+    class_b: String,
+    entities_with_a: usize,
+    entities_with_b: usize,
+    entities_with_both: usize,
+    probability_b_given_a: f64,
+    probability_a_given_b: f64,
+    both_without_loaded_rigid_component: usize,
+}
+
+#[derive(Debug, Default)]
+struct ClassPairAccumulator {
+    entities_with_both: usize,
+    both_without_loaded_rigid_component: usize,
 }
 
 #[derive(Debug, Serialize)]
@@ -265,6 +310,22 @@ struct ClassificationReport {
 }
 
 #[derive(Debug, Serialize)]
+struct RendererAdmissionReport {
+    stable_visual_reference_contract: bool,
+    consistent_typed_definition_layout: bool,
+    substantial_occurrence_without_loaded_rigid_component: bool,
+    frozen_clear_depth_gap_correlation: bool,
+    admitted: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct TagResolutionSummary {
+    resolved: usize,
+    unresolved: usize,
+    package_classes: BTreeMap<String, usize>,
+}
+
+#[derive(Debug, Serialize)]
 struct Manifest {
     schema: &'static str,
     maps: Vec<String>,
@@ -275,11 +336,20 @@ struct Manifest {
     structural_variants: usize,
     unique_complete_definition_hashes: usize,
     structural_variants_shared_by_both_maps: usize,
-    maps_share_complete_definition_hashes: bool,
+    complete_definition_hash_sets_identical: bool,
+    shared_complete_definition_hash_count: usize,
+    shared_complete_definition_hashes: Vec<String>,
     exact_repeated_default_percentage: f64,
     valid_definitions: usize,
     invalid_definitions: usize,
+    definition_lengths: BTreeMap<usize, usize>,
+    stable_reference_offset_count: usize,
+    stable_reference_offsets_file: &'static str,
+    paired_candidate_evidence: Option<ClassPairEvidence>,
+    unk80_resolution: TagResolutionSummary,
+    unk84_resolution: TagResolutionSummary,
     rigid_baseline: RigidBaseline,
+    renderer_admission: RendererAdmissionReport,
     classification: ClassificationReport,
     capture_inputs: Vec<String>,
     notes: Vec<String>,
@@ -291,10 +361,10 @@ struct RankingEntry {
     score: f64,
     occurrences: usize,
     maps: Vec<String>,
-    percentage_on_entities_with_no_loaded_visual: f64,
+    percentage_on_entities_without_loaded_rigid_component: f64,
     percentage_projecting_over_clear_depth: Option<f64>,
-    resolved_rigid_model_or_technique_child_tags: usize,
-    rigid_child_class_jaccard_similarity: f64,
+    stable_rigid_model_or_technique_reference_offsets: usize,
+    rigid_stable_reference_class_jaccard_similarity: f64,
     proven_matrix_bounds_or_mesh_array_evidence: usize,
     exact_definition_default_percentage: f64,
     evidence: Vec<String>,
@@ -508,6 +578,79 @@ fn definition_analysis(
         child_tags,
         child_class_signature,
     })
+}
+
+fn record_reference_cluster(stats: &mut ClassStats, analysis: &DefinitionAnalysis) {
+    let cluster = stats
+        .reference_clusters
+        .entry(analysis.span_length)
+        .or_default();
+    cluster.occurrences += 1;
+    for child in &analysis.child_tags {
+        let reference = cluster
+            .references
+            .entry((child.definition_offset, child.package.reference.clone()))
+            .or_default();
+        reference.occurrences_at_offset += 1;
+        reference.tags.insert(child.package.tag.clone());
+        reference
+            .contexts
+            .insert(child.context_hex_16_before_after.clone());
+    }
+}
+
+fn stable_reference_offsets(stats: &ClassStats) -> Vec<StableReferenceOffset> {
+    let mut stable = Vec::new();
+    for (definition_length, cluster) in &stats.reference_clusters {
+        if cluster.occurrences < 4 {
+            continue;
+        }
+        for ((offset, package_class), reference) in &cluster.references {
+            let coverage =
+                reference.occurrences_at_offset as f64 * 100.0 / cluster.occurrences as f64;
+            if coverage < 75.0 {
+                continue;
+            }
+            stable.push(StableReferenceOffset {
+                definition_length: *definition_length,
+                cluster: format!("definition_length_{definition_length}"),
+                offset: *offset,
+                package_class: package_class.clone(),
+                cluster_occurrences: cluster.occurrences,
+                occurrences_at_offset: reference.occurrences_at_offset,
+                coverage_percentage: coverage,
+                distinct_tags: reference.tags.len(),
+                example_tags: reference.tags.iter().take(8).cloned().collect(),
+                surrounding_bytes: reference.contexts.iter().take(4).cloned().collect(),
+            });
+        }
+    }
+    stable
+}
+
+fn class_pair_evidence(
+    class_entities: &BTreeMap<u32, usize>,
+    pairs: &BTreeMap<(u32, u32), ClassPairAccumulator>,
+) -> Vec<ClassPairEvidence> {
+    pairs
+        .iter()
+        .map(|(&(class_a, class_b), pair)| {
+            let entities_with_a = class_entities.get(&class_a).copied().unwrap_or_default();
+            let entities_with_b = class_entities.get(&class_b).copied().unwrap_or_default();
+            ClassPairEvidence {
+                class_a: class_hex(class_a),
+                class_b: class_hex(class_b),
+                entities_with_a,
+                entities_with_b,
+                entities_with_both: pair.entities_with_both,
+                probability_b_given_a: pair.entities_with_both as f64
+                    / entities_with_a.max(1) as f64,
+                probability_a_given_b: pair.entities_with_both as f64
+                    / entities_with_b.max(1) as f64,
+                both_without_loaded_rigid_component: pair.both_without_loaded_rigid_component,
+            }
+        })
+        .collect()
 }
 
 fn nested_records(resource: &SShadowkeepEntityResource) -> Vec<NestedPointerRecord> {
@@ -727,6 +870,14 @@ fn main() -> Result<()> {
     let mut target_child_classes = BTreeMap::<String, ChildClassSummary>::new();
     let mut target_resolved_values = 0usize;
     let mut target_occurrences = 0usize;
+    let mut class_entity_counts = BTreeMap::<u32, usize>::new();
+    let mut class_pairs = BTreeMap::<(u32, u32), ClassPairAccumulator>::new();
+    let mut target_unk80_resolved = 0usize;
+    let mut target_unk80_unresolved = 0usize;
+    let mut target_unk80_classes = BTreeMap::<String, usize>::new();
+    let mut target_unk84_resolved = 0usize;
+    let mut target_unk84_unresolved = 0usize;
+    let mut target_unk84_classes = BTreeMap::<String, usize>::new();
 
     for map in &maps {
         let map_name = map.to_string().to_ascii_uppercase();
@@ -755,6 +906,24 @@ fn main() -> Result<()> {
                 });
                 let sibling_strings = class_signature(&sibling_classes);
                 let sibling_signature = sibling_strings.join(",");
+                let entity_classes = sibling_classes
+                    .iter()
+                    .copied()
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>();
+                for class in &entity_classes {
+                    *class_entity_counts.entry(*class).or_default() += 1;
+                }
+                for (index, class_a) in entity_classes.iter().enumerate() {
+                    for class_b in entity_classes.iter().skip(index + 1) {
+                        let pair = class_pairs.entry((*class_a, *class_b)).or_default();
+                        pair.entities_with_both += 1;
+                        if !has_rigid {
+                            pair.both_without_loaded_rigid_component += 1;
+                        }
+                    }
+                }
 
                 for resource_ref in &entity.entity_resources {
                     let resource_tag = resource_ref.resource.taghash();
@@ -771,7 +940,7 @@ fn main() -> Result<()> {
                     if has_rigid {
                         class_stats.on_entities_with_rigid += 1;
                     } else {
-                        class_stats.on_entities_without_loaded_visual += 1;
+                        class_stats.on_entities_without_loaded_rigid_component += 1;
                     }
                     let gap_evidence =
                         correlate_gap(captures.get(&map_name), entry.translation.xyz().to_array());
@@ -821,6 +990,7 @@ fn main() -> Result<()> {
                             .entry(child_class.clone())
                             .or_default() += 1;
                     }
+                    record_reference_cluster(class_stats, &analysis);
                     let nested = nested_signature(resource);
                     *class_stats
                         .nested_signatures
@@ -878,6 +1048,24 @@ fn main() -> Result<()> {
                         target_nonempty_nested_tables += 1;
                     }
                     target_occurrences += 1;
+                    let unk80_package = package_record(resource.unk80, false);
+                    if let Some(package) = &unk80_package {
+                        target_unk80_resolved += 1;
+                        *target_unk80_classes
+                            .entry(package.reference.clone())
+                            .or_default() += 1;
+                    } else {
+                        target_unk80_unresolved += 1;
+                    }
+                    let unk84_package = package_record(resource.unk84, false);
+                    if let Some(package) = &unk84_package {
+                        target_unk84_resolved += 1;
+                        *target_unk84_classes
+                            .entry(package.reference.clone())
+                            .or_default() += 1;
+                    } else {
+                        target_unk84_unresolved += 1;
+                    }
                     for child in &analysis.child_tags {
                         target_resolved_values += 1;
                         let summary = target_child_classes
@@ -927,12 +1115,11 @@ fn main() -> Result<()> {
                         },
                         sibling_entity_resource_classes: sibling_strings.clone(),
                         has_loaded_rigid_component: has_rigid,
-                        has_another_loaded_visual: false,
                         nested_resource_table: nested_records(resource),
                         unk80: resource.unk80.to_string(),
-                        unk80_package: package_record(resource.unk80, false),
+                        unk80_package,
                         unk84: resource.unk84.to_string(),
-                        unk84_package: package_record(resource.unk84, false),
+                        unk84_package,
                         definition_tag_values: analysis.child_tags.clone(),
                         likely_definition_span_length: analysis.span_length,
                         definition_sha256: analysis.sha256,
@@ -1031,7 +1218,15 @@ fn main() -> Result<()> {
                 .collect::<BTreeSet<_>>()
         })
         .collect::<Vec<_>>();
-    let maps_share_hashes = map_hash_sets.windows(2).all(|pair| pair[0] == pair[1]);
+    let complete_definition_hash_sets_identical =
+        map_hash_sets.windows(2).all(|pair| pair[0] == pair[1]);
+    let shared_complete_definition_hashes = map_hash_sets.first().cloned().unwrap_or_default();
+    let shared_complete_definition_hashes = map_hash_sets
+        .iter()
+        .skip(1)
+        .fold(shared_complete_definition_hashes, |shared, current| {
+            shared.intersection(current).cloned().collect()
+        });
     let default_count = target_stats
         .complete_hash_counts
         .values()
@@ -1040,13 +1235,26 @@ fn main() -> Result<()> {
         .unwrap_or(0);
     let repeated_default_percentage =
         default_count as f64 * 100.0 / target_stats.occurrences.max(1) as f64;
+    let target_stable_references = stable_reference_offsets(target_stats);
+    let all_pair_evidence = class_pair_evidence(&class_entity_counts, &class_pairs);
+    let paired_candidate_evidence = PAIRED_CANDIDATE_CLASSES
+        .contains(&target_class)
+        .then(|| {
+            let class_a = class_hex(PAIRED_CANDIDATE_CLASSES[0]);
+            let class_b = class_hex(PAIRED_CANDIDATE_CLASSES[1]);
+            all_pair_evidence
+                .iter()
+                .find(|pair| pair.class_a == class_a && pair.class_b == class_b)
+                .cloned()
+        })
+        .flatten();
 
     let cooccurrence = CooccurrenceReport {
         target_class: class_hex(target_class),
         occurrences: target_occurrences,
-        on_entities_with_loaded_rigid_geometry: target_stats.on_entities_with_rigid,
-        on_entities_with_another_loaded_visual: 0,
-        on_entities_with_no_loaded_visual: target_stats.on_entities_without_loaded_visual,
+        on_entities_with_loaded_rigid_component: target_stats.on_entities_with_rigid,
+        on_entities_without_loaded_rigid_component: target_stats
+            .on_entities_without_loaded_rigid_component,
         sibling_class_counts,
         sibling_signatures: target_stats.sibling_signatures.clone(),
         projected_over_mostly_clear_depth: target_stats.projected_over_mostly_clear_depth,
@@ -1066,15 +1274,15 @@ fn main() -> Result<()> {
         if *class == RIGID_MODEL_COMPONENT {
             continue;
         }
-        let child_classes = class_stats
-            .child_class_counts
-            .keys()
-            .cloned()
+        let stable_references = stable_reference_offsets(class_stats);
+        let stable_child_classes = stable_references
+            .iter()
+            .map(|reference| reference.package_class.clone())
             .collect::<BTreeSet<_>>();
-        let intersection = child_classes.intersection(&rigid_classes).count();
-        let union = child_classes.union(&rigid_classes).count();
+        let intersection = stable_child_classes.intersection(&rigid_classes).count();
+        let union = stable_child_classes.union(&rigid_classes).count();
         let jaccard = intersection as f64 / union.max(1) as f64;
-        let no_visual = class_stats.on_entities_without_loaded_visual as f64 * 100.0
+        let without_rigid = class_stats.on_entities_without_loaded_rigid_component as f64 * 100.0
             / class_stats.occurrences.max(1) as f64;
         let default = class_stats
             .complete_hash_counts
@@ -1084,14 +1292,15 @@ fn main() -> Result<()> {
             .unwrap_or(0) as f64
             * 100.0
             / class_stats.occurrences.max(1) as f64;
-        let resolved_rigid_children = class_stats
-            .child_class_counts
+        let stable_rigid_offsets = stable_references
             .iter()
-            .filter(|(child, _)| rigid_classes.contains(*child))
-            .map(|(_, count)| *count)
-            .sum::<usize>();
-        let rigid_reference_coverage =
-            resolved_rigid_children as f64 * 100.0 / class_stats.occurrences.max(1) as f64;
+            .filter(|reference| rigid_classes.contains(&reference.package_class))
+            .count();
+        let projected = class_stats.projected_over_mostly_clear_depth
+            + class_stats.projected_over_existing_geometry;
+        let clear_depth_percentage = (projected > 0).then(|| {
+            class_stats.projected_over_mostly_clear_depth as f64 * 100.0 / projected as f64
+        });
         let map_independent_default_penalty =
             if default >= 95.0 && class_stats.maps.len() > 1 && class_stats.occurrences >= 100 {
                 15.0
@@ -1099,9 +1308,12 @@ fn main() -> Result<()> {
                 0.0
             };
         let frequency_confidence = (class_stats.occurrences as f64 + 1.0).log10() * 2.0;
-        let score = (no_visual * 0.30
+        let stable_visual_reference_confidence = (stable_rigid_offsets as f64 * 10.0).min(25.0);
+        let spatial_confidence = clear_depth_percentage.unwrap_or_default() * 0.20;
+        let score = (without_rigid * 0.30
             + jaccard * 15.0
-            + rigid_reference_coverage.min(100.0) * 0.25
+            + stable_visual_reference_confidence
+            + spatial_confidence
             + frequency_confidence
             - default * 0.30
             - map_independent_default_penalty)
@@ -1111,35 +1323,30 @@ fn main() -> Result<()> {
             score,
             occurrences: class_stats.occurrences,
             maps: class_stats.maps.iter().cloned().collect(),
-            percentage_on_entities_with_no_loaded_visual: no_visual,
-            percentage_projecting_over_clear_depth: {
-                let projected = class_stats.projected_over_mostly_clear_depth
-                    + class_stats.projected_over_existing_geometry;
-                (projected > 0).then(|| {
-                    class_stats.projected_over_mostly_clear_depth as f64 * 100.0
-                        / projected as f64
-                })
-            },
-            resolved_rigid_model_or_technique_child_tags: resolved_rigid_children,
-            rigid_child_class_jaccard_similarity: jaccard,
+            percentage_on_entities_without_loaded_rigid_component: without_rigid,
+            percentage_projecting_over_clear_depth: clear_depth_percentage,
+            stable_rigid_model_or_technique_reference_offsets: stable_rigid_offsets,
+            rigid_stable_reference_class_jaccard_similarity: jaccard,
             proven_matrix_bounds_or_mesh_array_evidence: 0,
             exact_definition_default_percentage: default,
             evidence: vec![
                 format!(
-                    "{} of {} occurrences are on entities without loaded rigid geometry",
-                    class_stats.on_entities_without_loaded_visual, class_stats.occurrences
+                    "{} of {} occurrences are on entities without a loaded rigid entity component",
+                    class_stats.on_entities_without_loaded_rigid_component,
+                    class_stats.occurrences
                 ),
                 format!(
-                    "{} validated child package classes overlap the rigid model/technique baseline",
-                    intersection
+                    "{stable_rigid_offsets} stable reference offsets resolve to rigid model/technique package classes; {intersection} stable package classes overlap that typed baseline"
                 ),
+                "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.".into(),
                 "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.".into(),
-                "Clear-depth contribution is unavailable unless a matching frozen capture manifest is supplied.".into(),
+                match clear_depth_percentage {
+                    Some(percentage) => format!(
+                        "{percentage:.2}% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood"
+                    ),
+                    None => "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.".into(),
+                },
                 format!("The dominant exact definition hash covers {default:.2}% of occurrences"),
-                format!(
-                    "Rigid model/technique-class words occur at {:.3}% per class occurrence",
-                    rigid_reference_coverage
-                ),
                 format!(
                     "Map-independent dominant-default penalty is {map_independent_default_penalty:.1}"
                 ),
@@ -1149,41 +1356,41 @@ fn main() -> Result<()> {
     }
     ranking.sort_by(|left, right| right.score.total_cmp(&left.score));
 
-    let visual_like_contexts = retained
+    let stable_visual_references = target_stable_references
         .iter()
-        .flat_map(|example| {
-            example
-                .definition_tag_values
-                .iter()
-                .filter(|child| rigid_classes.contains(&child.package.reference))
-                .map(|child| {
-                    format!(
-                        "{} definition+0x{:X} {} context={}",
-                        example.entity_resource.tag,
-                        child.definition_offset,
-                        child.package.reference,
-                        child.context_hex_16_before_after
-                    )
-                })
-        })
-        .collect::<Vec<_>>();
-    let model_word_count = child_report
-        .classes
-        .get("0x808073A5")
-        .map_or(0, |summary| summary.occurrences);
-    let technique_word_count = child_report
-        .classes
-        .get("0x808071E8")
-        .map_or(0, |summary| summary.occurrences);
-    let audio_collision_words = ["0x15B57FED", "0x6C1C3FE7"]
-        .iter()
-        .map(|class| {
-            child_report
-                .classes
-                .get(*class)
-                .map_or(0, |summary| summary.occurrences)
-        })
-        .sum::<usize>();
+        .filter(|reference| rigid_classes.contains(&reference.package_class))
+        .count();
+    let target_projected = target_stats.projected_over_mostly_clear_depth
+        + target_stats.projected_over_existing_geometry;
+    let target_clear_depth_percentage = (target_projected > 0).then(|| {
+        target_stats.projected_over_mostly_clear_depth as f64 * 100.0 / target_projected as f64
+    });
+    let renderer_admission = RendererAdmissionReport {
+        stable_visual_reference_contract: stable_visual_references > 0,
+        consistent_typed_definition_layout: false,
+        substantial_occurrence_without_loaded_rigid_component: target_stats
+            .on_entities_without_loaded_rigid_component
+            >= 25
+            && target_stats.on_entities_without_loaded_rigid_component * 4
+                >= target_stats.occurrences,
+        frozen_clear_depth_gap_correlation: target_projected >= 4
+            && target_clear_depth_percentage.is_some_and(|percentage| percentage >= 50.0),
+        admitted: false,
+    };
+    let pair_evidence_text = paired_candidate_evidence.as_ref().map_or_else(
+        || "No paired-candidate relationship was requested for this target class.".to_owned(),
+        |pair| {
+            format!(
+                "{} and {} co-occur on {} entities, including {} entities without a loaded rigid component; P(B|A)={:.6}, P(A|B)={:.6}",
+                pair.class_a,
+                pair.class_b,
+                pair.entities_with_both,
+                pair.both_without_loaded_rigid_component,
+                pair.probability_b_given_a,
+                pair.probability_a_given_b,
+            )
+        },
+    );
     let classification = ClassificationReport {
         label: "F. Unresolved".into(),
         evidence: vec![
@@ -1199,34 +1406,55 @@ fn main() -> Result<()> {
                 target_nonempty_nested_tables,
             ),
             format!(
-                "{} complete definition hashes and {} structural variants occur across {} valid definitions; the dominant hash covers only {repeated_default_percentage:.2}%",
+                "{} complete definition hashes and {} structural variants occur across {} valid definitions; {} complete hashes are shared by every supplied map and whole-map hash sets are {}",
                 target_stats.complete_hash_counts.len(),
                 clusters.len(),
                 target_stats.valid_definitions,
+                shared_complete_definition_hashes.len(),
+                if complete_definition_hash_sets_identical {
+                    "identical"
+                } else {
+                    "different"
+                },
             ),
             format!(
-                "{} instances ({:.2}%) co-occur with a loaded 0x808072B8 rigid component; {} occur without an admitted entity visual",
+                "{} instances ({:.2}%) co-occur with a loaded 0x808072B8 rigid component; {} occur without a loaded rigid entity component",
                 target_stats.on_entities_with_rigid,
                 target_stats.on_entities_with_rigid as f64 * 100.0
                     / target_stats.occurrences.max(1) as f64,
-                target_stats.on_entities_without_loaded_visual
+                target_stats.on_entities_without_loaded_rigid_component
             ),
             format!(
-                "Only {model_word_count} aligned words resolve to the rigid model class and {technique_word_count} resolve to the technique class; both are the same resource repeated by the two maps, not a class-wide signature: {visual_like_contexts:?}"
+                "{} stable reference offsets survive the cluster-size and coverage threshold; {} resolve to a package class used by the typed rigid model/technique baseline",
+                target_stable_references.len(),
+                stable_visual_references,
             ),
+            match target_clear_depth_percentage {
+                Some(percentage) => format!(
+                    "{} frozen on-screen origins were sampled and {percentage:.2}% project over mostly clear depth",
+                    target_projected
+                ),
+                None => "No placement origin projected inside a supplied frozen depth capture, so spatial evidence is unavailable.".into(),
+            },
+            pair_evidence_text,
             format!(
-                "{audio_collision_words} aligned words also resolve to WAVE/Bink package entries, demonstrating that get_entry validation rejects invalid hashes but does not by itself distinguish intentional references from payload collisions"
+                "unk80 resolves for {target_unk80_resolved} occurrences and is unresolved for {target_unk80_unresolved}; unk84 resolves for {target_unk84_resolved} and is unresolved for {target_unk84_unresolved}"
             ),
-            "The known rigid baseline has a proven 0x320-byte component with model class 0x808073A5 and technique class 0x808071E8 references at typed offsets; 0x808084D7 has no consistent equivalent pattern.".into(),
+            "Aligned package-tag words remain permissive collision evidence unless they survive the stable same-class/same-offset threshold.".into(),
+            "The four-part renderer gate is closed because no consistent typed definition layout has been proven; permission_to_render remains false.".into(),
         ],
         unresolved_questions: vec![
-            "The 0x808084E9 definition's field ownership and runtime semantics remain unproven; no production tiger_type is admitted.".into(),
-            "No package evidence establishes a model, material, technique, mesh, or indirect visual-child contract for this class.".into(),
-            "Frozen camera/depth files were not present in the available artifact tree; the probe supports explicit capture manifests but records spatial evidence as unavailable.".into(),
+            format!(
+                "The {} definition's field ownership and runtime semantics remain unproven; no production tiger_type is admitted.",
+                class_hex(target_class)
+            ),
+            "No package evidence yet establishes a complete model, material, technique, mesh, or indirect visual-child contract for this class.".into(),
+            "Frozen placement-origin correlation is supporting evidence only and cannot establish geometry ownership without a typed layout.".into(),
         ],
     };
+    let shared_complete_definition_hash_count = shared_complete_definition_hashes.len();
     let manifest = Manifest {
-        schema: "alkahest-shadowkeep-entity-resource-dossier/v1",
+        schema: "alkahest-shadowkeep-entity-resource-dossier/v2",
         maps: maps.iter().map(ToString::to_string).collect(),
         target_class: class_hex(target_class),
         max_examples: args.max_examples,
@@ -1238,11 +1466,30 @@ fn main() -> Result<()> {
             .iter()
             .filter(|cluster| cluster.maps.len() == maps.len())
             .count(),
-        maps_share_complete_definition_hashes: maps_share_hashes,
+        complete_definition_hash_sets_identical,
+        shared_complete_definition_hash_count,
+        shared_complete_definition_hashes: shared_complete_definition_hashes
+            .into_iter()
+            .collect(),
         exact_repeated_default_percentage: repeated_default_percentage,
         valid_definitions: target_stats.valid_definitions,
         invalid_definitions: target_stats.invalid_definitions,
+        definition_lengths: target_stats.definition_lengths.clone(),
+        stable_reference_offset_count: target_stable_references.len(),
+        stable_reference_offsets_file: "stable_reference_offsets.json",
+        paired_candidate_evidence,
+        unk80_resolution: TagResolutionSummary {
+            resolved: target_unk80_resolved,
+            unresolved: target_unk80_unresolved,
+            package_classes: target_unk80_classes,
+        },
+        unk84_resolution: TagResolutionSummary {
+            resolved: target_unk84_resolved,
+            unresolved: target_unk84_unresolved,
+            package_classes: target_unk84_classes,
+        },
         rigid_baseline,
+        renderer_admission,
         classification,
         capture_inputs: args
             .captures
@@ -1251,8 +1498,9 @@ fn main() -> Result<()> {
             .collect(),
         notes: vec![
             "Definition spans stop at the next higher valid pointer in the same entity-resource file, otherwise at file end.".into(),
-            "Only aligned u32 values resolving through package_manager().get_entry() are reported as child tags.".into(),
+            "Raw aligned u32 package resolutions are weak evidence; stable offsets require cluster count >= 4 and same package class at the same offset in >= 75% of instances.".into(),
             "The score ranks investigation candidates and never grants permission to render.".into(),
+            "A placement origin over clear depth is correlation, not proof that the entity component owns geometry.".into(),
         ],
     };
 
@@ -1260,13 +1508,20 @@ fn main() -> Result<()> {
     write_json(&args.output.join("examples.json"), &retained)?;
     write_json(&args.output.join("cooccurrence.json"), &cooccurrence)?;
     write_json(&args.output.join("child_tag_classes.json"), &child_report)?;
+    write_json(
+        &args.output.join("stable_reference_offsets.json"),
+        &target_stable_references,
+    )?;
     write_json(&args.output.join("definition_clusters.json"), &clusters)?;
-    let ranking_path = args
-        .output
-        .parent()
-        .unwrap_or_else(|| Path::new("."))
-        .join("shadowkeep-entity-class-ranking.json");
-    write_json(&ranking_path, &ranking)?;
+    let artifact_root = args.output.parent().unwrap_or_else(|| Path::new("."));
+    write_json(
+        &artifact_root.join("shadowkeep-entity-class-cooccurrence.json"),
+        &all_pair_evidence,
+    )?;
+    write_json(
+        &artifact_root.join("shadowkeep-entity-class-ranking.json"),
+        &ranking,
+    )?;
 
     println!(
         "class={} maps={} occurrences={} variants={} examples={} output={}",

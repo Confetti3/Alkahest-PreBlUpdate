@@ -1,0 +1,155 @@
+[
+  {
+    "definition_length": 392,
+    "cluster": "definition_length_392",
+    "offset": 0,
+    "package_class": "0x80809C36",
+    "cluster_occurrences": 654,
+    "occurrences_at_offset": 654,
+    "coverage_percentage": 100.0,
+    "distinct_tags": 4,
+    "example_tags": [
+      "80C2231E",
+      "80C70467",
+      "80C709E1",
+      "80C70EDF"
+    ],
+    "surrounding_bytes": [
+      "1E23C280DC0EC780800000000000000000000000",
+      "6704C780DC0EC780800000000000000000000000",
+      "DF0EC780DC0EC780800000000000000000000000",
+      "E109C780DC0EC780800000000000000000000000"
+    ]
+  },
+  {
+    "definition_length": 392,
+    "cluster": "definition_length_392",
+    "offset": 4,
+    "package_class": "0x80800000",
+    "cluster_occurrences": 654,
+    "occurrences_at_offset": 654,
+    "coverage_percentage": 100.0,
+    "distinct_tags": 1,
+    "example_tags": [
+      "80C70EDC"
+    ],
+    "surrounding_bytes": [
+      "1E23C280DC0EC78080000000000000000000000000000000",
+      "6704C780DC0EC78080000000000000000000000000000000",
+      "DF0EC780DC0EC78080000000000000000000000000000000",
+      "E109C780DC0EC78080000000000000000000000000000000"
+    ]
+  },
+  {
+    "definition_length": 392,
+    "cluster": "definition_length_392",
+    "offset": 80,
+    "package_class": "0x80809C54",
+    "cluster_occurrences": 654,
+    "occurrences_at_offset": 654,
+    "coverage_percentage": 100.0,
+    "distinct_tags": 1,
+    "example_tags": [
+      "80C70CA7"
+    ],
+    "surrounding_bytes": [
+      "0000000000000000B8FFFFFFFFFFFFFFA70CC780000000000000000000000000EB908080"
+    ]
+  },
+  {
+    "definition_length": 392,
+    "cluster": "definition_length_392",
+    "offset": 112,
+    "package_class": "0x80809C54",
+    "cluster_occurrences": 654,
+    "occurrences_at_offset": 654,
+    "coverage_percentage": 100.0,
+    "distinct_tags": 1,
+    "example_tags": [
+      "80C70CA8"
+    ],
+    "surrounding_bytes": [
+      "EB9080800000000098FFFFFFFFFFFFFFA80CC780000000000000000000000000EA908080"
+    ]
+  },
+  {
+    "definition_length": 392,
+    "cluster": "definition_length_392",
+    "offset": 144,
+    "package_class": "0x80809C54",
+    "cluster_occurrences": 654,
+    "occurrences_at_offset": 654,
+    "coverage_percentage": 100.0,
+    "distinct_tags": 1,
+    "example_tags": [
+      "80C70CA9"
+    ],
+    "surrounding_bytes": [
+      "EA9080800000000078FFFFFFFFFFFFFFA90CC78000000000000000000000000060FFFFFF"
+    ]
+  },
+  {
+    "definition_length": 392,
+    "cluster": "definition_length_392",
+    "offset": 168,
+    "package_class": "0x80809C54",
+    "cluster_occurrences": 654,
+    "occurrences_at_offset": 654,
+    "coverage_percentage": 100.0,
+    "distinct_tags": 1,
+    "example_tags": [
+      "80C70CAA"
+    ],
+    "surrounding_bytes": [
+      "000000000000000060FFFFFFFFFFFFFFAA0CC78000000000000000000000000048FFFFFF"
+    ]
+  },
+  {
+    "definition_length": 392,
+    "cluster": "definition_length_392",
+    "offset": 192,
+    "package_class": "0x80809C54",
+    "cluster_occurrences": 654,
+    "occurrences_at_offset": 654,
+    "coverage_percentage": 100.0,
+    "distinct_tags": 1,
+    "example_tags": [
+      "80C70CAB"
+    ],
+    "surrounding_bytes": [
+      "000000000000000048FFFFFFFFFFFFFFAB0CC78000000000000000000000000030FFFFFF"
+    ]
+  },
+  {
+    "definition_length": 392,
+    "cluster": "definition_length_392",
+    "offset": 216,
+    "package_class": "0x80809C54",
+    "cluster_occurrences": 654,
+    "occurrences_at_offset": 654,
+    "coverage_percentage": 100.0,
+    "distinct_tags": 1,
+    "example_tags": [
+      "80C70CAC"
+    ],
+    "surrounding_bytes": [
+      "000000000000000030FFFFFFFFFFFFFFAC0CC78000000000000000000000000018FFFFFF"
+    ]
+  },
+  {
+    "definition_length": 392,
+    "cluster": "definition_length_392",
+    "offset": 240,
+    "package_class": "0x80809C54",
+    "cluster_occurrences": 654,
+    "occurrences_at_offset": 654,
+    "coverage_percentage": 100.0,
+    "distinct_tags": 1,
+    "example_tags": [
+      "80C70CAD"
+    ],
+    "surrounding_bytes": [
+      "000000000000000018FFFFFFFFFFFFFFAD0CC780000000000000000000000000CDCCCC3D"
+    ]
+  }
+]
