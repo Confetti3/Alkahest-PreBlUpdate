@@ -330,20 +330,13 @@ pub fn load_shadowkeep_map_into_world(
             }
             report.entries += 1;
             progress.entries_seen.fetch_add(1, Ordering::Relaxed);
-            if !entry.data_resource.is_valid {
-                report.skipped_resources += 1;
-                continue;
-            }
-            *report
-                .resource_class_counts
-                .entry(entry.data_resource.resource_type)
-                .or_default() += 1;
-            bound_points.push(entry.translation.xyz());
             let transform = Transform::new(
                 entry.translation.xyz(),
                 entry.rotation,
                 Vec3::splat(entry.translation.w),
             );
+            // Entity payloads are independent of the optional table-local resource pointer.
+            // Process them first so entity-only entries are not discarded by the guard below.
             if !entry.entity.is_none() {
                 report.entity_entries += 1;
                 if let Ok(entity) =
@@ -406,6 +399,15 @@ pub fn load_shadowkeep_map_into_world(
                     }
                 }
             }
+            if !entry.data_resource.is_valid {
+                report.skipped_resources += 1;
+                continue;
+            }
+            bound_points.push(entry.translation.xyz());
+            *report
+                .resource_class_counts
+                .entry(entry.data_resource.resource_type)
+                .or_default() += 1;
 
             match entry.data_resource.resource_type {
                 ATMOSPHERE_PLACEMENT => {
@@ -826,6 +828,13 @@ pub fn load_shadowkeep_map_into_world(
         map = %tag,
         scenario = ?report.scenario,
         activity_tables = report.activity_tables,
+        static_placements = report.static_placements,
+        static_render_objects = report.static_render_objects,
+        terrain_placements = report.terrain_placements,
+        terrain_render_objects = report.terrain_render_objects,
+        entity_entries = report.entity_entries,
+        rigid_entities = report.rigid_entities,
+        rigid_render_objects = report.rigid_render_objects,
         light_collections = report.light_collections,
         light_render_objects = report.light_render_objects,
         cubemap_volumes = report.cubemap_volumes,

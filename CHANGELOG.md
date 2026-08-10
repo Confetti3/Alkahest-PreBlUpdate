@@ -34,6 +34,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - Restored Shadowkeep freeroam scenario discovery, authored cubemap specular IBL, package-authored atmosphere lookup and sky rendering, default directional sunlight with scene-clock day/night motion, cascaded sun shadows, and a validated compatibility material-occlusion finalizer without raw post-deferred overlays. Atmosphere diagnostics now report the authored texture formats, volume dimensions, lookup parameters, table statistics, and the explicitly synthetic fixed-basis and solar fallbacks.
 
+### Fixed
+
+- Restored Shadowkeep entity-only rigid-model entries that were skipped when their unrelated table-local resource pointer was empty, recovering omitted map geometry.
+
 
 ## 0.5.2 - 2025-02-11
 
