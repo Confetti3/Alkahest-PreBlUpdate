@@ -19,9 +19,7 @@ use alkahest_data::{
     tag::WideHash,
 };
 use alkahest_render::{
-    Gpu, Renderer,
-    gpu::AdapterPreference as GpuAdapterPreference,
-    gpu::command_list::CommandList,
+    Gpu, Renderer, gpu::AdapterPreference as GpuAdapterPreference, gpu::command_list::CommandList,
     util::fps_histogram::FrametimeHistogram,
 };
 use anyhow::Context;
@@ -50,8 +48,9 @@ pub struct App {
 
     shared_state: Arc<SharedState>,
 
-    renderer_task:
-        Option<Task<anyhow::Result<alkahest_render::renderer::shadowkeep::ShadowkeepRendererBootstrap>>>,
+    renderer_task: Option<
+        Task<anyhow::Result<alkahest_render::renderer::shadowkeep::ShadowkeepRendererBootstrap>>,
+    >,
     pub renderer_status: RendererStatus,
     last_frame_time: Instant,
     frametime_histogram: FrametimeHistogram,
@@ -72,8 +71,12 @@ impl RendererStatus {
             Self::Initializing => "Initializing the Shadowkeep renderer in the background…",
             Self::Ready => "Shadowkeep renderer ready",
             Self::Disabled => "3D renderer disabled with --no-3d",
-            Self::Blocked(_) => "Shadowkeep core geometry is blocked; catalog and inspection remain active",
-            Self::Failed(_) => "Shadowkeep renderer is unavailable; catalog and inspection remain active",
+            Self::Blocked(_) => {
+                "Shadowkeep core geometry is blocked; catalog and inspection remain active"
+            }
+            Self::Failed(_) => {
+                "Shadowkeep renderer is unavailable; catalog and inspection remain active"
+            }
         }
     }
 
@@ -173,9 +176,13 @@ impl App {
                     // The era bootstrap remains renderer-owned and is passed
                     // into the real constructor; it never falls back to the
                     // post-BL named render globals.
-                    let bootstrap = alkahest_render::renderer::shadowkeep::ShadowkeepRendererBootstrap::load(renderer_gpu.clone())
+                    let bootstrap =
+                        alkahest_render::renderer::shadowkeep::ShadowkeepRendererBootstrap::load(
+                            renderer_gpu.clone(),
+                        )
                         .context("Failed to construct Shadowkeep renderer bootstrap")?;
-                    *renderer_shared_state.renderer_capabilities.write() = bootstrap.capability_ledger();
+                    *renderer_shared_state.renderer_capabilities.write() =
+                        bootstrap.capability_ledger();
                     Ok(bootstrap)
                 })),
                 RendererStatus::Initializing,

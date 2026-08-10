@@ -2,6 +2,10 @@ use std::{any::Any, sync::Arc};
 
 use ahash::AHashMap;
 use alkahest_core::job::{SCHEDULER, potassium::JobHandle};
+use alkahest_data::shadowkeep::{
+    SShadowkeepDynamicMaterialVariant, SShadowkeepDynamicModel, lod_category_from_legacy,
+    primitive_type_from_legacy,
+};
 use alkahest_data::tfx::{
     RenderStage, ShaderStage, TfxScopeBits,
     common::AxisAlignedBBox,
@@ -9,10 +13,6 @@ use alkahest_data::tfx::{
         RenderStageSubscription, SDynamicMesh, SDynamicMeshMaterialVariants, SDynamicMeshPart,
         SDynamicModel,
     },
-};
-use alkahest_data::shadowkeep::{
-    SShadowkeepDynamicMaterialVariant, SShadowkeepDynamicModel,
-    lod_category_from_legacy, primitive_type_from_legacy,
 };
 use anyhow::Context;
 use glam::{Mat4, Vec4, Vec4Swizzles};
@@ -51,6 +51,7 @@ pub struct DynamicModel {
     pub hash: TagHash,
 
     pub cb: ConstantBuffer<RigidModelConstants>,
+    cbuffer_slot: u32,
     pub channels: AHashMap<u32, ObjectChannel>,
     pub transform: Mat4,
 }
@@ -139,6 +140,7 @@ impl DynamicModel {
             hash,
             cb: ConstantBuffer::create(&Renderer::instance().gpu, None)
                 .context("Failed to create constant buffer")?,
+            cbuffer_slot: 1,
             channels: AHashMap::default(),
             transform: Mat4::IDENTITY,
         }))
@@ -217,27 +219,67 @@ impl DynamicModel {
             texcoord_scale: legacy.texcoord_scale,
             texcoord_offset: legacy.texcoord_offset,
         };
-        let technique_map = technique_map.into_iter().map(|variant| SDynamicMeshMaterialVariants {
-            technique_count: variant.technique_count,
-            technique_start: variant.technique_start,
-            unk8: variant.unk8,
-        }).collect_vec();
-        let loaded_techniques = techniques.iter().map(|&tag| Renderer::instance().asset_manager.load(tag)).collect_vec();
-        let mesh_buffers = model.meshes.iter().map(|mesh| {
-            ModelBuffers::load(mesh.vertex0_buffer, mesh.vertex1_buffer, mesh.color_buffer, mesh.index_buffer)
+        let technique_map = technique_map
+            .into_iter()
+            .map(|variant| SDynamicMeshMaterialVariants {
+                technique_count: variant.technique_count,
+                technique_start: variant.technique_start,
+                unk8: variant.unk8,
+            })
+            .collect_vec();
+        let loaded_techniques = techniques
+            .iter()
+            .map(|&tag| Renderer::instance().asset_manager.load(tag))
+            .collect_vec();
+        let mesh_buffers = model
+            .meshes
+            .iter()
+            .map(|mesh| {
+                ModelBuffers::load(
+                    mesh.vertex0_buffer,
+                    mesh.vertex1_buffer,
+                    mesh.color_buffer,
+                    mesh.index_buffer,
+                )
                 .context("Failed to load Shadowkeep rigid-model buffers")
-        }).collect::<anyhow::Result<_>>()?;
-        let mesh_stages = model.meshes.iter().map(|mesh| {
-            RenderStageSubscription::from_partrange_list(&mesh.part_range_per_render_stage)
-        }).collect_vec();
-        let part_techniques = model.meshes.iter().map(|mesh| {
-            mesh.parts.iter().map(|part| Renderer::instance().asset_manager.load(part.technique)).collect_vec()
-        }).collect_vec();
-        let permutation_count = technique_map.iter().filter(|variant| variant.unk8 == 0)
-            .map(|variant| variant.technique_count as usize).next().unwrap_or(1).max(1);
-        let identifier_count = model.meshes.iter().flat_map(|mesh| mesh.parts.iter().map(|part| part.external_identifier))
-            .max().unwrap_or(0) as usize + 1;
-        let subscribed_stages = mesh_stages.iter().fold(RenderStageSubscription::empty(), |stages, stage| stages | *stage);
+            })
+            .collect::<anyhow::Result<_>>()?;
+        let mesh_stages = model
+            .meshes
+            .iter()
+            .map(|mesh| {
+                RenderStageSubscription::from_partrange_list(&mesh.part_range_per_render_stage)
+            })
+            .collect_vec();
+        let part_techniques = model
+            .meshes
+            .iter()
+            .map(|mesh| {
+                mesh.parts
+                    .iter()
+                    .map(|part| Renderer::instance().asset_manager.load(part.technique))
+                    .collect_vec()
+            })
+            .collect_vec();
+        let permutation_count = technique_map
+            .iter()
+            .filter(|variant| variant.unk8 == 0)
+            .map(|variant| variant.technique_count as usize)
+            .next()
+            .unwrap_or(1)
+            .max(1);
+        let identifier_count = model
+            .meshes
+            .iter()
+            .flat_map(|mesh| mesh.parts.iter().map(|part| part.external_identifier))
+            .max()
+            .unwrap_or(0) as usize
+            + 1;
+        let subscribed_stages = mesh_stages
+            .iter()
+            .fold(RenderStageSubscription::empty(), |stages, stage| {
+                stages | *stage
+            });
         Ok(Box::new(Self {
             mesh_buffers,
             technique_map,
@@ -253,6 +295,11 @@ impl DynamicModel {
             hash,
             cb: ConstantBuffer::create(&Renderer::instance().gpu, None)
                 .context("Failed to create Shadowkeep rigid-model constant buffer")?,
+            cbuffer_slot: Renderer::instance()
+                .globals
+                .scopes
+                .rigid_model
+                .vertex_slot() as u32,
             channels: AHashMap::default(),
             transform: Mat4::IDENTITY,
         }))
@@ -333,8 +380,8 @@ impl DynamicModel {
                 continue;
             }
 
-            self.cb.bind(cmd, ShaderStage::Vertex, 1);
-            self.cb.bind(cmd, ShaderStage::Pixel, 1);
+            self.cb.bind(cmd, ShaderStage::Vertex, self.cbuffer_slot);
+            self.cb.bind(cmd, ShaderStage::Pixel, self.cbuffer_slot);
 
             if Renderer::instance()
                 .set_input_layout(cmd, mesh.get_input_layout_for_stage(stage) as usize)
@@ -433,14 +480,9 @@ impl FeatureRenderer for DynamicModel {
     fn submit(&self, cmd: &mut CommandList, _view_index: usize, stage: RenderStage) {
         profiling::scope!("DynamicModel::draw");
 
-        self.draw_wrapped(
-            cmd,
-            stage,
-            self.identifier_mask,
-            |_model, cmd, (_mesh_index, _mesh), (_part_index, part)| {
-                cmd.draw_indexed(part.index_count, part.index_start, 0);
-            },
-        );
+        self.draw_wrapped(cmd, stage, self.identifier_mask, |_, cmd, _, (_, part)| {
+            cmd.draw_indexed(part.index_count, part.index_start, 0);
+        });
     }
 
     fn submit_parallel(

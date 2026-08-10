@@ -1,4 +1,7 @@
-use std::{fmt, path::{Path, PathBuf}};
+use std::{
+    fmt,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, anyhow};
 use native_dialog::{FileDialog, MessageDialog, MessageType};
@@ -170,9 +173,11 @@ mod tests {
 
     #[test]
     fn picker_accepts_packages_leaf_case_insensitively() {
-        assert!(Path::new("C:/game/PACKAGES")
-            .file_name()
-            .and_then(|name| name.to_str())
-            .is_some_and(|name| name.eq_ignore_ascii_case("packages")));
+        assert!(
+            Path::new("C:/game/PACKAGES")
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case("packages"))
+        );
     }
 }

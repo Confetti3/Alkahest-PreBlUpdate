@@ -75,7 +75,10 @@ struct TextureUploadRequirement {
 }
 
 fn upload_requirement(texture: TextureInfo) -> anyhow::Result<TextureUploadRequirement> {
-    ensure!(texture.width > 0 && texture.height > 0, "texture has zero dimensions");
+    ensure!(
+        texture.width > 0 && texture.height > 0,
+        "texture has zero dimensions"
+    );
     ensure!(texture.mip_count > 0, "texture has zero mips");
 
     let dimension = if texture.depth > 1 {
@@ -686,9 +689,18 @@ mod tests {
 
     #[test]
     fn shadowkeep_upload_classifies_2d_cube_and_3d() {
-        assert_eq!(upload_requirement(info(8, 8, 1, 1, 4)).unwrap().dimension, TextureDimension::Texture2D);
-        assert_eq!(upload_requirement(info(8, 8, 1, 6, 4)).unwrap().dimension, TextureDimension::TextureCube);
-        assert_eq!(upload_requirement(info(8, 8, 4, 1, 4)).unwrap().dimension, TextureDimension::Texture3D);
+        assert_eq!(
+            upload_requirement(info(8, 8, 1, 1, 4)).unwrap().dimension,
+            TextureDimension::Texture2D
+        );
+        assert_eq!(
+            upload_requirement(info(8, 8, 1, 6, 4)).unwrap().dimension,
+            TextureDimension::TextureCube
+        );
+        assert_eq!(
+            upload_requirement(info(8, 8, 4, 1, 4)).unwrap().dimension,
+            TextureDimension::Texture3D
+        );
     }
 
     #[test]

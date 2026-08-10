@@ -67,6 +67,9 @@ extern_struct! {
         0x240 => unk240: Mat4,
         0x280 => tptow_no_proj_w: Mat4,
         0x2c0 => unk2c0: Mat4,
+        // Typed identity target for preserved pre-BL View Mat4 reads whose
+        // logical slots overlap Vec4 storage in the normalized ABI.
+        0x300 => shadowkeep_identity: Mat4 > default(Mat4::IDENTITY),
     }
 }
 

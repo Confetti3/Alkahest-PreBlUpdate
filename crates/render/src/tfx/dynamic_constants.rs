@@ -479,12 +479,27 @@ pub fn translate_shadowkeep_bytecode(source: &[u8]) -> anyhow::Result<Vec<u8>> {
                 // post-BL View inserted one vec4 between each of these
                 // matrices. Translate the legacy vec4 address rather than
                 // adding overlapping Rust fields to the extern struct.
+                // Legacy View Mat4 slot 2 overlaps the normalized camera
+                // position Vec4. The preserved accessor supplied Mat4::IDENTITY
+                // for that type mismatch; keep the typed default explicit.
+                (ExternIndex::View, 0x3e) if offset == 0x02 => {
+                    offset = 0x30;
+                }
                 (ExternIndex::View, 0x3e)
                     if matches!(offset, 0x06 | 0x0A | 0x0E | 0x12 | 0x1E | 0x26) =>
                 {
                     offset = offset
                         .checked_add(2)
                         .context("Shadowkeep View matrix offset overflow")?;
+                }
+                // The preserved Transparent scope requests two legacy Vec4
+                // defaults at slots 5 and 6. Those logical vector slots
+                // overlap texture byte offsets 0x50 and 0x60 in the normalized
+                // tagged extern container. The pre-BL accessor returned typed
+                // zero defaults for both; route them to the existing zero Vec4
+                // slot instead of failing the entire scope expression.
+                (ExternIndex::Transparent, 0x3d) if matches!(offset, 0x05 | 0x06) => {
+                    offset = 0x0b;
                 }
                 _ => {}
             }
@@ -534,6 +549,25 @@ mod tests {
             translate_shadowkeep_bytecode(&[0x3e, ExternIndex::View as u8, 0x0e]).unwrap(),
             vec![0x4c, ExternIndex::View as u8, 0x10],
         );
+        // Legacy View Mat4 slot 2 is a typed identity default in the
+        // normalized extern ABI.
+        assert_eq!(
+            translate_shadowkeep_bytecode(&[0x3e, ExternIndex::View as u8, 0x02]).unwrap(),
+            vec![0x4c, ExternIndex::View as u8, 0x30],
+        );
+        // Legacy Transparent Vec4 slots 5 and 6 overlap normalized texture
+        // storage. Both are preserved typed-zero defaults at Vec4 slot 11.
+        for legacy_offset in [0x05, 0x06] {
+            assert_eq!(
+                translate_shadowkeep_bytecode(&[
+                    0x3d,
+                    ExternIndex::Transparent as u8 - 1,
+                    legacy_offset,
+                ])
+                .unwrap(),
+                vec![0x4b, ExternIndex::Transparent as u8, 0x0b],
+            );
+        }
     }
 
     #[test]

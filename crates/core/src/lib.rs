@@ -1,5 +1,8 @@
 pub mod convar;
-use std::{path::{Path, PathBuf}, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use anyhow::Context;
 pub use convar::*;
@@ -137,7 +140,9 @@ pub fn ensure_app_directories() -> anyhow::Result<()> {
 }
 
 pub fn atomic_write(path: &Path, contents: &[u8]) -> anyhow::Result<()> {
-    let parent = path.parent().context("Configuration path has no parent directory")?;
+    let parent = path
+        .parent()
+        .context("Configuration path has no parent directory")?;
     std::fs::create_dir_all(parent)
         .with_context(|| format!("Creating configuration directory {}", parent.display()))?;
 

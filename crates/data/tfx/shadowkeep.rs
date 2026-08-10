@@ -6,12 +6,12 @@
 
 use std::collections::HashMap;
 
-use anyhow::{Context, ensure};
+use anyhow::{ensure, Context};
 use glam::Vec4;
 use tiger_parse::{
-    Endian, NullString, PackageManagerExt, Pointer, TigerReadable, TigerReader, tiger_type,
+    tiger_type, Endian, NullString, PackageManagerExt, Pointer, TigerReadable, TigerReader,
 };
-use tiger_pkg::{TagHash, package_manager};
+use tiger_pkg::{package_manager, TagHash};
 
 use crate::{tag::Tag, tfx::ExternIndex};
 
@@ -487,8 +487,8 @@ fn parse_vector_layout(
 
     let count_u64 = read_u64(bytes, count_offset, &format!("{label} count"))?;
     ensure!(count_u64 > 0, "{label} count must be positive");
-    let count = usize::try_from(count_u64)
-        .map_err(|_| anyhow::anyhow!("{label} count is too large"))?;
+    let count =
+        usize::try_from(count_u64).map_err(|_| anyhow::anyhow!("{label} count is too large"))?;
     let relative = read_i64(bytes, pointer_offset, &format!("{label} pointer"))?;
     let target = relative_offset(pointer_offset, relative, label)?;
     let payload_start = target
@@ -544,22 +544,20 @@ pub fn parse_shadowkeep_channel_defaults(
         bytes.len()
     );
 
-    let (hash_count, hash_array_offset, hash_end, hash_element_header) =
-        parse_vector_layout(
-            bytes,
-            HASH_COUNT_OFFSET,
-            HASH_POINTER_OFFSET,
-            4,
-            "channel hash vector",
-        )?;
-    let (value_count, value_array_offset, value_end, value_element_header) =
-        parse_vector_layout(
-            bytes,
-            VALUE_COUNT_OFFSET,
-            VALUE_POINTER_OFFSET,
-            16,
-            "channel value vector",
-        )?;
+    let (hash_count, hash_array_offset, hash_end, hash_element_header) = parse_vector_layout(
+        bytes,
+        HASH_COUNT_OFFSET,
+        HASH_POINTER_OFFSET,
+        4,
+        "channel hash vector",
+    )?;
+    let (value_count, value_array_offset, value_end, value_element_header) = parse_vector_layout(
+        bytes,
+        VALUE_COUNT_OFFSET,
+        VALUE_POINTER_OFFSET,
+        16,
+        "channel value vector",
+    )?;
     let (auxiliary_count, auxiliary_array_offset, auxiliary_end, auxiliary_element_header) =
         parse_vector_layout(
             bytes,
@@ -633,7 +631,10 @@ pub fn shadowkeep_channel_defaults_with_fallback(
     bytes: &[u8],
 ) -> (Vec<Vec4>, ShadowkeepChannelDefaultsLoad) {
     match parse_shadowkeep_channel_defaults(bytes) {
-        Ok(parsed) => (parsed.values.clone(), ShadowkeepChannelDefaultsLoad::Package(parsed)),
+        Ok(parsed) => (
+            parsed.values.clone(),
+            ShadowkeepChannelDefaultsLoad::Package(parsed),
+        ),
         Err(error) => {
             let reason = format!("{error:#}");
             (
@@ -731,8 +732,7 @@ mod tests {
             count: usize,
             target: usize,
         ) {
-            bytes[count_offset..count_offset + 8]
-                .copy_from_slice(&(count as u64).to_le_bytes());
+            bytes[count_offset..count_offset + 8].copy_from_slice(&(count as u64).to_le_bytes());
             bytes[pointer_offset..pointer_offset + 8]
                 .copy_from_slice(&((target - pointer_offset) as i64).to_le_bytes());
         }
@@ -747,17 +747,19 @@ mod tests {
         bytes[0..8].copy_from_slice(&byte_len.to_le_bytes());
         write_descriptor(&mut bytes, 0x08, 0x10, values.len(), hash_target);
         write_descriptor(&mut bytes, 0x18, 0x20, values.len(), value_target);
-        write_descriptor(
-            &mut bytes,
-            0x28,
-            0x30,
-            auxiliary.len(),
-            auxiliary_target,
-        );
+        write_descriptor(&mut bytes, 0x28, 0x30, auxiliary.len(), auxiliary_target);
 
         for (target, count, header) in [
-            (hash_target, values.len(), [0x70, 0x00, 0x80, 0x80, 0, 0, 0, 0]),
-            (value_target, values.len(), [0x90, 0x00, 0x80, 0x80, 0, 0, 0, 0]),
+            (
+                hash_target,
+                values.len(),
+                [0x70, 0x00, 0x80, 0x80, 0, 0, 0, 0],
+            ),
+            (
+                value_target,
+                values.len(),
+                [0x90, 0x00, 0x80, 0x80, 0, 0, 0, 0],
+            ),
             (
                 auxiliary_target,
                 auxiliary.len(),
@@ -789,8 +791,8 @@ mod tests {
     #[test]
     fn channel_defaults_report_the_encoded_array_count() {
         let values = [Vec4::X, Vec4::Y, Vec4::Z];
-        let parsed = parse_shadowkeep_channel_defaults(&encoded_channel_defaults(&values, &[]))
-            .unwrap();
+        let parsed =
+            parse_shadowkeep_channel_defaults(&encoded_channel_defaults(&values, &[])).unwrap();
         assert_eq!(parsed.array_count, values.len());
         assert_eq!(parsed.channel_hashes, [0, 1, 2]);
         assert_eq!(parsed.values, values);
@@ -811,9 +813,12 @@ mod tests {
 
     #[test]
     fn channel_default_values_remain_positional() {
-        let values = [Vec4::new(2.0, 3.0, 5.0, 7.0), Vec4::new(11.0, 13.0, 17.0, 19.0)];
-        let parsed = parse_shadowkeep_channel_defaults(&encoded_channel_defaults(&values, &[]))
-            .unwrap();
+        let values = [
+            Vec4::new(2.0, 3.0, 5.0, 7.0),
+            Vec4::new(11.0, 13.0, 17.0, 19.0),
+        ];
+        let parsed =
+            parse_shadowkeep_channel_defaults(&encoded_channel_defaults(&values, &[])).unwrap();
         assert_eq!(parsed.values[0], values[0]);
         assert_eq!(parsed.values[1], values[1]);
     }

@@ -243,10 +243,7 @@ impl LightRenderer {
             shadow_view: None,
         }))
     }
-    fn submit_shadowkeep_lighting(
-        &self,
-        cmd: &mut crate::gpu::command_list::CommandList,
-    ) {
+    fn submit_shadowkeep_lighting(&self, cmd: &mut crate::gpu::command_list::CommandList) {
         let renderer = Renderer::instance();
         let global_externs = renderer.externs.get();
         let view_position = global_externs.view.position();
@@ -287,9 +284,7 @@ impl LightRenderer {
             Mat4::look_at_rh(transform_translation, transform_translation + forward, up);
 
         let has_shadow_view = renderer.settings().shadows && self.shadow_view.is_some();
-        if has_shadow_view
-            && let Some((shadowmap, shadowmap_srv)) = self.shadow_view.as_ref()
-        {
+        if has_shadow_view && let Some((shadowmap, shadowmap_srv)) = self.shadow_view.as_ref() {
             renderer
                 .common
                 .shadowmap_vs_t2
@@ -376,7 +371,10 @@ impl FeatureRenderer for LightRenderer {
     fn visibility_test(&mut self, _view_index: usize, view: &dyn OpaqueView) -> bool {
         match self.submission_path {
             LightSubmissionPath::Shadowkeep { .. } => true,
-            LightSubmissionPath::Current => self.bounds.as_ref().is_none_or(|bounds| view.is_visible(bounds)),
+            LightSubmissionPath::Current => self
+                .bounds
+                .as_ref()
+                .is_none_or(|bounds| view.is_visible(bounds)),
         }
     }
 

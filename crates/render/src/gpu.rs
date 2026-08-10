@@ -27,6 +27,9 @@ use crate::asset::texture::Texture;
 
 pub struct Gpu {
     pub placeholder_white: Texture,
+    pub placeholder_light_grey: Texture,
+    pub placeholder_grey: Texture,
+    pub placeholder_black: Texture,
     pub placeholder_ao: Texture,
     pub placeholder_normal: Texture,
     adapter: IDXGIAdapter3,
@@ -138,6 +141,33 @@ impl Gpu {
                 &[0xff; 4 * 2 * 2],
                 dxgi::Format::R8g8b8a8Unorm,
                 None,
+                false,
+            )?,
+            placeholder_light_grey: Texture::load_2d_raw(
+                &device,
+                1,
+                1,
+                &[196, 196, 196, 196],
+                dxgi::Format::R8g8b8a8UnormSrgb,
+                Some("Transparent neutral light grey"),
+                false,
+            )?,
+            placeholder_grey: Texture::load_2d_raw(
+                &device,
+                1,
+                1,
+                &[127, 127, 127, 127],
+                dxgi::Format::R8g8b8a8UnormSrgb,
+                Some("Transparent neutral grey"),
+                false,
+            )?,
+            placeholder_black: Texture::load_2d_raw(
+                &device,
+                1,
+                1,
+                &[0, 0, 0, 0],
+                dxgi::Format::R8g8b8a8UnormSrgb,
+                Some("Transparent neutral black"),
                 false,
             )?,
             placeholder_ao: Texture::load_2d_raw(

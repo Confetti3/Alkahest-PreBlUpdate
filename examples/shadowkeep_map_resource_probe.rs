@@ -2,7 +2,11 @@
 //!
 //! Usage: `cargo run --example shadowkeep_map_resource_probe -- <packages-dir> <bubble-tag> [resource-class]`.
 
-use std::{collections::BTreeMap, io::{Cursor, Seek, SeekFrom}, str::FromStr};
+use std::{
+    collections::BTreeMap,
+    io::{Cursor, Seek, SeekFrom},
+    str::FromStr,
+};
 
 use alkahest_data::shadowkeep::{
     SShadowkeepBubbleDefinition, SShadowkeepBubbleParent, SShadowkeepCubemapPlacement,
@@ -17,14 +21,11 @@ fn resolve_texture_wide(bytes: &[u8], offset: usize) -> Option<TagHash> {
     let hash32 = TagHash(u32::from_le_bytes(
         bytes.get(offset..offset + 4)?.try_into().ok()?,
     ));
-    let is_hash32 =
-        u32::from_le_bytes(bytes.get(offset + 4..offset + 8)?.try_into().ok()?);
+    let is_hash32 = u32::from_le_bytes(bytes.get(offset + 4..offset + 8)?.try_into().ok()?);
     let tag = if is_hash32 != 0 {
         hash32.is_some().then_some(hash32)?
     } else {
-        let hash64 = u64::from_le_bytes(
-            bytes.get(offset + 8..offset + 16)?.try_into().ok()?,
-        );
+        let hash64 = u64::from_le_bytes(bytes.get(offset + 8..offset + 16)?.try_into().ok()?);
         package_manager().lookup.tag64_entries.get(&hash64)?.hash32
     };
     package_manager()
@@ -73,8 +74,7 @@ fn main() -> Result<()> {
 
             for entry in &table.data_entries {
                 if entry.entity.is_some()
-                    && let Ok(entity) =
-                        manager.read_tag_struct::<SShadowkeepEntity>(entry.entity)
+                    && let Ok(entity) = manager.read_tag_struct::<SShadowkeepEntity>(entry.entity)
                 {
                     for resource_ref in &entity.entity_resources {
                         let resource = &*resource_ref.resource;
@@ -96,19 +96,19 @@ fn main() -> Result<()> {
                         entry.data_resource.offset, entry.translation, entry.rotation
                     );
                 }
-                    if resource_type == 0x8080_6B7F {
-                        let mut cursor = Cursor::new(table_bytes.as_slice());
-                        cursor.seek(SeekFrom::Start(entry.data_resource.offset))?;
-                        let cubemap = SShadowkeepCubemapPlacement::read_ds(&mut cursor)?.normalized();
-                        println!(
-                            "  center={:?} extents={:?} specular={} alpha={} voxel={}",
-                            cubemap.volume_center,
-                            cubemap.volume_extents,
-                            cubemap.texture_cube_specular_ibl,
-                            cubemap.texture_cube_alpha,
-                            cubemap.texture_voxel_diffuse,
-                        );
-                    }
+                if resource_type == 0x8080_6B7F {
+                    let mut cursor = Cursor::new(table_bytes.as_slice());
+                    cursor.seek(SeekFrom::Start(entry.data_resource.offset))?;
+                    let cubemap = SShadowkeepCubemapPlacement::read_ds(&mut cursor)?.normalized();
+                    println!(
+                        "  center={:?} extents={:?} specular={} alpha={} voxel={}",
+                        cubemap.volume_center,
+                        cubemap.volume_extents,
+                        cubemap.texture_cube_specular_ibl,
+                        cubemap.texture_cube_alpha,
+                        cubemap.texture_voxel_diffuse,
+                    );
+                }
                 let start = usize::try_from(entry.data_resource.offset)
                     .context("resource offset exceeds addressable memory")?;
                 let search_end = start.saturating_add(0x400).min(table_bytes.len());
@@ -202,8 +202,7 @@ fn main() -> Result<()> {
                     package_entry.file_size,
                 );
                 if package_entry.file_type == 0x20
-                    && let Ok(texture) =
-                        manager.read_tag_struct::<SShadowkeepTextureHeader>(tag)
+                    && let Ok(texture) = manager.read_tag_struct::<SShadowkeepTextureHeader>(tag)
                 {
                     println!(
                         "    texture={}x{}x{} array={} mips={} format={:?}",
@@ -225,8 +224,7 @@ fn main() -> Result<()> {
                             .collect::<String>()
                     );
                     for (tag_word_index, tag_chunk) in tag_bytes.chunks_exact(4).enumerate() {
-                        let nested_tag =
-                            TagHash(u32::from_le_bytes(tag_chunk.try_into().unwrap()));
+                        let nested_tag = TagHash(u32::from_le_bytes(tag_chunk.try_into().unwrap()));
                         if nested_tag.is_some()
                             && let Some(nested_entry) = manager.get_entry(nested_tag)
                         {
@@ -243,8 +241,8 @@ fn main() -> Result<()> {
                                 nested_entry.file_size,
                             );
                             if nested_entry.file_type == 0x20
-                                && let Ok(texture) = manager
-                                    .read_tag_struct::<SShadowkeepTextureHeader>(nested_tag)
+                                && let Ok(texture) =
+                                    manager.read_tag_struct::<SShadowkeepTextureHeader>(nested_tag)
                             {
                                 println!(
                                     "      texture={}x{}x{} array={} mips={} format={:?}",

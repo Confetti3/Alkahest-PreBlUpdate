@@ -35,8 +35,13 @@ pub enum AssetLoadState {
     Queued,
     Loading,
     Ready,
-    Failed { error: String },
-    Fallback { fallback: TextureFallback, error: String },
+    Failed {
+        error: String,
+    },
+    Fallback {
+        fallback: TextureFallback,
+        error: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -197,7 +202,12 @@ impl AssetManager {
     }
 
     pub fn diagnostics(&self) -> Vec<AssetDiagnostic> {
-        let mut diagnostics = self.diagnostics.lock().values().cloned().collect::<Vec<_>>();
+        let mut diagnostics = self
+            .diagnostics
+            .lock()
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
         diagnostics.sort_unstable_by_key(|diagnostic| diagnostic.tag.0);
         diagnostics
     }
@@ -217,13 +227,20 @@ impl AssetManager {
     }
 
     fn set_diagnostic(&self, tag: TagHash, kind: AssetKind, state: AssetLoadState) {
-        self.diagnostics.lock().insert(tag, AssetDiagnostic { tag, kind, state });
+        self.diagnostics
+            .lock()
+            .insert(tag, AssetDiagnostic { tag, kind, state });
     }
 
     /// Record an intentional semantic fallback without changing the failed
     /// asset's causal error.  Callers use this only for optional inputs whose
     /// absence is established by the era bootstrap.
-    pub fn record_fallback(&self, tag: TagHash, fallback: TextureFallback, error: impl Into<String>) {
+    pub fn record_fallback(
+        &self,
+        tag: TagHash,
+        fallback: TextureFallback,
+        error: impl Into<String>,
+    ) {
         self.set_diagnostic(
             tag,
             AssetKind::Texture,
@@ -272,7 +289,11 @@ fn load_asset(
                 }
                 Err(e) => {
                     let error = format!("{e:#}");
-                    error!("Failed to load {:?} texture {}: {error}", manager.era(), request.tag);
+                    error!(
+                        "Failed to load {:?} texture {}: {error}",
+                        manager.era(),
+                        request.tag
+                    );
                     // Do not turn a present-but-misdecoded required texture into a
                     // plausible-looking white material.  A caller may apply an
                     // explicit semantic fallback only after classifying its slot as
@@ -315,7 +336,11 @@ fn load_asset(
                 }
                 Err(error) => {
                     let error = format!("{error:#}");
-                    error!("Failed to load {:?} technique {}: {error}", manager.era(), request.tag);
+                    error!(
+                        "Failed to load {:?} technique {}: {error}",
+                        manager.era(),
+                        request.tag
+                    );
                     manager.set_diagnostic(request.tag, kind, AssetLoadState::Failed { error });
                 }
             }

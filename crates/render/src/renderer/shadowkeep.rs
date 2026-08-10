@@ -75,9 +75,14 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
             evidence: "the legacy global-lighting pass runs by default and consumes the screen-space cascade mask".into(),
         },
         CapabilityRecord {
-            name: "Authentic atmosphere lookup and sky",
+            name: "Package atmosphere lookup/background",
             state: CapabilityState::Ready,
-            evidence: "authored map atmosphere placements feed preserved lookup-generation, atmosphere-aware deferred-shading, and sky techniques".into(),
+            evidence: "authored map atmosphere placements feed preserved lookup generation, atmosphere-aware deferred shading, and background composition".into(),
+        },
+        CapabilityRecord {
+            name: "Map-authored sky-object models",
+            state: CapabilityState::Ready,
+            evidence: "0x80806F91 placements select 0x80806F95 collections and submit their entity models only through the legacy SkyTransparent additive/transparent pass".into(),
         },
         CapabilityRecord {
             name: "Shadowkeep material AO compatibility finalizer",
@@ -90,9 +95,9 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
             evidence: "The admitted target maps provide no decodable authored solar track; a continuous scene-clock fallback drives sun direction and daylight.".into(),
         },
         CapabilityRecord {
-            name: "Transparent and additive geometry stages",
+            name: "General transparent/additive geometry",
             state: CapabilityState::Blocked,
-            evidence: "Experimental submission was removed; no era-specific producer, extern contract, or validated pass-order capture is currently admitted.".into(),
+            evidence: "Only the narrow legacy SkyTransparent path is admitted; general transparent and additive feature families remain disconnected.".into(),
         },
         CapabilityRecord {
             name: "Authored decals, water, and volumetrics",

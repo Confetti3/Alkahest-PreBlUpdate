@@ -1,4 +1,4 @@
-use tiger_parse::{ResourcePointer, ResourcePointerWithClass, tiger_type};
+use tiger_parse::{tiger_type, ResourcePointer, ResourcePointerWithClass};
 use tiger_pkg::TagHash;
 
 use crate::{shadowkeep::geometry::SShadowkeepDynamicMaterialVariant, tag::Tag};

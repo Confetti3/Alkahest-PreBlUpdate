@@ -687,6 +687,7 @@ impl Renderer {
         let mut provenance_captures = Vec::new();
         let wants_sky = ConVars::get_flag("render.sky")
             && debug_pipeline.is_none_or(|pipeline| pipeline.has_atmosphere());
+        let wants_sky_objects = wants_sky && ConVars::get_flag("render.shadowkeep_sky_objects");
         if capture_provenance && wants_sky {
             self.clear_surface(cmd, view.atmosphere.sky_lookup_near, [0.0; 4]);
             if let Ok(capture) = capture_surface_named(
@@ -971,6 +972,9 @@ impl Renderer {
                     provenance_captures.push(capture);
                 }
             }
+        }
+        if wants_sky_objects {
+            self.submit_shadowkeep_sky_objects(cmd, view);
         }
         self.capture_shadowkeep_final_combine_no_film_curve(cmd, view);
 

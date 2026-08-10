@@ -178,7 +178,7 @@ impl Scene {
             time_of_day: if is_shadowkeep { 1800.0 } else { 1200.0 },
             time_scale: 1.0,
             animate_time_of_day: true,
-            diagnostic_freeze: false,
+            diagnostic_freeze: true,
             frozen_render_time: 0.0,
             sun_light_angle: 60f32,
             render_mode: if is_shadowkeep {
@@ -692,10 +692,19 @@ impl Scene {
             let mut sky = ConVars::get_flag("render.sky");
             if ui
                 .checkbox(&mut sky, "Sky")
-                .on_hover_text("Procedural Shadowkeep sky fallback.")
+                .on_hover_text("Package-authored atmosphere with the procedural fallback.")
                 .changed()
             {
                 let _ = ConVars::set("render.sky", sky.into());
+            }
+
+            let mut sky_objects = ConVars::get_flag("render.shadowkeep_sky_objects");
+            if ui
+                .checkbox(&mut sky_objects, "Authored Sky Objects")
+                .on_hover_text("Map-authored Shadowkeep SkyTransparent geometry.")
+                .changed()
+            {
+                let _ = ConVars::set("render.shadowkeep_sky_objects", sky_objects.into());
             }
         }
 

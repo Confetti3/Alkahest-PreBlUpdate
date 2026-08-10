@@ -5,11 +5,18 @@ use tiger_parse::PackageManagerExt;
 use tiger_pkg::package_manager;
 
 fn main() -> anyhow::Result<()> {
-    let packages = std::env::args().nth(1).context("usage: shadowkeep_renderer_probe <packages-dir>")?;
+    let packages = std::env::args()
+        .nth(1)
+        .context("usage: shadowkeep_renderer_probe <packages-dir>")?;
     alkahest_core::initialize_package_manager(None, Some(packages.as_str()))?;
 
     let bootstrap = alkahest_data::tfx::shadowkeep::ShadowkeepEraProfile.load_bootstrap()?;
-    println!("{} scopes, {} pipelines, {} input layouts", bootstrap.scopes.len(), bootstrap.pipelines.len(), bootstrap.input_layout_count);
+    println!(
+        "{} scopes, {} pipelines, {} input layouts",
+        bootstrap.scopes.len(),
+        bootstrap.pipelines.len(),
+        bootstrap.input_layout_count
+    );
     let channel_tag = bootstrap.channel_defaults;
     let channel_entry = package_manager()
         .get_entry(channel_tag)
@@ -25,7 +32,10 @@ fn main() -> anyhow::Result<()> {
     );
     println!(
         "channel_defaults hex={}",
-        channel_bytes.iter().map(|byte| format!("{byte:02x}")).collect::<String>()
+        channel_bytes
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
     );
 
     let mut absent_scopes = Vec::new();
@@ -48,7 +58,11 @@ fn main() -> anyhow::Result<()> {
             .read_tag_struct::<alkahest_data::tfx::shadowkeep::SShadowkeepTechnique>(*tag)
             .with_context(|| format!("failed to parse Shadowkeep technique {name} ({tag})"))?;
     }
-    println!("all referenced scopes and techniques parsed; {} scopes and {} techniques are explicitly null", absent_scopes.len(), absent_pipelines.len());
+    println!(
+        "all referenced scopes and techniques parsed; {} scopes and {} techniques are explicitly null",
+        absent_scopes.len(),
+        absent_pipelines.len()
+    );
     let mut atmosphere_pipelines = bootstrap
         .pipelines
         .iter()

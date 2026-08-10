@@ -299,15 +299,21 @@ fn main() -> Result<()> {
     for (tag, _) in manager.get_all_by_reference(SShadowkeepStaticMesh::ID.unwrap()) {
         scan.statics += 1;
         let mut max_layout = 0;
-        let result =
-            (|| -> Result<()> {
-                let model: SShadowkeepStaticMesh = manager.read_tag_struct(tag)?;
-                max_layout = model.opaque_meshes.mesh_groups.iter()
-                    .map(|group| group.input_layout_index as u16).max().unwrap_or(0);
-                validate_static(tag, &model, bootstrap.input_layout_count)
-            })()
-            .with_context(|| format!("static {tag}"));
-        if result.is_ok() { scan.max_layout = scan.max_layout.max(max_layout); }
+        let result = (|| -> Result<()> {
+            let model: SShadowkeepStaticMesh = manager.read_tag_struct(tag)?;
+            max_layout = model
+                .opaque_meshes
+                .mesh_groups
+                .iter()
+                .map(|group| group.input_layout_index as u16)
+                .max()
+                .unwrap_or(0);
+            validate_static(tag, &model, bootstrap.input_layout_count)
+        })()
+        .with_context(|| format!("static {tag}"));
+        if result.is_ok() {
+            scan.max_layout = scan.max_layout.max(max_layout);
+        }
         scan.check(result);
     }
     for (tag, _) in manager.get_all_by_reference(SShadowkeepStaticMeshInstances::ID.unwrap()) {
@@ -333,16 +339,20 @@ fn main() -> Result<()> {
     for (tag, _) in manager.get_all_by_reference(SShadowkeepDynamicModel::ID.unwrap()) {
         scan.dynamics += 1;
         let mut max_layout = 0;
-        let result =
-            (|| -> Result<()> {
-                let dynamic: SShadowkeepDynamicModel = manager.read_tag_struct(tag)?;
-                max_layout = dynamic.meshes.iter()
-                    .flat_map(|mesh| mesh.input_layout_per_render_stage)
-                    .max().unwrap_or(0);
-                validate_dynamic(tag, &dynamic, bootstrap.input_layout_count)
-            })()
-            .with_context(|| format!("dynamic {tag}"));
-        if result.is_ok() { scan.max_layout = scan.max_layout.max(max_layout); }
+        let result = (|| -> Result<()> {
+            let dynamic: SShadowkeepDynamicModel = manager.read_tag_struct(tag)?;
+            max_layout = dynamic
+                .meshes
+                .iter()
+                .flat_map(|mesh| mesh.input_layout_per_render_stage)
+                .max()
+                .unwrap_or(0);
+            validate_dynamic(tag, &dynamic, bootstrap.input_layout_count)
+        })()
+        .with_context(|| format!("dynamic {tag}"));
+        if result.is_ok() {
+            scan.max_layout = scan.max_layout.max(max_layout);
+        }
         scan.check(result);
     }
 

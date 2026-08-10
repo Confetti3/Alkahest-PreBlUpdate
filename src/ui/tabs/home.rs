@@ -56,22 +56,36 @@ impl HomeTab {
                 for capability in shared_state.renderer_capabilities.read().iter() {
                     let state = match capability.state {
                         alkahest_render::renderer::shadowkeep::CapabilityState::Ready => "ready",
-                        alkahest_render::renderer::shadowkeep::CapabilityState::Degraded => "degraded",
-                        alkahest_render::renderer::shadowkeep::CapabilityState::Blocked => "blocked",
-                        alkahest_render::renderer::shadowkeep::CapabilityState::AbsentInCorpus => "absent in corpus",
+                        alkahest_render::renderer::shadowkeep::CapabilityState::Degraded => {
+                            "degraded"
+                        }
+                        alkahest_render::renderer::shadowkeep::CapabilityState::Blocked => {
+                            "blocked"
+                        }
+                        alkahest_render::renderer::shadowkeep::CapabilityState::AbsentInCorpus => {
+                            "absent in corpus"
+                        }
                     };
-                    ui.label(format!("{}: {} — {}", capability.name, state, capability.evidence));
+                    ui.label(format!(
+                        "{}: {} — {}",
+                        capability.name, state, capability.evidence
+                    ));
                 }
             });
         ui.add_space(12.0);
-        let core_geometry_available = shared_state.renderer_capabilities.read().iter().any(|capability| {
-            capability.name == "Core geometry submission"
-                && matches!(
-                    capability.state,
-                    alkahest_render::renderer::shadowkeep::CapabilityState::Ready
-                        | alkahest_render::renderer::shadowkeep::CapabilityState::Degraded
-                )
-        });
+        let core_geometry_available =
+            shared_state
+                .renderer_capabilities
+                .read()
+                .iter()
+                .any(|capability| {
+                    capability.name == "Core geometry submission"
+                        && matches!(
+                            capability.state,
+                            alkahest_render::renderer::shadowkeep::CapabilityState::Ready
+                                | alkahest_render::renderer::shadowkeep::CapabilityState::Degraded
+                        )
+                });
         let rendered_tabs_available = renderer_status.is_ready() && core_geometry_available;
         if !rendered_tabs_available {
             ui.label(RichText::new("Rendered activity, entity, and static-model tabs are disabled until core Shadowkeep geometry submission is available.").color(Color32::GRAY));
@@ -108,13 +122,17 @@ impl HomeTab {
                     .d_button(format!("{} ENTITIES", GoogleMaterialSymbols::ChessPawn))
                     .clicked()
                 {
-                    result = TabResult::Open(Tab::EntityList(Box::new(EntityListTab::new(shared_state))));
+                    result = TabResult::Open(Tab::EntityList(Box::new(EntityListTab::new(
+                        shared_state,
+                    ))));
                 }
                 if ui
                     .d_button(format!("{} STATICS", GoogleMaterialSymbols::Landscape))
                     .clicked()
                 {
-                    result = TabResult::Open(Tab::StaticList(Box::new(StaticListTab::new(shared_state))));
+                    result = TabResult::Open(Tab::StaticList(Box::new(StaticListTab::new(
+                        shared_state,
+                    ))));
                 }
             });
             if uis[0]

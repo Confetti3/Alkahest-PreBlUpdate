@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use alkahest_core::job::{SCHEDULER, potassium::JobHandle};
+use alkahest_data::shadowkeep::SShadowkeepTerrain;
 use alkahest_data::tfx::{
     RenderStage, ShaderStage,
     common::AxisAlignedBBox,
@@ -10,7 +11,6 @@ use alkahest_data::tfx::{
         terrain::{STerrain, TerrainDetailLevel},
     },
 };
-use alkahest_data::shadowkeep::SShadowkeepTerrain;
 use glam::Vec4;
 use tiger_parse::PackageManagerExt;
 use tiger_pkg::{TagHash, package_manager};
@@ -122,56 +122,87 @@ impl TerrainPatchesRenderer {
         let terrain = STerrain {
             file_size: legacy.file_size,
             unk8: legacy.unk8,
-            bounds: AxisAlignedBBox::from_center_extents(legacy.unk10.truncate(), coverage.truncate()),
+            bounds: AxisAlignedBBox::from_center_extents(
+                legacy.unk10.truncate(),
+                coverage.truncate(),
+            ),
             unk30: legacy.position_offset,
-            mesh_groups: legacy.mesh_groups.iter().map(|group| alkahest_data::tfx::features::terrain::STerrainMeshGroup {
-                center: group.unk0,
-                extents: coverage,
-                // The legacy renderer binds this exact vector as the texture
-                // coordinate transform for scope_terrain.
-                unk20: group.texcoord_transform,
-                unk30: group.unk1c,
-                unk34: 0,
-                unk38: 0,
-                unk3c: 0,
-                unk40: 0,
-                unk44: 0,
-                unk48: 0,
-                unk4c: 0,
-                dyemap: group.dyemap,
-                unk54: 0,
-                unk58: 0,
-                unk5c: 0,
-            }).collect(),
+            mesh_groups: legacy
+                .mesh_groups
+                .iter()
+                .map(
+                    |group| alkahest_data::tfx::features::terrain::STerrainMeshGroup {
+                        center: group.unk0,
+                        extents: coverage,
+                        // The legacy renderer binds this exact vector as the texture
+                        // coordinate transform for scope_terrain.
+                        unk20: group.texcoord_transform,
+                        unk30: group.unk1c,
+                        unk34: 0,
+                        unk38: 0,
+                        unk3c: 0,
+                        unk40: 0,
+                        unk44: 0,
+                        unk48: 0,
+                        unk4c: 0,
+                        dyemap: group.dyemap,
+                        unk54: 0,
+                        unk58: 0,
+                        unk5c: 0,
+                    },
+                )
+                .collect(),
             vertex0_buffer: legacy.vertex0_buffer,
             vertex1_buffer: legacy.vertex1_buffer,
             index_buffer: legacy.index_buffer,
             unk_technique1: legacy.unk_technique1,
             unk_technique2: legacy.unk_technique2,
-            mesh_parts: legacy.mesh_parts.iter().map(|part| {
-                Ok(alkahest_data::tfx::features::terrain::STerrainMeshPart {
-                    technique: part.technique,
-                    index_start: part.index_start,
-                    index_count: part.index_count,
-                    group_index: part.group_index,
-                    detail_level: TerrainDetailLevel::try_from(part.detail_level)
-                        .map_err(|_| anyhow::anyhow!("Shadowkeep terrain has unsupported detail level {}", part.detail_level))?,
+            mesh_parts: legacy
+                .mesh_parts
+                .iter()
+                .map(|part| {
+                    Ok(alkahest_data::tfx::features::terrain::STerrainMeshPart {
+                        technique: part.technique,
+                        index_start: part.index_start,
+                        index_count: part.index_count,
+                        group_index: part.group_index,
+                        detail_level: TerrainDetailLevel::try_from(part.detail_level).map_err(
+                            |_| {
+                                anyhow::anyhow!(
+                                    "Shadowkeep terrain has unsupported detail level {}",
+                                    part.detail_level
+                                )
+                            },
+                        )?,
+                    })
                 })
-            }).collect::<anyhow::Result<_>>()?,
+                .collect::<anyhow::Result<_>>()?,
             thumb_vertex0_buffer: TagHash::NONE,
             thumb_vertex1_buffer: TagHash::NONE,
             thumb_index_buffer: TagHash::NONE,
         };
         let assets = &Renderer::instance().asset_manager;
-        let dyemaps = terrain.mesh_groups.iter().map(|group| assets.load(group.dyemap)).collect();
-        let techniques = terrain.mesh_parts.iter().map(|part| assets.load(part.technique)).collect();
-        let groups = terrain.mesh_groups.iter().map(|group| {
-            Ok((
-                ConstantBuffer::create(gpu, None)?,
-                group.aabb(),
-                VisibilityMask::default(),
-            ))
-        }).collect::<anyhow::Result<_>>()?;
+        let dyemaps = terrain
+            .mesh_groups
+            .iter()
+            .map(|group| assets.load(group.dyemap))
+            .collect();
+        let techniques = terrain
+            .mesh_parts
+            .iter()
+            .map(|part| assets.load(part.technique))
+            .collect();
+        let groups = terrain
+            .mesh_groups
+            .iter()
+            .map(|group| {
+                Ok((
+                    ConstantBuffer::create(gpu, None)?,
+                    group.aabb(),
+                    VisibilityMask::default(),
+                ))
+            })
+            .collect::<anyhow::Result<_>>()?;
         Ok(Box::new(Self {
             vertex0_buffer: assets.load(terrain.vertex0_buffer),
             vertex1_buffer: assets.load(terrain.vertex1_buffer),

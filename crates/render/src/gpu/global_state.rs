@@ -107,8 +107,9 @@ impl RenderStates {
                 );
             }
             rasterizer_state_rows.push(
-                row.try_into()
-                    .map_err(|_| anyhow::anyhow!("expected nine rasterizer states per depth bias"))?,
+                row.try_into().map_err(|_| {
+                    anyhow::anyhow!("expected nine rasterizer states per depth bias")
+                })?,
             );
         }
         let rasterizer_states = rasterizer_state_rows

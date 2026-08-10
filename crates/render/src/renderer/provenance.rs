@@ -512,12 +512,9 @@ fn format_has_alpha(format: dxgi::Format) -> bool {
 fn decode_pixel(format: dxgi::Format, bytes: &[u8]) -> anyhow::Result<[f32; 4]> {
     let packed = || u32::from_le_bytes(bytes[..4].try_into().unwrap());
     match format {
-        dxgi::Format::R8g8Typeless | dxgi::Format::R8g8Unorm => Ok([
-            bytes[0] as f32 / 255.0,
-            bytes[1] as f32 / 255.0,
-            0.0,
-            0.0,
-        ]),
+        dxgi::Format::R8g8Typeless | dxgi::Format::R8g8Unorm => {
+            Ok([bytes[0] as f32 / 255.0, bytes[1] as f32 / 255.0, 0.0, 0.0])
+        }
         dxgi::Format::R8g8b8a8Typeless
         | dxgi::Format::R8g8b8a8Unorm
         | dxgi::Format::R8g8b8a8UnormSrgb => Ok([

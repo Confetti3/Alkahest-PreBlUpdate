@@ -250,6 +250,8 @@ impl Renderer {
         F: FnOnce(&Arc<Gpu>, &AssetManager) -> anyhow::Result<RenderGlobals>,
     {
         ConVars::register("render.sky", true);
+        ConVars::register("render.shadowkeep_sky_objects", true);
+        ConVars::register("render.shadowkeep_sky_object_collection", 0u32);
         ConVars::register("render.global_lighting", era == RendererEra::Shadowkeep);
         ConVars::register("render.shadowkeep_buffer_provenance", false);
         ConVars::register("render.shadowkeep_global_lighting_ab", false);

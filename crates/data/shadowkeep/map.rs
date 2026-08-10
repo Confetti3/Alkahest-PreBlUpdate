@@ -1,11 +1,13 @@
 use glam::{Mat4, Quat, Vec4};
-use tiger_parse::{ResourcePointer, tiger_type};
+use tiger_parse::{tiger_type, ResourcePointer};
 use tiger_pkg::TagHash;
 
 use crate::{
-    shadowkeep::geometry::SShadowkeepStaticMeshInstances,
+    shadowkeep::{
+        geometry::SShadowkeepStaticMeshInstances, light::SShadowkeepObjectOcclusionBounds,
+    },
     tag::{Tag, WideTag},
-    tfx::features::cubemap::SCubemapComponent,
+    tfx::{common::AxisAlignedBBox, features::cubemap::SCubemapComponent},
 };
 
 /// Legacy map root (`0x80807DAE`), not the post-BL bubble parent.
@@ -64,6 +66,46 @@ pub struct SShadowkeepMapDataTableEntry {
     pub world_id: u64,
     pub data_resource: ResourcePointer,
     pub unk80: [u32; 4],
+}
+
+#[derive(Clone, Debug)]
+#[tiger_type(id = 0x8080_6F95)]
+pub struct SShadowkeepSkyObjectCollection {
+    pub file_size: u64,
+    pub objects: Vec<SShadowkeepSkyObject>,
+    pub occlusion_bounds: Vec<SShadowkeepObjectOcclusionBounds>,
+    pub identifiers: Vec<u32>,
+}
+
+#[derive(Clone, Debug)]
+#[tiger_type(id = 0x8080_6F97, size = 0x80)]
+pub struct SShadowkeepSkyObject {
+    /// Authored object-to-world transform.
+    pub transform: [f32; 16],
+
+    /// Same logical bounds represented by the parallel occlusion array.
+    pub bounds: AxisAlignedBBox,
+
+    pub model: Tag<SShadowkeepSkyObjectModel>,
+
+    pub unk64: f32,
+    pub unk68: u32,
+    pub unk6c: i16,
+    pub unk6e: u16,
+
+    /// Unknown flags/type data. The preserved renderer skips value 5.
+    pub unk70: u32,
+
+    pub unk74: f32,
+    pub unk78: u32,
+    pub unk7c: TagHash,
+}
+
+#[derive(Clone, Debug)]
+#[tiger_type(id = 0x8080_6F9B, size = 0x0C)]
+pub struct SShadowkeepSkyObjectModel {
+    pub file_size: u64,
+    pub entity_model: TagHash,
 }
 
 /// Resource payload class `0x808071B3`: a static placement points to this
@@ -149,6 +191,78 @@ impl SShadowkeepCubemapPlacement {
             texture_voxel_diffuse: self.texture_voxel_diffuse,
             unk1a8: TagHash::NONE,
             unk1ac: [0; 3],
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::env;
+
+    use tiger_parse::{PackageManagerExt, TigerReadable};
+    use tiger_pkg::{package_manager, TagHash};
+
+    use super::{SShadowkeepSkyObject, SShadowkeepSkyObjectCollection, SShadowkeepSkyObjectModel};
+
+    const EDZ_COLLECTION: TagHash = TagHash(0x8154_6735);
+    const EUROPA_COLLECTION: TagHash = TagHash(0x80C5_8936);
+
+    #[test]
+    fn sky_object_serialized_sizes_match_preserved_layout() {
+        assert_eq!(<SShadowkeepSkyObject as TigerReadable>::SIZE, 0x80);
+        assert_eq!(<SShadowkeepSkyObjectModel as TigerReadable>::SIZE, 0x0C);
+    }
+
+    #[test]
+    #[ignore = "requires ALKAHEST_SHADOWKEEP_PACKAGES pointing at the Arrivals package corpus"]
+    fn real_edz_and_europa_sky_collections_parse() {
+        let packages = env::var("ALKAHEST_SHADOWKEEP_PACKAGES")
+            .expect("ALKAHEST_SHADOWKEEP_PACKAGES must point at the package directory");
+        alkahest_core::initialize_package_manager(None, Some(packages.as_str()))
+            .expect("failed to initialize the Shadowkeep package manager");
+
+        for collection_tag in [EDZ_COLLECTION, EUROPA_COLLECTION] {
+            let collection: SShadowkeepSkyObjectCollection = package_manager()
+                .read_tag_struct(collection_tag)
+                .unwrap_or_else(|error| panic!("failed to parse {collection_tag}: {error:#}"));
+            assert!(
+                !collection.objects.is_empty(),
+                "{collection_tag} has no sky objects"
+            );
+            assert_eq!(
+                collection.objects.len(),
+                collection.occlusion_bounds.len(),
+                "{collection_tag} object/occlusion counts differ"
+            );
+            assert_eq!(
+                collection.objects.len(),
+                collection.identifiers.len(),
+                "{collection_tag} object/identifier counts differ"
+            );
+
+            for (index, (object, occlusion)) in collection
+                .objects
+                .iter()
+                .zip(&collection.occlusion_bounds)
+                .enumerate()
+            {
+                assert!(
+                    object.transform.iter().all(|value| value.is_finite()),
+                    "{collection_tag} object {index} has a non-finite transform"
+                );
+                assert!(
+                    object.bounds.min.is_finite()
+                        && object.bounds.max.is_finite()
+                        && occlusion.bb.min.is_finite()
+                        && occlusion.bb.max.is_finite(),
+                    "{collection_tag} object {index} has non-finite bounds"
+                );
+                let entity_model = object.model.entity_model;
+                assert!(
+                    entity_model.is_some() && package_manager().get_entry(entity_model).is_some(),
+                    "{collection_tag} object {index} entity model {entity_model} is missing"
+                );
+            }
         }
     }
 }

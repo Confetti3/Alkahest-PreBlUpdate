@@ -7,12 +7,7 @@ use egui_dock::{DockArea, DockState, TabInteractionStyle, TabPath};
 use google_material_symbols::GoogleMaterialSymbols;
 use tabs::{DockStateExt, Tab, TabViewer};
 
-use crate::{
-    app::SharedState,
-    task::Task,
-    ui::util::DButton,
-    updater::AvailableUpdate,
-};
+use crate::{app::SharedState, task::Task, ui::util::DButton, updater::AvailableUpdate};
 
 pub mod colors;
 pub mod icons;

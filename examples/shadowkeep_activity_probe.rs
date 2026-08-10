@@ -31,15 +31,11 @@ fn resolve_texture_wide(bytes: &[u8], offset: usize) -> Option<TagHash> {
     let hash32 = TagHash(u32::from_le_bytes(
         bytes.get(offset..offset + 4)?.try_into().ok()?,
     ));
-    let is_hash32 = u32::from_le_bytes(
-        bytes.get(offset + 4..offset + 8)?.try_into().ok()?,
-    );
+    let is_hash32 = u32::from_le_bytes(bytes.get(offset + 4..offset + 8)?.try_into().ok()?);
     let tag = if is_hash32 != 0 {
         hash32.is_some().then_some(hash32)?
     } else {
-        let hash64 = u64::from_le_bytes(
-            bytes.get(offset + 8..offset + 16)?.try_into().ok()?,
-        );
+        let hash64 = u64::from_le_bytes(bytes.get(offset + 8..offset + 16)?.try_into().ok()?);
         package_manager().lookup.tag64_entries.get(&hash64)?.hash32
     };
     package_manager().get_entry(tag).is_some().then_some(tag)
@@ -116,8 +112,7 @@ fn main() -> Result<()> {
     let mut entity_lookup_candidates = Vec::new();
     let mut interesting_textures = Vec::new();
     for entity_definition in &entity_definitions {
-        let resource: SShadowkeepEntityResource =
-            manager.read_tag_struct(*entity_definition)?;
+        let resource: SShadowkeepEntityResource = manager.read_tag_struct(*entity_definition)?;
         let resource_type = resource.resource.resource_type;
         *resource_types.entry(resource_type).or_default() += 1;
         resource_samples
@@ -141,8 +136,7 @@ fn main() -> Result<()> {
                         .insert(candidate);
                     if let Ok(texture) =
                         manager.read_tag_struct::<SShadowkeepTextureHeader>(candidate)
-                        && (texture.depth > 1
-                            || format!("{:?}", texture.format).contains("Float"))
+                        && (texture.depth > 1 || format!("{:?}", texture.format).contains("Float"))
                     {
                         interesting_textures.push((
                             *entity_definition,

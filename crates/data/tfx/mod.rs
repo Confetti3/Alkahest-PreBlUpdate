@@ -4,9 +4,9 @@ pub mod common;
 pub mod enums;
 pub mod features; // Feature renderers
 pub mod render_globals;
-pub mod shadowkeep;
 pub mod scope;
 pub mod sequencer;
+pub mod shadowkeep;
 pub mod technique;
 pub mod texture;
 

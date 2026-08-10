@@ -9,7 +9,10 @@ use crate::{
     cmd_event_span,
     gpu::command_list::CommandList,
     renderer::submit::geometry::GeometryCommandLists,
-    tfx::view::{MainView, View},
+    tfx::{
+        externs::{TextureView, Transparent},
+        view::{MainView, View},
+    },
 };
 
 impl Renderer {
@@ -103,5 +106,73 @@ impl Renderer {
             externs.deferred.deferred_depth = view.gbuffers.depth.into();
         }
         self.globals.scopes.view.bind(cmd).unwrap();
+    }
+
+    pub(super) fn submit_shadowkeep_sky_objects(&self, cmd: &mut CommandList, view: &MainView) {
+        cmd_event_span!(cmd, "shadowkeep/sky_objects");
+        let _gpu_span = self.profiler.scope(cmd, "shadowkeep/sky_objects");
+
+        view.shading_result_read
+            .lock()
+            .update(cmd, view.surfaces.get(view.shading_result));
+
+        {
+            let ext = self.externs.get_mut();
+            ext.deferred.deferred_depth = view.gbuffers.depth_proxy.lock().srv.clone().into();
+            ext.view
+                .derive_matrices(view.surfaces.get(view.shading_result).resolution());
+
+            let shading_read: TextureView = view.shading_result_read.lock().srv.clone().into();
+            *ext.transparent = Transparent {
+                unk00: view.atmosphere.sky_lookup_far.into(),
+                unk08: view.atmosphere.sky_lookup_far.into(),
+                unk10: view.atmosphere.sky_lookup_near.into(),
+                unk18: view.atmosphere.sky_lookup_near.into(),
+                unk20: self.gpu.placeholder_grey.view.clone().into(),
+                unk28: self.gpu.placeholder_light_grey.view.clone().into(),
+                unk30: self.gpu.placeholder_light_grey.view.clone().into(),
+                unk38: self.gpu.placeholder_light_grey.view.clone().into(),
+                unk40: self.gpu.placeholder_light_grey.view.clone().into(),
+                unk48: shading_read.clone(),
+                unk50: self.gpu.placeholder_black.view.clone().into(),
+                unk58: self.gpu.placeholder_light_grey.view.clone().into(),
+                unk60: shading_read,
+                ..(*ext.transparent).clone()
+            };
+        }
+
+        self.globals.scopes.view.bind(cmd).unwrap();
+        self.globals.scopes.transparent.bind(cmd).unwrap();
+
+        self.bind_surfaces(cmd, &[view.shading_result], Some(view.gbuffers.depth));
+        cmd.state = PipelineState::new(Some(8), Some(15), Some(2), Some(1));
+        cmd.flush_states();
+        self.submit_stage(
+            cmd,
+            View::MAIN,
+            RenderStage::DecalsAdditive,
+            FeatureRendererSubscription::SKY_TRANSPARENT,
+        );
+        tracing::trace!("Shadowkeep sky objects reached DecalsAdditive submission");
+
+        view.shading_result_read
+            .lock()
+            .update(cmd, view.surfaces.get(view.shading_result));
+        {
+            let read: TextureView = view.shading_result_read.lock().srv.clone().into();
+            let ext = self.externs.get_mut();
+            ext.transparent.unk48 = read.clone();
+            ext.transparent.unk60 = read;
+        }
+
+        cmd.state = PipelineState::new(Some(8), Some(15), Some(2), Some(1));
+        cmd.flush_states();
+        self.submit_stage(
+            cmd,
+            View::MAIN,
+            RenderStage::Transparents,
+            FeatureRendererSubscription::SKY_TRANSPARENT,
+        );
+        tracing::trace!("Shadowkeep sky objects reached Transparents submission");
     }
 }

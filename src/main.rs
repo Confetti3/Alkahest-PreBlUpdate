@@ -39,9 +39,13 @@ static GLOBAL: tracy_client::ProfiledAllocator<std::alloc::System> =
     tracy_client::ProfiledAllocator::new(std::alloc::System, 100);
 
 fn main() {
-    let command_mode = std::env::args().any(|argument| argument == "export" || argument == "capture");
+    let command_mode =
+        std::env::args().any(|argument| argument == "export" || argument == "capture");
     if let Err(error) = run() {
-        if error.downcast_ref::<launch::PackageSelectionCancelled>().is_some() {
+        if error
+            .downcast_ref::<launch::PackageSelectionCancelled>()
+            .is_some()
+        {
             return;
         }
         eprintln!("{error:#}");

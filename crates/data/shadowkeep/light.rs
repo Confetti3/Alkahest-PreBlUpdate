@@ -8,10 +8,7 @@ use glam::{Mat4, Quat, Vec4};
 use tiger_parse::tiger_type;
 use tiger_pkg::TagHash;
 
-use crate::{
-    tag::Tag,
-    tfx::common::AxisAlignedBBox,
-};
+use crate::{tag::Tag, tfx::common::AxisAlignedBBox};
 
 #[derive(Clone, Copy, Debug)]
 #[tiger_type(id = 0x8080_9F75)]

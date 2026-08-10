@@ -26,12 +26,17 @@ pub struct Scope {
 
 impl Scope {
     #[profiling::function]
-    pub fn load(gpu: &Arc<Gpu>, asset_manager: &AssetManager, hash: TagHash) -> anyhow::Result<Self> {
+    pub fn load(
+        gpu: &Arc<Gpu>,
+        asset_manager: &AssetManager,
+        hash: TagHash,
+    ) -> anyhow::Result<Self> {
         let scope: SScope = package_manager().read_tag_struct(hash)?;
 
         let stage_vertex = if scope.stage_vertex.constants.constant_buffer_slot != -1 {
             Some(ScopeStage::load(
-                gpu, asset_manager,
+                gpu,
+                asset_manager,
                 &scope.stage_vertex,
                 ShaderStage::Vertex,
             )?)
@@ -41,7 +46,8 @@ impl Scope {
 
         let stage_pixel = if scope.stage_pixel.constants.constant_buffer_slot != -1 {
             Some(ScopeStage::load(
-                gpu, asset_manager,
+                gpu,
+                asset_manager,
                 &scope.stage_pixel,
                 ShaderStage::Pixel,
             )?)
@@ -51,7 +57,8 @@ impl Scope {
 
         let stage_geometry = if scope.stage_geometry.constants.constant_buffer_slot != -1 {
             Some(ScopeStage::load(
-                gpu, asset_manager,
+                gpu,
+                asset_manager,
                 &scope.stage_geometry,
                 ShaderStage::Geometry,
             )?)
@@ -61,7 +68,8 @@ impl Scope {
 
         let stage_compute = if scope.stage_compute.constants.constant_buffer_slot != -1 {
             Some(ScopeStage::load(
-                gpu, asset_manager,
+                gpu,
+                asset_manager,
                 &scope.stage_compute,
                 ShaderStage::Compute,
             )?)

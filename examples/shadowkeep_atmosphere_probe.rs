@@ -2,7 +2,10 @@
 //!
 //! Usage: `cargo run --example shadowkeep_atmosphere_probe -- <packages-dir> [package-name-filter]`.
 
-use std::{collections::BTreeMap, io::{Cursor, Seek, SeekFrom}};
+use std::{
+    collections::BTreeMap,
+    io::{Cursor, Seek, SeekFrom},
+};
 
 use alkahest_data::{
     shadowkeep::{SShadowkeepMapDataTable, SShadowkeepTextureHeader},
@@ -18,14 +21,11 @@ fn resolve_texture_wide(bytes: &[u8], offset: usize) -> Option<TagHash> {
     let hash32 = TagHash(u32::from_le_bytes(
         bytes.get(offset..offset + 4)?.try_into().ok()?,
     ));
-    let is_hash32 =
-        u32::from_le_bytes(bytes.get(offset + 4..offset + 8)?.try_into().ok()?);
+    let is_hash32 = u32::from_le_bytes(bytes.get(offset + 4..offset + 8)?.try_into().ok()?);
     let tag = if is_hash32 != 0 {
         hash32.is_some().then_some(hash32)?
     } else {
-        let hash64 = u64::from_le_bytes(
-            bytes.get(offset + 8..offset + 16)?.try_into().ok()?,
-        );
+        let hash64 = u64::from_le_bytes(bytes.get(offset + 8..offset + 16)?.try_into().ok()?);
         package_manager().lookup.tag64_entries.get(&hash64)?.hash32
     };
     package_manager().get_entry(tag).is_some().then_some(tag)
@@ -56,7 +56,11 @@ fn main() -> Result<()> {
     ] {
         println!(
             "fallback_lookup={hash} resolved={:?}",
-            manager.lookup.tag64_entries.get(&hash.0).map(|entry| entry.hash32)
+            manager
+                .lookup
+                .tag64_entries
+                .get(&hash.0)
+                .map(|entry| entry.hash32)
         );
     }
     println!(
@@ -79,8 +83,7 @@ fn main() -> Result<()> {
         let bytes = manager.read_tag(table_tag)?;
         for entry in &table.data_entries {
             if entry.data_resource.is_valid {
-                let start =
-                    usize::try_from(entry.data_resource.offset).unwrap_or(bytes.len());
+                let start = usize::try_from(entry.data_resource.offset).unwrap_or(bytes.len());
                 let end = start.saturating_add(0x400).min(bytes.len());
                 for offset in (start..end).step_by(8) {
                     let lookups = [offset, offset + 0x10, offset + 0x20, offset + 0x30]
@@ -102,8 +105,12 @@ fn main() -> Result<()> {
             atmosphere_resources += 1;
             let mut cursor = Cursor::new(bytes.as_slice());
             cursor.seek(SeekFrom::Start(entry.data_resource.offset + 0x10))?;
-            let atmosphere = SAtmosphereDataComponent::read_ds(&mut cursor)
-                .with_context(|| format!("reading atmosphere {table_tag}@0x{:X}", entry.data_resource.offset))?;
+            let atmosphere = SAtmosphereDataComponent::read_ds(&mut cursor).with_context(|| {
+                format!(
+                    "reading atmosphere {table_tag}@0x{:X}",
+                    entry.data_resource.offset
+                )
+            })?;
             let lookups = [
                 atmosphere.unk80_tex.hash32_checked(),
                 atmosphere.unk90_tex.hash32_checked(),
@@ -137,8 +144,7 @@ fn main() -> Result<()> {
     println!(
         "tables_scanned={tables_scanned} map_atmosphere_resources={atmosphere_resources} lookup_candidates={lookup_candidates}"
     );
-    let mut texture_shapes =
-        BTreeMap::<(u16, u16, u16, u16, u8, String), (usize, TagHash)>::new();
+    let mut texture_shapes = BTreeMap::<(u16, u16, u16, u16, u8, String), (usize, TagHash)>::new();
     for (tag, _) in manager.get_all_by_type(0x20, None) {
         let package_name = &manager.package_paths[&tag.pkg_id()].name;
         if package_filter

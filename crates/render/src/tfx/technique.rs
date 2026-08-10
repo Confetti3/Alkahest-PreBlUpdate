@@ -1,11 +1,12 @@
 use std::{ops::Deref, sync::Arc};
 
 use ahash::AHashMap;
-use alkahest_data::{
-    tfx::{
-        SDynamicConstants, SMaterialTextureAssignment, SSamplerReference, STechnique,
-        STechniqueShader, ShaderStage, TechniqueBindMode, TfxScopeBits,
-        shadowkeep::{SShadowkeepDynamicConstants, SShadowkeepTechnique, SShadowkeepTechniqueShader, ShadowkeepTechniqueBindMode},
+use alkahest_data::tfx::{
+    SDynamicConstants, SMaterialTextureAssignment, SSamplerReference, STechnique, STechniqueShader,
+    ShaderStage, TechniqueBindMode, TfxScopeBits,
+    shadowkeep::{
+        SShadowkeepDynamicConstants, SShadowkeepTechnique, SShadowkeepTechniqueShader,
+        ShadowkeepTechniqueBindMode,
     },
 };
 use anyhow::{Context, ensure};
@@ -72,28 +73,58 @@ impl Technique {
 impl Technique {
     #[profiling::function]
     #[tracing::instrument(skip(gpu, asset_manager, hash), fields(technique = %hash))]
-    pub fn load(gpu: &Arc<Gpu>, asset_manager: &AssetManager, hash: TagHash) -> anyhow::Result<Self> {
+    pub fn load(
+        gpu: &Arc<Gpu>,
+        asset_manager: &AssetManager,
+        hash: TagHash,
+    ) -> anyhow::Result<Self> {
         let tech = package_manager()
             .read_tag_struct::<STechnique>(hash)
             .context("Failed to read technique tag")?;
         Ok(Self {
-            stage_vertex: TechniqueStage::load(gpu, asset_manager, &tech.shader_vertex, ShaderStage::Vertex, hash)
-                .context("Failed to load vertex stage")?,
-            stage_hull: TechniqueStage::load(gpu, asset_manager, &tech.shader_hull, ShaderStage::Hull, hash)
-                .context("Failed to load hull stage")?,
-            stage_domain: TechniqueStage::load(gpu, asset_manager, &tech.shader_domain, ShaderStage::Domain, hash)
-                .context("Failed to load domain stage")?,
+            stage_vertex: TechniqueStage::load(
+                gpu,
+                asset_manager,
+                &tech.shader_vertex,
+                ShaderStage::Vertex,
+                hash,
+            )
+            .context("Failed to load vertex stage")?,
+            stage_hull: TechniqueStage::load(
+                gpu,
+                asset_manager,
+                &tech.shader_hull,
+                ShaderStage::Hull,
+                hash,
+            )
+            .context("Failed to load hull stage")?,
+            stage_domain: TechniqueStage::load(
+                gpu,
+                asset_manager,
+                &tech.shader_domain,
+                ShaderStage::Domain,
+                hash,
+            )
+            .context("Failed to load domain stage")?,
             stage_geometry: TechniqueStage::load(
-                gpu, asset_manager,
+                gpu,
+                asset_manager,
                 &tech.shader_geometry,
                 ShaderStage::Geometry,
                 hash,
             )
             .context("Failed to load geometry stage")?,
-            stage_pixel: TechniqueStage::load(gpu, asset_manager, &tech.shader_pixel, ShaderStage::Pixel, hash)
-                .context("Failed to load pixel stage")?,
+            stage_pixel: TechniqueStage::load(
+                gpu,
+                asset_manager,
+                &tech.shader_pixel,
+                ShaderStage::Pixel,
+                hash,
+            )
+            .context("Failed to load pixel stage")?,
             stage_compute: TechniqueStage::load(
-                gpu, asset_manager,
+                gpu,
+                asset_manager,
                 &tech.shader_compute,
                 ShaderStage::Compute,
                 hash,
@@ -119,12 +150,36 @@ impl Technique {
         let tech = normalize_shadowkeep_technique(&legacy);
 
         Ok(Self {
-            stage_vertex: TechniqueStage::load_shadowkeep(gpu, asset_manager, &legacy.shader_vertex, ShaderStage::Vertex, hash)?,
+            stage_vertex: TechniqueStage::load_shadowkeep(
+                gpu,
+                asset_manager,
+                &legacy.shader_vertex,
+                ShaderStage::Vertex,
+                hash,
+            )?,
             stage_hull: None,
             stage_domain: None,
-            stage_geometry: TechniqueStage::load_shadowkeep(gpu, asset_manager, &legacy.shader_geometry, ShaderStage::Geometry, hash)?,
-            stage_pixel: TechniqueStage::load_shadowkeep(gpu, asset_manager, &legacy.shader_pixel, ShaderStage::Pixel, hash)?,
-            stage_compute: TechniqueStage::load_shadowkeep(gpu, asset_manager, &legacy.shader_compute, ShaderStage::Compute, hash)?,
+            stage_geometry: TechniqueStage::load_shadowkeep(
+                gpu,
+                asset_manager,
+                &legacy.shader_geometry,
+                ShaderStage::Geometry,
+                hash,
+            )?,
+            stage_pixel: TechniqueStage::load_shadowkeep(
+                gpu,
+                asset_manager,
+                &legacy.shader_pixel,
+                ShaderStage::Pixel,
+                hash,
+            )?,
+            stage_compute: TechniqueStage::load_shadowkeep(
+                gpu,
+                asset_manager,
+                &legacy.shader_compute,
+                ShaderStage::Compute,
+                hash,
+            )?,
             tech,
             hash,
         })
@@ -303,7 +358,8 @@ impl TechniqueStage {
             return Ok(None);
         }
 
-        let mut dynamic_constants = DynamicConstants::load_shadowkeep(gpu, asset_manager, &shader.constants)?;
+        let mut dynamic_constants =
+            DynamicConstants::load_shadowkeep(gpu, asset_manager, &shader.constants)?;
         dynamic_constants.textures = shader
             .textures
             .iter()
@@ -363,9 +419,15 @@ fn normalize_shadowkeep_technique(legacy: &SShadowkeepTechnique) -> STechnique {
         bind_mode: match legacy.bind_mode {
             ShadowkeepTechniqueBindMode::VertexPixel => TechniqueBindMode::VertexPixel,
             ShadowkeepTechniqueBindMode::VertexOnly => TechniqueBindMode::VertexOnly,
-            ShadowkeepTechniqueBindMode::VertexGeometryPixel => TechniqueBindMode::VertexGeometryPixel,
-            ShadowkeepTechniqueBindMode::VertexPixelTessellated => TechniqueBindMode::VertexPixelTesselated,
-            ShadowkeepTechniqueBindMode::VertexOnlyTessellated => TechniqueBindMode::VertexOnlyTesselated,
+            ShadowkeepTechniqueBindMode::VertexGeometryPixel => {
+                TechniqueBindMode::VertexGeometryPixel
+            }
+            ShadowkeepTechniqueBindMode::VertexPixelTessellated => {
+                TechniqueBindMode::VertexPixelTesselated
+            }
+            ShadowkeepTechniqueBindMode::VertexOnlyTessellated => {
+                TechniqueBindMode::VertexOnlyTesselated
+            }
             ShadowkeepTechniqueBindMode::Compute => TechniqueBindMode::Compute,
         },
         unkc: legacy.unkc,

@@ -126,27 +126,38 @@ impl MapTab {
                 ui.collapsing("Shadowkeep map load report", |ui| {
                     ui.label(
                         RichText::new(
-                            "Presentation: Shadowkeep deferred lighting → cubemap IBL → package-authored atmosphere/sky → direct sRGB output",
+                            "Presentation: Shadowkeep deferred lighting → cubemap IBL → package atmosphere → authored SkyTransparent objects → direct sRGB output",
                         )
                         .color(Color32::from_rgb(160, 208, 160)),
                     );
                     ui.weak(
-                        "Global directional lighting and sun shadows are enabled by default; available freeroam scenario tables and authored atmosphere placements are admitted automatically.",
+                        "Global directional lighting and sun shadows are enabled by default; base-bubble sky collections take precedence over incompatible freeroam scenario variants.",
                     );
                     ui.label(format!(
-                        "{} map/activity tables ({} scenario), {} entries in {:.2?}; {} static, {} terrain, {} rigid, {} cubemap render objects",
+                        "{} map/activity tables ({} scenario), {} entries in {:.2?}; {} static, {} terrain, {} rigid, {} cubemap, {} sky render objects",
                         report.tables, report.activity_tables, report.entries, report.elapsed,
                         report.static_placements, report.terrain_placements,
                         report.rigid_render_objects, report.cubemap_render_objects,
+                        report.sky_object_render_objects,
                     ));
                     if report.cancelled {
                         ui.label(RichText::new("Load cancelled at a safe resource boundary").color(Color32::YELLOW));
                     }
                     ui.label(format!(
-                        "Loaded: {} static, {} terrain, {} rigid, {} cubemap; {} duplicate references reused, {} resources deferred",
+                        "Loaded: {} static, {} terrain, {} rigid, {} cubemap, {} sky; {} duplicate references reused, {} resources deferred",
                         report.static_render_objects, report.terrain_render_objects,
                         report.rigid_render_objects, report.cubemap_render_objects,
-                        report.deduplicated_resources, report.deferred_resources,
+                        report.sky_object_render_objects, report.deduplicated_resources,
+                        report.deferred_resources,
+                    ));
+                    ui.label(format!(
+                        "Sky objects: {} placements, {} distinct collections, {} records, {} kind-5 skipped; selected {:?}, deferred {:?}",
+                        report.sky_object_placements,
+                        report.sky_object_collections,
+                        report.sky_object_records,
+                        report.sky_object_skipped_kind_5,
+                        report.sky_object_collection_tags,
+                        report.deferred_sky_object_collections,
                     ));
                     ui.label(format!(
                         "Entity census: {} entries, {} without table resources, {} decode failures",
