@@ -247,6 +247,24 @@ pub fn capture_surface(
     clear_value: Option<[f32; 4]>,
     statistics_encoding: Option<&'static str>,
 ) -> anyhow::Result<SurfaceProvenance> {
+    capture_surface_named(
+        cmd,
+        surface,
+        directory,
+        surface.name(),
+        clear_value,
+        statistics_encoding,
+    )
+}
+
+pub fn capture_surface_named(
+    cmd: &CommandList,
+    surface: &Surface,
+    directory: &Path,
+    name: &str,
+    clear_value: Option<[f32; 4]>,
+    statistics_encoding: Option<&'static str>,
+) -> anyhow::Result<SurfaceProvenance> {
     fs::create_dir_all(directory).context("Failed to create provenance directory")?;
 
     let desc = surface.texture.get_desc();
@@ -283,13 +301,13 @@ pub fn capture_surface(
     }
     drop(map);
 
-    let filename = format!("{}.bin", surface.name());
+    let filename = format!("{name}.bin");
     fs::write(directory.join(&filename), &bytes)
         .with_context(|| format!("Failed to write provenance capture {filename}"))?;
     let stats = compute_stats(format, &bytes, clear_value)?;
 
     Ok(SurfaceProvenance {
-        surface: surface.name().to_owned(),
+        surface: name.to_owned(),
         file: filename,
         format: format!(
             "{:?}",

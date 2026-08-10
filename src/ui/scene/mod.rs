@@ -96,6 +96,7 @@ pub struct Scene {
     sun_shadow_views: [View; Renderer::NUM_CASCADES],
 
     scene_id: String,
+    shadowkeep_sky_channels_logged: bool,
 }
 
 impl Scene {
@@ -150,12 +151,14 @@ impl Scene {
             frametimes: Vec::new(),
             sun_shadow_views,
             scene_id: scene_id.into(),
+            shadowkeep_sky_channels_logged: false,
             automate_channels: true,
         })
     }
 
     pub fn set_id(&mut self, id: impl Into<String>) {
         self.scene_id = id.into();
+        self.shadowkeep_sky_channels_logged = false;
     }
 
     // pub fn set_global_channel(&mut self, id: u32, value: Vec4) {
@@ -845,25 +848,91 @@ impl Scene {
 
             {
                 let ext = self.renderer.externs.get_mut();
-                let distance_to_night = (self.time_of_day / 1800.0 - 1.0).abs();
-
-                self.renderer.externs.get_mut().set_global_channel_by_name(
-                    "cubemap_relighting_sky_intensity",
-                    Vec4::splat(1.0 - distance_to_night),
-                );
-
                 ext.unk_sequencer_values[0] = Vec4::splat(self.time_of_day / 3600.0);
+
+                if self.renderer.era() == RendererEra::Current {
+                    let distance_to_night = (self.time_of_day / 1800.0 - 1.0).abs();
+                    ext.set_global_channel_by_name(
+                        "cubemap_relighting_sky_intensity",
+                        Vec4::splat(1.0 - distance_to_night),
+                    );
+                }
             }
 
             if self.automate_channels && !self.diagnostic_freeze {
                 s_evaluate_global_channel_expressions(&self.world);
             }
 
-            // Fixes III not showing up in the singularity
-            self.renderer
-                .externs
-                .get_mut()
-                .set_global_channel_by_id(0x2C53817A, Vec4::splat(1.0));
+            if self.renderer.era() == RendererEra::Current {
+                // Fixes III not showing up in the Singularity.
+                self.renderer
+                    .externs
+                    .get_mut()
+                    .set_global_channel_by_id(0x2C53817A, Vec4::splat(1.0));
+            }
+        }
+
+        if is_shadowkeep && !self.shadowkeep_sky_channels_logged {
+            let channels = {
+                let ext = self.renderer.externs.get();
+                [
+                    ("sun_color", ext.try_get_global_channel_by_name("sun_color")),
+                    ("sun_intensity", ext.try_get_global_channel_by_name("sun_intensity")),
+                    ("skybox_sun_color", ext.try_get_global_channel_by_name("skybox_sun_color")),
+                    (
+                        "skybox_sun_intensity",
+                        ext.try_get_global_channel_by_name("skybox_sun_intensity"),
+                    ),
+                    (
+                        "up_ambient_color",
+                        ext.try_get_global_channel_by_name("up_ambient_color"),
+                    ),
+                    (
+                        "up_ambient_intensity",
+                        ext.try_get_global_channel_by_name("up_ambient_intensity"),
+                    ),
+                    (
+                        "down_ambient_color",
+                        ext.try_get_global_channel_by_name("down_ambient_color"),
+                    ),
+                    (
+                        "down_ambient_intensity",
+                        ext.try_get_global_channel_by_name("down_ambient_intensity"),
+                    ),
+                    (
+                        "skybox_up_ambient_color",
+                        ext.try_get_global_channel_by_name("skybox_up_ambient_color"),
+                    ),
+                    (
+                        "skybox_up_ambient_intensity",
+                        ext.try_get_global_channel_by_name("skybox_up_ambient_intensity"),
+                    ),
+                    (
+                        "skybox_down_ambient_color",
+                        ext.try_get_global_channel_by_name("skybox_down_ambient_color"),
+                    ),
+                    (
+                        "skybox_down_ambient_intensity",
+                        ext.try_get_global_channel_by_name("skybox_down_ambient_intensity"),
+                    ),
+                    (
+                        "sky_color_override",
+                        ext.try_get_global_channel_by_name("sky_color_override"),
+                    ),
+                    (
+                        "sky_snapshot_intensity",
+                        ext.try_get_global_channel_by_name("sky_snapshot_intensity"),
+                    ),
+                ]
+            };
+            tracing::info!(
+                map = %self.scene_id,
+                time_of_day = self.time_of_day,
+                sun_direction = ?manual_sun_direction,
+                channels = ?channels,
+                "Shadowkeep package sky channel provenance"
+            );
+            self.shadowkeep_sky_channels_logged = true;
         }
 
         let is_everything_loaded = s_are_all_objects_loaded(&self.world, &self.renderer);

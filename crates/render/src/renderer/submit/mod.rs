@@ -19,14 +19,14 @@ use alkahest_data::tfx::{
 use glam::{Mat4, Vec4, vec4};
 
 use super::{
-    Renderer, ShadowkeepSkyConstants,
+    Renderer, ShadowkeepSkyConstants, ShadowkeepSkyState,
     provenance::{
         DeferredShadingProvenance, DirectionalLightAbManifest, DirectionalLightVariantManifest,
         ExposureAbManifest, ExposureVariantProvenance, FinalCombineManifest,
         FinalCombineProvenance, GlobalLightingAbManifest, GlobalLightingChannelValue,
         GlobalLightingDependencyManifest, GlobalLightingDependencyStage, GlobalLightingExternRead,
         GlobalLightingExternValue, ProvenanceManifest, ShadowkeepLightingProvenance,
-        SurfaceProvenance, capture_surface,
+        SurfaceProvenance, capture_surface, capture_surface_named,
     },
     surface::SurfaceHandle,
 };
@@ -730,7 +730,25 @@ impl Renderer {
         let wants_sky = ConVars::get_flag("render.sky")
             && debug_pipeline.is_none_or(|pipeline| pipeline.has_atmosphere());
         if wants_sky {
-            cmd_event_span!(cmd, "shadowkeep/sky");
+            cmd_event_span!(cmd, "shadowkeep/sky_fallback");
+            let mut before_sky_capture = None;
+            if capture_provenance {
+                match capture_surface_named(
+                    cmd,
+                    view.surfaces.get(view.shading_result),
+                    provenance_directory,
+                    "shading_result_before_sky",
+                    Some([0.0, 0.0, 0.0, 1.0]),
+                    None,
+                ) {
+                    Ok(capture) => before_sky_capture = Some(capture),
+                    Err(error) => error!(
+                        error = ?error,
+                        "Failed to capture pre-sky Shadowkeep shading result"
+                    ),
+                }
+            }
+
             let sun_direction = self
                 .frame_packet
                 .read()
@@ -738,26 +756,10 @@ impl Renderer {
                 .shadowkeep_sun_direction
                 .unwrap_or(Vec4::Z);
             let target_pixel_to_world = self.externs.view.target_pixel_to_world;
-            let zenith_color = Vec4::new(0.10, 0.22, 0.46, 1.0)
-                * self.externs.get_global_channel_by_name("up_ambient_color")
-                * self
-                    .externs
-                    .get_global_channel_by_name("up_ambient_intensity")
-                    .x;
-            let horizon_color = Vec4::new(0.44, 0.32, 0.22, 1.0)
-                * self
-                    .externs
-                    .get_global_channel_by_name("down_ambient_color")
-                * self
-                    .externs
-                    .get_global_channel_by_name("down_ambient_intensity")
-                    .x;
-            let calculated_sun_color = Vec4::new(1.0, 0.82, 0.56, 1.0)
-                * self.externs.get_global_channel_by_name("sun_color")
-                * (self.externs.get_global_channel_by_name("sun_intensity").x * 0.1);
+            let sky_state = ShadowkeepSkyState::from_externs(&self.externs);
             let include_sun = debug_pipeline.is_none_or(|pipeline| pipeline.has_sun());
             let sun_color = if include_sun {
-                calculated_sun_color
+                sky_state.sun
             } else {
                 Vec4::ZERO
             };
@@ -768,8 +770,8 @@ impl Renderer {
                         target_pixel_to_world,
                         camera_position: self.externs.view.position,
                         sun_direction,
-                        zenith_color,
-                        horizon_color,
+                        zenith_color: sky_state.zenith,
+                        horizon_color: sky_state.horizon,
                         sun_color,
                     },
                 )
@@ -782,7 +784,57 @@ impl Renderer {
             cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
             cmd.flush_states();
             cmd.set_input_topology(PrimitiveType::TriangleStrip);
+
+            let mut generated_sky_capture = None;
+            if capture_provenance {
+                self.clear_surface(cmd, view.postprocess, [0.0, 0.0, 0.0, 0.0]);
+                self.bind_surfaces(cmd, &[view.postprocess], None);
+                cmd.draw(4, 0);
+                match capture_surface_named(
+                    cmd,
+                    view.surfaces.get(view.postprocess),
+                    provenance_directory,
+                    "generated_sky_fallback",
+                    None,
+                    None,
+                ) {
+                    Ok(capture) => generated_sky_capture = Some(capture),
+                    Err(error) => error!(
+                        error = ?error,
+                        "Failed to capture generated Shadowkeep sky fallback"
+                    ),
+                }
+                self.bind_surfaces(cmd, &[view.shading_result], None);
+            }
             cmd.draw(4, 0);
+
+            if let (Some(scene), Some(sky)) =
+                (before_sky_capture.as_ref(), generated_sky_capture.as_ref())
+            {
+                let luminance = |rgb: [f64; 3]| {
+                    rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722
+                };
+                let scene_mean_luminance = scene.mean_rgb.map(luminance).unwrap_or(0.0);
+                let sky_mean_luminance = sky.mean_rgb.map(luminance).unwrap_or(0.0);
+                let sky_to_scene_ratio = (scene_mean_luminance > f64::EPSILON)
+                    .then_some(sky_mean_luminance / scene_mean_luminance);
+                info!(
+                    scene_mean = ?scene.mean_rgb,
+                    scene_max = ?scene.maximum_rgb,
+                    sky_mean = ?sky.mean_rgb,
+                    sky_max = ?sky.maximum_rgb,
+                    sky_to_scene_luminance_ratio = ?sky_to_scene_ratio,
+                    sky_saturated_pixels = sky.clipped_or_saturated_pixel_count,
+                    uses_degraded_fallback = sky_state.uses_degraded_fallback,
+                    "Shadowkeep sky luminance diagnostic"
+                );
+            }
+            if let Some(capture) = before_sky_capture {
+                provenance_captures.push(capture);
+            }
+            if let Some(capture) = generated_sky_capture {
+                provenance_captures.push(capture);
+            }
         }
         self.capture_shadowkeep_final_combine_no_film_curve(cmd, view);
 

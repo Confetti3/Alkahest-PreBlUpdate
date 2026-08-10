@@ -122,6 +122,83 @@ pub(crate) struct ShadowkeepSkyConstants {
     pub sun_color: Vec4,
 }
 
+#[derive(Clone, Copy)]
+pub(crate) struct ShadowkeepSkyState {
+    pub zenith: Vec4,
+    pub horizon: Vec4,
+    pub sun: Vec4,
+    pub uses_degraded_fallback: bool,
+}
+
+impl ShadowkeepSkyState {
+    fn finite_channel(externs: &Externs, name: &str) -> Option<Vec4> {
+        externs
+            .try_get_global_channel_by_name(name)
+            .filter(|value| value.to_array().into_iter().all(f32::is_finite))
+    }
+
+    fn fallback_pair(externs: &Externs, color: &str, intensity: &str) -> Vec4 {
+        let color = Self::finite_channel(externs, color).unwrap_or(Vec4::ZERO);
+        let intensity = Self::finite_channel(externs, intensity)
+            .map_or(0.0, |value| value.x);
+        color * intensity
+    }
+
+    fn preferred_or_degraded_fallback(
+        externs: &Externs,
+        preferred_color: &str,
+        preferred_intensity: &str,
+        fallback_color: &str,
+        fallback_intensity: &str,
+    ) -> (Vec4, bool) {
+        let preferred = Self::finite_channel(externs, preferred_color).zip(
+            Self::finite_channel(externs, preferred_intensity),
+        );
+        match preferred {
+            Some((color, intensity)) if (color * intensity.x).truncate() != glam::Vec3::ZERO => {
+                (color * intensity.x, false)
+            }
+            // A finite package zero is not missing. It means the admitted map
+            // still lacks the activity automation that authors this channel.
+            // Keep the neutral procedural fallback until that producer exists.
+            _ => (
+                Self::fallback_pair(externs, fallback_color, fallback_intensity),
+                true,
+            ),
+        }
+    }
+
+    pub fn from_externs(externs: &Externs) -> Self {
+        let (zenith, zenith_fallback) = Self::preferred_or_degraded_fallback(
+            externs,
+            "skybox_up_ambient_color",
+            "skybox_up_ambient_intensity",
+            "up_ambient_color",
+            "up_ambient_intensity",
+        );
+        let (horizon, horizon_fallback) = Self::preferred_or_degraded_fallback(
+            externs,
+            "skybox_down_ambient_color",
+            "skybox_down_ambient_intensity",
+            "down_ambient_color",
+            "down_ambient_intensity",
+        );
+        let (sun, sun_fallback) = Self::preferred_or_degraded_fallback(
+            externs,
+            "skybox_sun_color",
+            "skybox_sun_intensity",
+            "sun_color",
+            "sun_intensity",
+        );
+        Self {
+            zenith,
+            horizon,
+            sun,
+            uses_degraded_fallback: zenith_fallback || horizon_fallback || sun_fallback,
+        }
+    }
+}
+
 unsafe impl Send for Renderer {}
 unsafe impl Sync for Renderer {}
 
