@@ -3,8 +3,8 @@ use std::sync::Arc;
 use alkahest_data::shadowkeep::{
     SShadowkeepBubbleDefinition, SShadowkeepBubbleParent, SShadowkeepMapDataTable,
 };
+use alkahest_render::renderer::shadowkeep::{ShadowkeepPassState, pass_status_ledger};
 use alkahest_render::{Renderer, camera::Camera};
-use alkahest_render::renderer::shadowkeep::{pass_status_ledger, ShadowkeepPassState};
 use egui::{Color32, Rect, RichText, vec2};
 use glam::{Quat, Vec2, Vec3};
 use tiger_parse::PackageManagerExt;
@@ -13,7 +13,10 @@ use tiger_pkg::{TagHash, package_manager};
 use crate::{
     app::SharedState,
     task::Task,
-    ui::{scene::{Scene, controller::CameraController}, util::UiExt},
+    ui::{
+        scene::{Scene, controller::CameraController},
+        util::UiExt,
+    },
     world::shadowkeep_map::{MapLoadProgress, MapLoadReport, load_shadowkeep_map_into_world},
 };
 
@@ -73,16 +76,22 @@ impl MapTab {
     }
 
     fn complete_load(&mut self) -> anyhow::Result<()> {
-        let Some(task) = self.load_task.as_mut() else { return Ok(()); };
-        let Some(result) = task.get() else { return Ok(()); };
+        let Some(task) = self.load_task.as_mut() else {
+            return Ok(());
+        };
+        let Some(result) = task.get() else {
+            return Ok(());
+        };
         self.load_task = None;
-        let (world, report) = result.map_err(|_| anyhow::anyhow!("Shadowkeep map-load task panicked"))??;
+        let (world, report) =
+            result.map_err(|_| anyhow::anyhow!("Shadowkeep map-load task panicked"))??;
         let mut scene = Scene::new(
             Renderer::instance().clone(),
             Camera::default(),
             &self.shared,
             format!("shadowkeep_map_{}", self.tag),
-        )?.with_controller(CameraController::new_first_person());
+        )?
+        .with_controller(CameraController::new_first_person());
         // Legacy collection bounds are reconstructed from per-instance
         // transforms. Keep their conservative first-view bounds from hiding
         // the map while the camera is being auto-framed.
@@ -95,8 +104,7 @@ impl MapTab {
             let direction = (bounds.center() - scene.camera.position).normalize();
             let yaw = direction.y.atan2(direction.x);
             let pitch = (-direction.z).atan2(direction.x.hypot(direction.y));
-            scene.camera.rotation =
-                Quat::from_rotation_z(yaw) * Quat::from_rotation_y(pitch);
+            scene.camera.rotation = Quat::from_rotation_z(yaw) * Quat::from_rotation_y(pitch);
             let yaw_pitch = Vec2::new(yaw.to_degrees(), pitch.to_degrees());
             scene.controller.set_yaw_pitch(yaw_pitch);
         }
@@ -107,7 +115,10 @@ impl MapTab {
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui, egui_d3d11: &mut egui_d3d11::D3D11Renderer) {
-        if let Err(error) = self.begin_load_if_ready().and_then(|_| self.complete_load()) {
+        if let Err(error) = self
+            .begin_load_if_ready()
+            .and_then(|_| self.complete_load())
+        {
             self.error = Some(format!("{error:#}"));
         }
         if let Some(scene) = self.scene.as_mut() {
@@ -115,12 +126,12 @@ impl MapTab {
                 ui.collapsing("Shadowkeep map load report", |ui| {
                     ui.label(
                         RichText::new(
-                            "Presentation: Shadowkeep deferred lighting → cubemap IBL → visible sky/sun → direct sRGB output",
+                            "Presentation: Shadowkeep deferred lighting → cubemap IBL → package-authored atmosphere/sky → direct sRGB output",
                         )
                         .color(Color32::from_rgb(160, 208, 160)),
                     );
                     ui.weak(
-                        "Global directional lighting and sun shadows are enabled by default; available freeroam scenario tables are admitted automatically.",
+                        "Global directional lighting and sun shadows are enabled by default; available freeroam scenario tables and authored atmosphere placements are admitted automatically.",
                     );
                     ui.label(format!(
                         "{} map/activity tables ({} scenario), {} entries in {:.2?}; {} static, {} terrain, {} rigid, {} cubemap render objects",
@@ -137,6 +148,20 @@ impl MapTab {
                         report.rigid_render_objects, report.cubemap_render_objects,
                         report.deduplicated_resources, report.deferred_resources,
                     ));
+                    if !report.resource_class_counts.is_empty() {
+                        ui.collapsing("Resource class census", |ui| {
+                            for (resource_class, count) in &report.resource_class_counts {
+                                let deferred = report
+                                    .deferred_resource_classes
+                                    .get(resource_class)
+                                    .copied()
+                                    .unwrap_or_default();
+                                ui.monospace(format!(
+                                    "{resource_class:08X}: {count} total, {deferred} deferred"
+                                ));
+                            }
+                        });
+                    }
                     if let Some(bounds) = report.world_bounds {
                         ui.monospace(format!(
                             "visual bounds: min {:?}, max {:?}, radius {:.1}",
@@ -220,12 +245,20 @@ impl MapTab {
         }
         let renderer_status = self.shared.renderer_status.read().clone();
         if matches!(renderer_status, crate::app::RendererStatus::Disabled) {
-            ui.label(RichText::new("Metadata-only map view").color(Color32::from_rgb(144, 192, 224)));
+            ui.label(
+                RichText::new("Metadata-only map view").color(Color32::from_rgb(144, 192, 224)),
+            );
             ui.label(renderer_status.scene_diagnostic());
             match &self.metadata {
                 Ok(metadata) => {
-                    ui.label(format!("{} containers, {} tables, {} entries", metadata.containers, metadata.tables, metadata.entries));
-                    ui.label(format!("{} unreadable table references", metadata.unreadable_tables));
+                    ui.label(format!(
+                        "{} containers, {} tables, {} entries",
+                        metadata.containers, metadata.tables, metadata.entries
+                    ));
+                    ui.label(format!(
+                        "{} unreadable table references",
+                        metadata.unreadable_tables
+                    ));
                 }
                 Err(error) => {
                     ui.label(RichText::new(error).color(Color32::DARK_RED));
@@ -234,13 +267,16 @@ impl MapTab {
             return;
         }
         if !renderer_status.is_ready() {
-            ui.label(RichText::new("Waiting for 3D renderer").color(Color32::from_rgb(224, 192, 96)));
+            ui.label(
+                RichText::new("Waiting for 3D renderer").color(Color32::from_rgb(224, 192, 96)),
+            );
             ui.label(renderer_status.scene_diagnostic());
             return;
         }
         let progress = self.progress.snapshot();
         let (_, rect) = ui.allocate_space(ui.available_size());
-        ui.painter().rect_filled(rect, 0, Color32::from_rgb(14, 24, 28));
+        ui.painter()
+            .rect_filled(rect, 0, Color32::from_rgb(14, 24, 28));
         ui.d_paint_spinner_at(Rect::from_center_size(rect.center(), vec2(64.0, 64.0)));
         ui.painter().text(
             rect.center() + vec2(0.0, 42.0), egui::Align2::CENTER_TOP,
@@ -261,7 +297,8 @@ impl Drop for MapTab {
 
 fn read_metadata(tag: TagHash) -> anyhow::Result<MapMetadata> {
     let parent: SShadowkeepBubbleParent = package_manager().read_tag_struct(tag)?;
-    let definition: SShadowkeepBubbleDefinition = package_manager().read_tag_struct(parent.child_map)?;
+    let definition: SShadowkeepBubbleDefinition =
+        package_manager().read_tag_struct(parent.child_map)?;
     let mut metadata = MapMetadata::default();
     for container in &definition.map_resources {
         metadata.containers += 1;

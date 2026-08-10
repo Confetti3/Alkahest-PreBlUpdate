@@ -80,9 +80,9 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
             evidence: "authored map atmosphere placements feed preserved lookup-generation, atmosphere-aware deferred-shading, and sky techniques".into(),
         },
         CapabilityRecord {
-            name: "Procedural sky / sun fallback and material AO",
-            state: CapabilityState::Degraded,
-            evidence: "the procedural sky/sun fallback remains available while authored inputs load; era-correct material AO remains incomplete".into(),
+            name: "Shadowkeep material AO and solar fallback",
+            state: CapabilityState::Ready,
+            evidence: "the era-specific finalizer preserves Arrivals material channels, normalizes RT2 material occlusion, and the scene clock drives a continuous sun/sky cycle".into(),
         },
         CapabilityRecord {
             name: "Transparent stages, decals, water, and volumetrics",
@@ -92,7 +92,7 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
         CapabilityRecord {
             name: "Activity and ambient scene layers",
             state: CapabilityState::Degraded,
-            evidence: "base bubble and discovered freeroam scenario tables are admitted; sequencer and channel phase automation remain undecoded".into(),
+            evidence: "base bubble and discovered freeroam scenario tables are admitted and unknown classes are counted; no compatible package global-channel producer was found in the admitted graph".into(),
         },
     ]
 }

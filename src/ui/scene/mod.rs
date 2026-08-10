@@ -99,6 +99,54 @@ pub struct Scene {
     shadowkeep_sky_channels_logged: bool,
 }
 
+/// Construct a continuous east-to-west solar path from the existing scene
+/// clock. Arrivals packages in the admitted map graph do not contain a
+/// compatible global-channel producer, so this state is explicit rather than
+/// pretending the positional defaults are activity automation.
+fn shadowkeep_sun_state(time_of_day: f32, heading_degrees: f32) -> (Vec4, f32) {
+    let day_fraction = (time_of_day / 3600.0).rem_euclid(1.0);
+    let hour_angle = (day_fraction - 0.5) * std::f32::consts::TAU;
+    let maximum_elevation = 35.0f32.to_radians();
+    let local_direction = Vec3::new(
+        hour_angle.cos() * maximum_elevation.cos(),
+        -hour_angle.sin(),
+        hour_angle.cos() * maximum_elevation.sin(),
+    );
+    let (heading_sin, heading_cos) = heading_degrees.to_radians().sin_cos();
+    let sun_direction = Vec3::new(
+        local_direction.x * heading_cos - local_direction.y * heading_sin,
+        local_direction.x * heading_sin + local_direction.y * heading_cos,
+        local_direction.z,
+    )
+    .normalize();
+    let twilight = ((sun_direction.z + 0.04) / 0.12).clamp(0.0, 1.0);
+    let daylight = twilight * twilight * (3.0 - 2.0 * twilight);
+    (sun_direction.extend(0.0), daylight)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::shadowkeep_sun_state;
+    use glam::Vec3;
+
+    #[test]
+    fn shadowkeep_sun_state_tracks_scene_clock() {
+        let (noon_direction, noon_daylight) = shadowkeep_sun_state(1800.0, 60.0);
+        let legacy_noon_direction =
+            Vec3::new(60.0f32.to_radians().cos(), 60.0f32.to_radians().sin(), 0.7).normalize();
+        assert!((noon_direction.truncate() - legacy_noon_direction).length() < 0.0001);
+        assert_eq!(noon_daylight, 1.0);
+
+        let (midnight_direction, midnight_daylight) = shadowkeep_sun_state(0.0, 60.0);
+        assert!(midnight_direction.z < 0.0);
+        assert_eq!(midnight_daylight, 0.0);
+
+        let (wrapped_direction, wrapped_daylight) = shadowkeep_sun_state(3600.0, 60.0);
+        assert!((wrapped_direction - midnight_direction).length() < 0.0001);
+        assert_eq!(wrapped_daylight, midnight_daylight);
+    }
+}
+
 impl Scene {
     pub fn new(
         renderer: Arc<Renderer>,
@@ -127,7 +175,7 @@ impl Scene {
             global_channels: renderer.externs.default_globals,
             renderer,
             camera,
-            time_of_day: 1200.0,
+            time_of_day: if is_shadowkeep { 1800.0 } else { 1200.0 },
             time_scale: 1.0,
             animate_time_of_day: true,
             diagnostic_freeze: false,
@@ -758,6 +806,8 @@ impl Scene {
         }
 
         let is_shadowkeep = self.renderer.era() == RendererEra::Shadowkeep;
+        let (shadowkeep_sun_direction, shadowkeep_daylight) =
+            shadowkeep_sun_state(self.time_of_day, self.sun_light_angle);
         let manual_sun_direction = Vec3::new(
             self.sun_light_angle.to_radians().cos(),
             self.sun_light_angle.to_radians().sin(),
@@ -770,7 +820,8 @@ impl Scene {
             time: frame_time,
             time_of_day: (self.time_of_day / 3600.0).fract(),
             subscribed_features: self.view.subscribed_features,
-            shadowkeep_sun_direction: is_shadowkeep.then_some(manual_sun_direction),
+            shadowkeep_sun_direction: is_shadowkeep.then_some(shadowkeep_sun_direction),
+            shadowkeep_daylight: is_shadowkeep.then_some(shadowkeep_daylight),
             ..Default::default()
         };
 
@@ -801,7 +852,7 @@ impl Scene {
             self.renderer
                 .externs
                 .get_mut()
-                .set_global_channel_by_name("sun_light_direction", manual_sun_direction);
+                .set_global_channel_by_name("sun_light_direction", shadowkeep_sun_direction);
         } else if let Some((_, directions)) = self.world.query::<&SunDirections>().iter().next() {
             let time_of_day_half = self.time_of_day / 2.0;
             let a = time_of_day_half.floor() as usize % 1800;
@@ -877,8 +928,14 @@ impl Scene {
                 let ext = self.renderer.externs.get();
                 [
                     ("sun_color", ext.try_get_global_channel_by_name("sun_color")),
-                    ("sun_intensity", ext.try_get_global_channel_by_name("sun_intensity")),
-                    ("skybox_sun_color", ext.try_get_global_channel_by_name("skybox_sun_color")),
+                    (
+                        "sun_intensity",
+                        ext.try_get_global_channel_by_name("sun_intensity"),
+                    ),
+                    (
+                        "skybox_sun_color",
+                        ext.try_get_global_channel_by_name("skybox_sun_color"),
+                    ),
                     (
                         "skybox_sun_intensity",
                         ext.try_get_global_channel_by_name("skybox_sun_intensity"),
@@ -928,7 +985,7 @@ impl Scene {
             tracing::info!(
                 map = %self.scene_id,
                 time_of_day = self.time_of_day,
-                sun_direction = ?manual_sun_direction,
+                sun_direction = ?shadowkeep_sun_direction,
                 channels = ?channels,
                 "Shadowkeep package sky channel provenance"
             );
@@ -952,6 +1009,7 @@ impl Scene {
             if ConVars::get_flag("render.global_lighting")
                 && self.view.settings().sun_shadows
                 && wants_sun
+                && (!is_shadowkeep || shadowkeep_daylight > 0.001)
             {
                 self.draw_sun_shadows(&mut cmd);
             } else if let ViewKind::Main(view) = &mut self.view.kind {

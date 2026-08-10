@@ -79,3 +79,20 @@ void mainPSall(VSOutput input,
     out_third = float4(rt2.xyz, textureAo);
     out_ao = textureAo;
 }
+
+void mainPSShadowkeep(VSOutput input,
+            out float4 out_albedo: SV_Target0,
+            out float4 out_normal: SV_Target1,
+            out float4 out_third: SV_Target2,
+            out float out_ao: SV_Target3)
+{
+    out_albedo = gbuffer_albedo.Sample(samplerState, input.uv);
+    float4 rt2 = gbuffer_third.Sample(samplerState, input.uv);
+
+    // Frozen A/B captures show that passing Arrivals RT2 alpha through makes
+    // the preserved local-light output collapse. Normalize its material
+    // occlusion from RT2 green, while preserving albedo alpha and RT2 RGB.
+    float materialAo = saturate(rt2.g * 2.0);
+    out_third = float4(rt2.xyz, materialAo);
+    out_ao = materialAo;
+}

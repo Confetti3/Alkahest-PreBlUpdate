@@ -876,17 +876,26 @@ impl Renderer {
                     }
                 }
 
-                let sun_direction = self
-                    .frame_packet
-                    .read()
-                    .misc
-                    .shadowkeep_sun_direction
-                    .unwrap_or(Vec4::Z);
+                let (sun_direction, daylight) = {
+                    let frame_packet = self.frame_packet.read();
+                    (
+                        frame_packet
+                            .misc
+                            .shadowkeep_sun_direction
+                            .unwrap_or(Vec4::Z),
+                        frame_packet
+                            .misc
+                            .shadowkeep_daylight
+                            .unwrap_or(1.0)
+                            .clamp(0.0, 1.0),
+                    )
+                };
+                let sky_illumination = 0.03 + 0.97 * daylight;
                 let target_pixel_to_world = self.externs.view.target_pixel_to_world;
                 let sky_state = ShadowkeepSkyState::from_externs(&self.externs);
                 let include_sun = debug_pipeline.is_none_or(|pipeline| pipeline.has_sun());
                 let sun_color = if include_sun {
-                    sky_state.sun
+                    sky_state.sun * daylight
                 } else {
                     Vec4::ZERO
                 };
@@ -897,8 +906,8 @@ impl Renderer {
                             target_pixel_to_world,
                             camera_position: self.externs.view.position,
                             sun_direction,
-                            zenith_color: sky_state.zenith,
-                            horizon_color: sky_state.horizon,
+                            zenith_color: sky_state.zenith * sky_illumination,
+                            horizon_color: sky_state.horizon * sky_illumination,
                             sun_color,
                         },
                     )
@@ -1977,19 +1986,27 @@ impl Renderer {
 
         if self.era() == crate::renderer::RendererEra::Shadowkeep {
             let sun_direction = misc.shadowkeep_sun_direction.unwrap_or(Vec4::NEG_Z);
+            let daylight = misc.shadowkeep_daylight.unwrap_or(1.0).clamp(0.0, 1.0);
+            // Keep a low night-sky floor while removing directional sunlight
+            // below the horizon. Package-authored atmosphere lookups still
+            // receive the unmodified time-of-day coordinate.
+            let ambient_illumination = 0.03 + 0.97 * daylight;
             // Shadowkeep's package channels remain positional. The direct and
             // diffuse direction fields are populated through the explicit
             // era-specific frame state rather than guessed channel semantics.
             *ext.global_lighting = GlobalLighting {
                 unk08: self.gpu.placeholder_white.view.clone().into(),
                 unk10: ext.get_global_channel_by_name("sun_color")
-                    * ext.get_global_channel_by_name("sun_intensity").x,
+                    * ext.get_global_channel_by_name("sun_intensity").x
+                    * daylight,
                 unk30: sun_direction,
                 unk50: sun_direction,
                 unk70: ext.get_global_channel_by_name("up_ambient_color")
-                    * ext.get_global_channel_by_name("up_ambient_intensity").x,
+                    * ext.get_global_channel_by_name("up_ambient_intensity").x
+                    * ambient_illumination,
                 unk80: ext.get_global_channel_by_name("down_ambient_color")
-                    * ext.get_global_channel_by_name("down_ambient_intensity").x,
+                    * ext.get_global_channel_by_name("down_ambient_intensity").x
+                    * ambient_illumination,
                 unk90: ext.get_global_channel_by_name("up_ambient_sharpness").x,
                 unk94: -0.5,
                 ..Default::default()

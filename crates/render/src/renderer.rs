@@ -83,6 +83,7 @@ pub struct Renderer {
     clear_ao_vs: d3d11::VertexShader,
     clear_ao_ps: d3d11::PixelShader,
     clear_ao_all_ps: d3d11::PixelShader,
+    shadowkeep_finalize_ao_ps: d3d11::PixelShader,
     shadow_map_vs: d3d11::VertexShader,
     shadow_map_ps: d3d11::PixelShader,
     pub(crate) shadowkeep_cubemap_vs: d3d11::VertexShader,
@@ -297,6 +298,12 @@ impl Renderer {
 
         let (_clear_ao_vs, clear_ao_all_ps) =
             gpu.compile_shader_vs_ps("clear_ao", CLEAR_AO_SHADER, "mainVS", "mainPSall")?;
+        let (_, shadowkeep_finalize_ao_ps) = gpu.compile_shader_vs_ps(
+            "shadowkeep_finalize_ao",
+            CLEAR_AO_SHADER,
+            "mainVS",
+            "mainPSShadowkeep",
+        )?;
 
         let (shadow_map_vs, shadow_map_ps) =
             gpu.compile_shader_vs_ps("shadow_map", SHADOW_MAP_SHADER, "mainVS", "mainPS")?;
@@ -357,6 +364,7 @@ impl Renderer {
             clear_ao_vs,
             clear_ao_ps,
             clear_ao_all_ps,
+            shadowkeep_finalize_ao_ps,
             shadow_map_vs,
             shadow_map_ps,
             shadowkeep_cubemap_vs,

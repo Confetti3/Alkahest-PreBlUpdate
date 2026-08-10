@@ -5,7 +5,7 @@
 //! the rest of a bubble from becoming viewable.
 
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     io::{Cursor, Seek, SeekFrom},
     sync::{
         Arc,
@@ -206,6 +206,8 @@ pub struct MapLoadReport {
     pub deduplicated_resources: usize,
     pub deferred_resources: usize,
     pub skipped_resources: usize,
+    pub resource_class_counts: BTreeMap<u32, usize>,
+    pub deferred_resource_classes: BTreeMap<u32, usize>,
     pub world_bounds: Option<AxisAlignedBBox>,
     /// Bounds from table placement transforms, retained separately from the
     /// reconstructed renderable bounds for a stable initial map frame.
@@ -218,7 +220,7 @@ pub struct MapLoadReport {
 
 impl MapLoadReport {
     pub fn is_degraded(&self) -> bool {
-        !self.diagnostics.is_empty()
+        self.deferred_resources != 0 || !self.diagnostics.is_empty()
     }
 
     fn diagnostic(&mut self, progress: &MapLoadProgress, diagnostic: MapLoadDiagnostic) {
@@ -332,6 +334,10 @@ pub fn load_shadowkeep_map_into_world(
                 report.skipped_resources += 1;
                 continue;
             }
+            *report
+                .resource_class_counts
+                .entry(entry.data_resource.resource_type)
+                .or_default() += 1;
             bound_points.push(entry.translation.xyz());
             let transform = Transform::new(
                 entry.translation.xyz(),
@@ -747,7 +753,13 @@ pub fn load_shadowkeep_map_into_world(
                         );
                     }
                 }
-                _ => {}
+                resource_class => {
+                    report.deferred_resources += 1;
+                    *report
+                        .deferred_resource_classes
+                        .entry(resource_class)
+                        .or_default() += 1;
+                }
             }
         }
     }
@@ -765,6 +777,8 @@ pub fn load_shadowkeep_map_into_world(
         cubemap_render_objects = report.cubemap_render_objects,
         shadowing_lights = report.shadowing_lights,
         skipped_resources = report.skipped_resources,
+        deferred_resources = report.deferred_resources,
+        deferred_resource_classes = ?report.deferred_resource_classes,
         ?report.world_bounds,
         "completed Shadowkeep map normalization"
     );

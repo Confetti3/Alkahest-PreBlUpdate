@@ -136,6 +136,9 @@ pub struct FramePacketMisc {
     /// Era-specific directional-light state. Shadowkeep has no reliable named
     /// global-channel table, so Scene passes the verified sun vector explicitly.
     pub shadowkeep_sun_direction: Option<Vec4>,
+    /// Solar visibility derived from the Shadowkeep scene clock. This gates
+    /// direct sunlight and the degraded sky fallback across the horizon.
+    pub shadowkeep_daylight: Option<f32>,
 }
 
 pub enum ViewSource {

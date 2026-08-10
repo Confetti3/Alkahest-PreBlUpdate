@@ -104,38 +104,42 @@ impl Renderer {
             .lock()
             .update(cmd, view.surfaces.get(view.gbuffers.third));
 
-        // TODO(cohae): Can we reduce boilerplate for these kinds of pipelines?
-        if true {
-            cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
-            cmd.flush_states();
-            let albedo_surf = view.surfaces.get(view.gbuffers.albedo);
-            let third_surf = view.surfaces.get(view.gbuffers.third);
-            let vao_surf = view.surfaces.get(view.lighting.vertex_ao);
-            cmd.output_merger_set_render_targets(
-                &[
-                    albedo_surf.rtv.as_ref(),
-                    None,
-                    third_surf.rtv.as_ref(),
-                    vao_surf.rtv.as_ref(),
-                ],
+        // Finalize only the material channels defined by the active era.
+        // Arrivals preserves albedo alpha and RT2 RGB, but its frozen local-
+        // light A/B requires material occlusion normalized into RT2 alpha.
+        // Post-BL additionally repairs the iridescence sentinel.
+        cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+        cmd.flush_states();
+        let albedo_surf = view.surfaces.get(view.gbuffers.albedo);
+        let third_surf = view.surfaces.get(view.gbuffers.third);
+        let vao_surf = view.surfaces.get(view.lighting.vertex_ao);
+        cmd.output_merger_set_render_targets(
+            &[
+                albedo_surf.rtv.as_ref(),
                 None,
-            );
-            cmd.vertex_set_shader(Some(&self.clear_ao_vs));
-            if view.settings.vertex_ao {
-                cmd.pixel_set_shader(Some(&self.clear_ao_ps));
-            } else {
-                cmd.pixel_set_shader(Some(&self.clear_ao_all_ps));
-            }
-            cmd.set_input_topology(alkahest_data::tfx::PrimitiveType::TriangleStrip);
-            cmd.pixel_set_shader_resources(
-                0,
-                &[
-                    Some(&view.gbuffers.albedo_proxy.lock().srv),
-                    Some(&view.gbuffers.third_proxy.lock().srv),
-                ],
-            );
-            cmd.draw(4, 0);
-        }
+                third_surf.rtv.as_ref(),
+                vao_surf.rtv.as_ref(),
+            ],
+            None,
+        );
+        cmd.vertex_set_shader(Some(&self.clear_ao_vs));
+        let finalize_ao_ps = if self.era() == crate::renderer::RendererEra::Shadowkeep {
+            &self.shadowkeep_finalize_ao_ps
+        } else if view.settings.vertex_ao {
+            &self.clear_ao_ps
+        } else {
+            &self.clear_ao_all_ps
+        };
+        cmd.pixel_set_shader(Some(finalize_ao_ps));
+        cmd.set_input_topology(PrimitiveType::TriangleStrip);
+        cmd.pixel_set_shader_resources(
+            0,
+            &[
+                Some(&view.gbuffers.albedo_proxy.lock().srv),
+                Some(&view.gbuffers.third_proxy.lock().srv),
+            ],
+        );
+        cmd.draw(4, 0);
 
         {
             cmd.state = PipelineState::new(Some(0), Some(2), Some(0), Some(0));
