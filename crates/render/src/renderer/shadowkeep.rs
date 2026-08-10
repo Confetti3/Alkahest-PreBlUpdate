@@ -80,14 +80,24 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
             evidence: "authored map atmosphere placements feed preserved lookup-generation, atmosphere-aware deferred-shading, and sky techniques".into(),
         },
         CapabilityRecord {
-            name: "Shadowkeep material AO compatibility finalizer and solar fallback",
+            name: "Shadowkeep material AO compatibility finalizer",
             state: CapabilityState::Ready,
-            evidence: "the validated compatibility finalizer preserves Arrivals material channels and normalizes RT2 material occlusion; the scene clock drives the renderer's synthetic sun/sky fallback".into(),
+            evidence: "Frozen comparisons validate RT2 material-occlusion normalization while preserving the remaining Arrivals material channels.".into(),
         },
         CapabilityRecord {
-            name: "Transparent stages, decals, water, and volumetrics",
+            name: "Shadowkeep solar path",
+            state: CapabilityState::Degraded,
+            evidence: "The admitted target maps provide no decodable authored solar track; a continuous scene-clock fallback drives sun direction and daylight.".into(),
+        },
+        CapabilityRecord {
+            name: "Transparent and additive geometry stages",
+            state: CapabilityState::Ready,
+            evidence: "The preserved DecalsAdditive and Transparents stages run after sky composition with the legacy transparent extern bindings and shading-result readback order.".into(),
+        },
+        CapabilityRecord {
+            name: "Authored decals, water, and volumetrics",
             state: CapabilityState::Blocked,
-            evidence: "era-specific producers and pass ordering have not been connected".into(),
+            evidence: "Their era-specific producers and pass ordering have not been connected.".into(),
         },
         CapabilityRecord {
             name: "Activity and ambient scene layers",
