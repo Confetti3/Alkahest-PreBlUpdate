@@ -18,8 +18,8 @@ use alkahest_data::{
     shadowkeep::{
         SShadowkeepBubbleDefinition, SShadowkeepBubbleParent, SShadowkeepCubemapPlacement,
         SShadowkeepEntity, SShadowkeepLightCollection, SShadowkeepMapDataTable,
-        SShadowkeepOcclusionBounds, SShadowkeepShadowingLight, SShadowkeepStaticPlacement,
-        SShadowkeepTerrainPlacement, SShadowkeepTextureHeader,
+        SShadowkeepOcclusionBounds, SShadowkeepRigidModelComponent, SShadowkeepShadowingLight,
+        SShadowkeepStaticPlacement, SShadowkeepTerrainPlacement, SShadowkeepTextureHeader,
     },
     tfx::{
         TfxFeatureRenderer, atmosphere::SShadowkeepAtmospherePlacement, common::AxisAlignedBBox,
@@ -52,7 +52,9 @@ const LIGHT_COLLECTION: u32 = 0x8080_6F5A;
 const SHADOWING_LIGHT: u32 = 0x8080_7133;
 const CUBEMAP_VOLUME: u32 = 0x8080_6B7F;
 const ATMOSPHERE_PLACEMENT: u32 = 0x8080_7086;
+const RIGID_MODEL_COMPONENT: u32 = 0x8080_72B8;
 const SHADOWKEEP_LOOKUP_TABLE_BYTES: usize = 64 * 64 * 4;
+const ENTITY_RESOURCE_EXAMPLE_LIMIT: usize = 5;
 
 fn bounded_offset(table_len: usize, offset: u64, required: usize) -> anyhow::Result<usize> {
     let offset = usize::try_from(offset).context("resource offset exceeds addressable memory")?;
@@ -182,6 +184,15 @@ pub struct MapLoadDiagnostic {
     pub error: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct EntityResourceExample {
+    pub table: TagHash,
+    pub entity: TagHash,
+    pub resource: TagHash,
+    pub definition_offset: u64,
+    pub translation: Vec3,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct MapLoadReport {
     pub map: TagHash,
@@ -193,6 +204,8 @@ pub struct MapLoadReport {
     pub static_placements: usize,
     pub terrain_placements: usize,
     pub entity_entries: usize,
+    pub entity_read_failures: usize,
+    pub entries_without_table_resource: usize,
     pub rigid_entities: usize,
     pub light_collections: usize,
     pub light_render_objects: usize,
@@ -206,12 +219,21 @@ pub struct MapLoadReport {
     pub deduplicated_resources: usize,
     pub deferred_resources: usize,
     pub skipped_resources: usize,
+    pub entity_resource_class_counts: BTreeMap<u32, usize>,
+    pub valid_entity_resource_definitions: BTreeMap<u32, usize>,
+    pub invalid_entity_resource_definitions: BTreeMap<u32, usize>,
+    pub loaded_entity_resource_classes: BTreeMap<u32, usize>,
+    pub deferred_entity_resource_classes: BTreeMap<u32, usize>,
+    pub failed_entity_resource_classes: BTreeMap<u32, usize>,
+    pub entity_resource_examples: BTreeMap<u32, Vec<EntityResourceExample>>,
     pub resource_class_counts: BTreeMap<u32, usize>,
     pub deferred_resource_classes: BTreeMap<u32, usize>,
     pub world_bounds: Option<AxisAlignedBBox>,
     /// Bounds from table placement transforms, retained separately from the
     /// reconstructed renderable bounds for a stable initial map frame.
     pub placement_bounds: Option<AxisAlignedBBox>,
+    /// Bounds from placements that admitted at least one entity visual.
+    pub entity_placement_bounds: Option<AxisAlignedBBox>,
     pub spawn_points: Vec<Vec3>,
     pub diagnostics: Vec<MapLoadDiagnostic>,
     pub cancelled: bool,
@@ -223,6 +245,41 @@ impl MapLoadReport {
         self.deferred_resources != 0 || !self.diagnostics.is_empty()
     }
 
+    fn defer_entity_resource(&mut self, class: u32, example: EntityResourceExample) {
+        self.deferred_resources += 1;
+        *self
+            .deferred_entity_resource_classes
+            .entry(class)
+            .or_default() += 1;
+        let examples = self.entity_resource_examples.entry(class).or_default();
+        if examples.len() < ENTITY_RESOURCE_EXAMPLE_LIMIT {
+            examples.push(example);
+        }
+    }
+
+    fn entity_resource_accounting_is_complete(&self) -> bool {
+        self.entity_resource_class_counts
+            .iter()
+            .all(|(class, total)| {
+                let loaded = self
+                    .loaded_entity_resource_classes
+                    .get(class)
+                    .copied()
+                    .unwrap_or_default();
+                let deferred = self
+                    .deferred_entity_resource_classes
+                    .get(class)
+                    .copied()
+                    .unwrap_or_default();
+                let failed = self
+                    .failed_entity_resource_classes
+                    .get(class)
+                    .copied()
+                    .unwrap_or_default();
+                *total == loaded + deferred + failed
+            })
+    }
+
     fn diagnostic(&mut self, progress: &MapLoadProgress, diagnostic: MapLoadDiagnostic) {
         progress.diagnostic(format!(
             "table {} offset {:#X} class {:08X}: {}",
@@ -230,6 +287,38 @@ impl MapLoadReport {
         ));
         self.diagnostics.push(diagnostic);
     }
+}
+
+fn load_shadowkeep_rigid_entity(
+    renderer: &Arc<Renderer>,
+    progress: &MapLoadProgress,
+    world: &mut hecs::World,
+    transform: Transform,
+    resource_tag: TagHash,
+    definition_offset: u64,
+) -> anyhow::Result<()> {
+    let bytes = package_manager().read_tag(resource_tag)?;
+    let mut cursor = Cursor::new(bytes);
+    cursor.seek(SeekFrom::Start(definition_offset))?;
+    let component = SShadowkeepRigidModelComponent::read_ds(&mut cursor)?;
+    let model = DynamicModel::load_shadowkeep(
+        component.model,
+        component.material_variants,
+        component.techniques,
+    )?;
+    progress
+        .gpu_assets_requested
+        .fetch_add(1, Ordering::Relaxed);
+    world.spawn((
+        transform,
+        DynamicRenderObject::new(
+            renderer.add_object(RenderObject::new(TfxFeatureRenderer::DynamicObjects, model)),
+        ),
+    ));
+    progress
+        .visual_resources_loaded
+        .fetch_add(1, Ordering::Relaxed);
+    Ok(())
 }
 
 /// Decode a Shadowkeep bubble into the modern world. Static geometry is
@@ -280,6 +369,7 @@ pub fn load_shadowkeep_map_into_world(
         .store(table_hashes.len(), Ordering::Relaxed);
     let mut world = hecs::World::new();
     let mut bound_points = Vec::new();
+    let mut entity_bound_points = Vec::new();
     let mut loaded_static_collections = HashSet::new();
     let mut loaded_terrain_resources = HashSet::new();
     let mut visual_bounds: Option<AxisAlignedBBox> = None;
@@ -335,72 +425,116 @@ pub fn load_shadowkeep_map_into_world(
                 entry.rotation,
                 Vec3::splat(entry.translation.w),
             );
+            let mut loaded_entity_visual = false;
             // Entity payloads are independent of the optional table-local resource pointer.
             // Process them first so entity-only entries are not discarded by the guard below.
             if !entry.entity.is_none() {
                 report.entity_entries += 1;
-                if let Ok(entity) =
-                    package_manager().read_tag_struct::<SShadowkeepEntity>(entry.entity)
-                {
-                    for resource_ref in &entity.entity_resources {
-                        if progress.is_cancelled() {
-                            report.cancelled = true;
-                            break;
+                match package_manager().read_tag_struct::<SShadowkeepEntity>(entry.entity) {
+                    Ok(entity) => {
+                        for resource_ref in &entity.entity_resources {
+                            if progress.is_cancelled() {
+                                report.cancelled = true;
+                                break;
+                            }
+
+                            let resource_tag = resource_ref.resource.taghash();
+                            let resource = &*resource_ref.resource;
+                            let class = resource.resource.resource_type;
+                            *report
+                                .entity_resource_class_counts
+                                .entry(class)
+                                .or_default() += 1;
+                            if resource.definition.is_valid {
+                                *report
+                                    .valid_entity_resource_definitions
+                                    .entry(class)
+                                    .or_default() += 1;
+                            } else {
+                                *report
+                                    .invalid_entity_resource_definitions
+                                    .entry(class)
+                                    .or_default() += 1;
+                            }
+                            let example = EntityResourceExample {
+                                table: table_hash,
+                                entity: entry.entity,
+                                resource: resource_tag,
+                                definition_offset: resource.definition.offset,
+                                translation: entry.translation.xyz(),
+                            };
+
+                            if !resource.resource.is_valid || !resource.definition.is_valid {
+                                report.defer_entity_resource(class, example);
+                                continue;
+                            }
+
+                            match class {
+                                RIGID_MODEL_COMPONENT => {
+                                    report.rigid_entities += 1;
+                                    if let Err(error) = load_shadowkeep_rigid_entity(
+                                        renderer,
+                                        progress,
+                                        &mut world,
+                                        transform,
+                                        resource_tag,
+                                        resource.definition.offset,
+                                    ) {
+                                        report.skipped_resources += 1;
+                                        *report
+                                            .failed_entity_resource_classes
+                                            .entry(class)
+                                            .or_default() += 1;
+                                        report.diagnostic(
+                                            progress,
+                                            MapLoadDiagnostic {
+                                                table: table_hash,
+                                                entry_offset: resource.definition.offset,
+                                                resource_class: class,
+                                                error: format!(
+                                                    "entity {} resource {}: rigid model: {error:#}",
+                                                    entry.entity, resource_tag,
+                                                ),
+                                            },
+                                        );
+                                    } else {
+                                        report.rigid_render_objects += 1;
+                                        *report
+                                            .loaded_entity_resource_classes
+                                            .entry(class)
+                                            .or_default() += 1;
+                                        loaded_entity_visual = true;
+                                    }
+                                }
+                                other => report.defer_entity_resource(other, example),
+                            }
                         }
-                        let resource = &*resource_ref.resource;
-                        if resource.resource.resource_type != 0x8080_72B8
-                            || !resource.definition.is_valid
-                        {
-                            continue;
-                        }
-                        report.rigid_entities += 1;
-                        let result = (|| -> anyhow::Result<()> {
-                            let bytes =
-                                package_manager().read_tag(resource_ref.resource.taghash())?;
-                            let mut cursor = Cursor::new(bytes);
-                            cursor.seek(SeekFrom::Start(resource.definition.offset))?;
-                            let component =
-                                alkahest_data::shadowkeep::SShadowkeepRigidModelComponent::read_ds(
-                                    &mut cursor,
-                                )?;
-                            let model = DynamicModel::load_shadowkeep(
-                                component.model,
-                                component.material_variants,
-                                component.techniques,
-                            )?;
-                            progress
-                                .gpu_assets_requested
-                                .fetch_add(1, Ordering::Relaxed);
-                            world.spawn((
-                                transform,
-                                DynamicRenderObject::new(renderer.add_object(RenderObject::new(
-                                    TfxFeatureRenderer::DynamicObjects,
-                                    model,
-                                ))),
-                            ));
-                            progress
-                                .visual_resources_loaded
-                                .fetch_add(1, Ordering::Relaxed);
-                            report.rigid_render_objects += 1;
-                            Ok(())
-                        })();
-                        if let Err(error) = result {
-                            report.skipped_resources += 1;
-                            report.diagnostic(
-                                progress,
-                                MapLoadDiagnostic {
-                                    table: table_hash,
-                                    entry_offset: entry.data_resource.offset,
-                                    resource_class: 0x8080_72B8,
-                                    error: format!("rigid model: {error:#}"),
-                                },
-                            );
-                        }
+                    }
+                    Err(error) => {
+                        report.entity_read_failures += 1;
+                        report.skipped_resources += 1;
+                        report.diagnostic(
+                            progress,
+                            MapLoadDiagnostic {
+                                table: table_hash,
+                                entry_offset: 0,
+                                resource_class: package_manager()
+                                    .get_entry(entry.entity)
+                                    .map_or(0, |package_entry| package_entry.reference),
+                                error: format!(
+                                    "entity {} could not be decoded: {error:#}",
+                                    entry.entity,
+                                ),
+                            },
+                        );
                     }
                 }
             }
+            if loaded_entity_visual {
+                entity_bound_points.push(entry.translation.xyz());
+            }
             if !entry.data_resource.is_valid {
-                report.skipped_resources += 1;
+                report.entries_without_table_resource += 1;
                 continue;
             }
             bound_points.push(entry.translation.xyz());
@@ -823,7 +957,17 @@ pub fn load_shadowkeep_map_into_world(
     }
     report.placement_bounds =
         (!bound_points.is_empty()).then(|| AxisAlignedBBox::from_points(&bound_points));
-    report.world_bounds = visual_bounds.or(report.placement_bounds);
+    report.entity_placement_bounds = (!entity_bound_points.is_empty())
+        .then(|| AxisAlignedBBox::from_points(&entity_bound_points));
+    report.world_bounds = [
+        visual_bounds,
+        report.placement_bounds,
+        report.entity_placement_bounds,
+    ]
+    .into_iter()
+    .flatten()
+    .reduce(|left, right| left.union(&right));
+    debug_assert!(report.entity_resource_accounting_is_complete());
     tracing::info!(
         map = %tag,
         scenario = ?report.scenario,
@@ -835,6 +979,8 @@ pub fn load_shadowkeep_map_into_world(
         entity_entries = report.entity_entries,
         rigid_entities = report.rigid_entities,
         rigid_render_objects = report.rigid_render_objects,
+        entity_read_failures = report.entity_read_failures,
+        entries_without_table_resource = report.entries_without_table_resource,
         light_collections = report.light_collections,
         light_render_objects = report.light_render_objects,
         cubemap_volumes = report.cubemap_volumes,
@@ -844,6 +990,8 @@ pub fn load_shadowkeep_map_into_world(
         skipped_resources = report.skipped_resources,
         deferred_resources = report.deferred_resources,
         deferred_resource_classes = ?report.deferred_resource_classes,
+        entity_resource_class_counts = ?report.entity_resource_class_counts,
+        deferred_entity_resource_classes = ?report.deferred_entity_resource_classes,
         ?report.world_bounds,
         "completed Shadowkeep map normalization"
     );
@@ -853,7 +1001,10 @@ pub fn load_shadowkeep_map_into_world(
 
 #[cfg(test)]
 mod tests {
-    use super::{MapLoadProgress, bounded_offset};
+    use glam::Vec3;
+    use tiger_pkg::TagHash;
+
+    use super::{EntityResourceExample, MapLoadProgress, MapLoadReport, bounded_offset};
 
     #[test]
     fn bounded_resource_offsets_reject_overflow_and_truncation() {
@@ -870,5 +1021,30 @@ mod tests {
         progress.cancel();
         assert!(worker_view.is_cancelled());
         assert!(worker_view.snapshot().cancelled);
+    }
+
+    #[test]
+    fn deferred_entity_accounting_is_complete_and_examples_are_bounded() {
+        let class = 0x8080_1234;
+        let mut report = MapLoadReport::default();
+        report.entity_resource_class_counts.insert(class, 7);
+
+        for offset in 0..7 {
+            report.defer_entity_resource(
+                class,
+                EntityResourceExample {
+                    table: TagHash(1),
+                    entity: TagHash(2),
+                    resource: TagHash(3),
+                    definition_offset: offset,
+                    translation: Vec3::ZERO,
+                },
+            );
+        }
+
+        assert_eq!(report.deferred_resources, 7);
+        assert_eq!(report.deferred_entity_resource_classes[&class], 7);
+        assert_eq!(report.entity_resource_examples[&class].len(), 5);
+        assert!(report.entity_resource_accounting_is_complete());
     }
 }

@@ -91,8 +91,8 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
         },
         CapabilityRecord {
             name: "Transparent and additive geometry stages",
-            state: CapabilityState::Ready,
-            evidence: "The preserved DecalsAdditive and Transparents stages run after sky composition with the legacy transparent extern bindings and shading-result readback order.".into(),
+            state: CapabilityState::Blocked,
+            evidence: "Experimental submission was removed; no era-specific producer, extern contract, or validated pass-order capture is currently admitted.".into(),
         },
         CapabilityRecord {
             name: "Authored decals, water, and volumetrics",
@@ -187,7 +187,13 @@ pub struct ShadowkeepPassRecord {
 /// Runtime pass ledger for the admitted Shadowkeep path. States describe the
 /// connected graph, not merely whether a bootstrap technique can be loaded.
 pub fn pass_status_ledger(pipelines: &GlobalPipelines) -> Vec<ShadowkeepPassRecord> {
-    let global_lighting_state = if pipelines.global_lighting.is_available() {
+    pass_status_ledger_with_global_lighting(pipelines.global_lighting.is_available())
+}
+
+fn pass_status_ledger_with_global_lighting(
+    global_lighting_available: bool,
+) -> Vec<ShadowkeepPassRecord> {
+    let global_lighting_state = if global_lighting_available {
         ShadowkeepPassState::Ready
     } else {
         ShadowkeepPassState::DisabledAsAbsent
@@ -387,5 +393,28 @@ impl ShadowkeepRendererBootstrap {
 
     pub fn capability_ledger(&self) -> Vec<CapabilityRecord> {
         bootstrap_capability_ledger()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CapabilityState, ShadowkeepPassState, bootstrap_capability_ledger,
+        pass_status_ledger_with_global_lighting,
+    };
+
+    #[test]
+    fn transparent_capability_matches_disabled_runtime_pass() {
+        let capability = bootstrap_capability_ledger()
+            .into_iter()
+            .find(|record| record.name == "Transparent and additive geometry stages")
+            .unwrap();
+        let runtime_pass = pass_status_ledger_with_global_lighting(true)
+            .into_iter()
+            .find(|record| record.name == "transparent / decal / water / volumetrics")
+            .unwrap();
+
+        assert_eq!(capability.state, CapabilityState::Blocked);
+        assert_eq!(runtime_pass.state, ShadowkeepPassState::DisabledAsAbsent);
     }
 }

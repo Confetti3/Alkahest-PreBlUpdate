@@ -98,7 +98,7 @@ impl MapTab {
         scene.view.disable_culling = true;
         if let Some(spawn) = report.spawn_points.first().copied() {
             scene.camera.position = spawn + Vec3::Z * 2.0;
-        } else if let Some(bounds) = report.placement_bounds.or(report.world_bounds) {
+        } else if let Some(bounds) = report.world_bounds.or(report.placement_bounds) {
             let radius = bounds.radius().max(4.0);
             scene.camera.position = bounds.center() + Vec3::new(-radius, -radius, radius * 0.5);
             let direction = (bounds.center() - scene.camera.position).normalize();
@@ -148,6 +148,11 @@ impl MapTab {
                         report.rigid_render_objects, report.cubemap_render_objects,
                         report.deduplicated_resources, report.deferred_resources,
                     ));
+                    ui.label(format!(
+                        "Entity census: {} entries, {} without table resources, {} decode failures",
+                        report.entity_entries, report.entries_without_table_resource,
+                        report.entity_read_failures,
+                    ));
                     if !report.resource_class_counts.is_empty() {
                         ui.collapsing("Resource class census", |ui| {
                             for (resource_class, count) in &report.resource_class_counts {
@@ -159,6 +164,65 @@ impl MapTab {
                                 ui.monospace(format!(
                                     "{resource_class:08X}: {count} total, {deferred} deferred"
                                 ));
+                            }
+                        });
+                    }
+                    if !report.deferred_entity_resource_classes.is_empty() {
+                        let mut deferred_classes = report
+                            .deferred_entity_resource_classes
+                            .iter()
+                            .collect::<Vec<_>>();
+                        deferred_classes.sort_unstable_by(
+                            |(left_class, left_count), (right_class, right_count)| {
+                                right_count
+                                    .cmp(left_count)
+                                    .then_with(|| left_class.cmp(right_class))
+                            },
+                        );
+                        ui.collapsing("Top deferred entity classes", |ui| {
+                            for (resource_class, deferred) in deferred_classes.into_iter().take(8) {
+                                let total = report
+                                    .entity_resource_class_counts
+                                    .get(resource_class)
+                                    .copied()
+                                    .unwrap_or_default();
+                                let valid = report
+                                    .valid_entity_resource_definitions
+                                    .get(resource_class)
+                                    .copied()
+                                    .unwrap_or_default();
+                                let invalid = report
+                                    .invalid_entity_resource_definitions
+                                    .get(resource_class)
+                                    .copied()
+                                    .unwrap_or_default();
+                                let loaded = report
+                                    .loaded_entity_resource_classes
+                                    .get(resource_class)
+                                    .copied()
+                                    .unwrap_or_default();
+                                let failed = report
+                                    .failed_entity_resource_classes
+                                    .get(resource_class)
+                                    .copied()
+                                    .unwrap_or_default();
+                                ui.monospace(format!(
+                                    "{resource_class:08X}: {total} total, {valid} valid definitions, \
+                                     {invalid} invalid definitions, {loaded} loaded, {deferred} deferred, \
+                                     {failed} failed"
+                                ));
+                                if let Some(examples) =
+                                    report.entity_resource_examples.get(resource_class)
+                                {
+                                    for example in examples {
+                                        ui.monospace(format!(
+                                            "  entity {} resource {} @ {:#X}, table {}, translation {:?}",
+                                            example.entity, example.resource,
+                                            example.definition_offset, example.table,
+                                            example.translation,
+                                        ));
+                                    }
+                                }
                             }
                         });
                     }
