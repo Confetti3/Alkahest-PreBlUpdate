@@ -1,0 +1,485 @@
+{
+  "target_class": "0x808084D7",
+  "resolved_values": 134244,
+  "classes": {
+    "0x0368589B": {
+      "occurrences": 53,
+      "file_types": {
+        "26:6": 53
+      },
+      "examples": [
+        "map=81547A30 table=80B9B4DC entity=80C6BCBD resource=80FC4213 definition+0x3974 tag=41000000",
+        "map=81547A30 table=80BE4E44 entity=80C6BCBD resource=80FC4213 definition+0x3974 tag=41000000",
+        "map=81547A30 table=80BE7748 entity=80C6BCBD resource=80FC4213 definition+0x3974 tag=41000000",
+        "map=81547A30 table=80BE8002 entity=80C6BCBD resource=80FC4213 definition+0x3974 tag=41000000",
+        "map=81547A30 table=80C5F51E entity=80C6BCBD resource=80FC4213 definition+0x3974 tag=41000000",
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x6B80 tag=C1000000",
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x6B90 tag=C1000000",
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x6BA0 tag=C1000000"
+      ]
+    },
+    "0x15B57FED": {
+      "occurrences": 1622,
+      "file_types": {
+        "26:6": 1622
+      },
+      "examples": [
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0xFE8 tag=01000100",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD87 definition+0xC30 tag=01000100",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD80 definition+0xD00 tag=01000100",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FD3000 definition+0x3BE8 tag=01000100",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FD2FFE definition+0x3C18 tag=01000100",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FD3001 definition+0x3BE8 tag=01000100",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FDB7ED definition+0x470 tag=01000100",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FDB6F3 definition+0x9F0 tag=01000100"
+      ]
+    },
+    "0x3B531DD7": {
+      "occurrences": 2,
+      "file_types": {
+        "26:6": 2
+      },
+      "examples": [
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x84C4 tag=40C2BE64",
+        "map=80ED6027 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x84C4 tag=40C2BE64"
+      ]
+    },
+    "0x55802C87": {
+      "occurrences": 45,
+      "file_types": {
+        "26:5": 45
+      },
+      "examples": [
+        "map=81547A30 table=80BE8560 entity=80C22289 resource=80C70EF1 definition+0x2E0 tag=00FFFF0B",
+        "map=80ED6027 table=80BE8560 entity=80C22289 resource=80C70EF1 definition+0x2E0 tag=00FFFF0B",
+        "map=80ED6027 table=80C49480 entity=80C1DC9A resource=80EFBE74 definition+0x2E0 tag=00FFFF0B",
+        "map=80ED6027 table=80C49480 entity=80C1DD61 resource=80F2E3BD definition+0x2E0 tag=00FFFF0B",
+        "map=80ED6027 table=80C49480 entity=80C1DDB2 resource=80F2E4B7 definition+0x2E0 tag=00FFFF0B",
+        "map=80ED6027 table=80C49480 entity=80C1DCED resource=80F2E4B6 definition+0x2E0 tag=00FFFF0B"
+      ]
+    },
+    "0x6C1C3FE7": {
+      "occurrences": 870,
+      "file_types": {
+        "26:5": 870
+      },
+      "examples": [
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x2E0 tag=00FFFF08",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=80FD337D definition+0x2E0 tag=00FFFF08",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD87 definition+0x2E0 tag=00FFFF08",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FD3000 definition+0x2E0 tag=00FFFF08",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FD2FFE definition+0x2E0 tag=00FFFF08",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FD3001 definition+0x2E0 tag=00FFFF08",
+        "map=81547A30 table=80B9B4DC entity=80C6BCBD resource=80FC4213 definition+0x2E0 tag=00FFFF08",
+        "map=81547A30 table=80B9B872 entity=80C5111C resource=815ABD86 definition+0x2E0 tag=00FFFF08"
+      ]
+    },
+    "0x80803EB0": {
+      "occurrences": 130,
+      "file_types": {
+        "8:0": 130
+      },
+      "examples": [
+        "map=81547A30 table=80B9B4DC entity=80C6BCBD resource=80FC4213 definition+0x3638 tag=80C70632",
+        "map=81547A30 table=80B9B4DC entity=80C6BCBD resource=80FC4213 definition+0x5228 tag=80C704A1",
+        "map=81547A30 table=80BE4E44 entity=80C6BCBD resource=80FC4213 definition+0x3638 tag=80C70632",
+        "map=81547A30 table=80BE4E44 entity=80C6BCBD resource=80FC4213 definition+0x5228 tag=80C704A1",
+        "map=81547A30 table=80BE58AB entity=80BCD8B9 resource=80BCD8B7 definition+0xCE0 tag=80BCD8B6",
+        "map=81547A30 table=80BE7748 entity=80C6BCBD resource=80FC4213 definition+0x3638 tag=80C70632",
+        "map=81547A30 table=80BE7748 entity=80C6BCBD resource=80FC4213 definition+0x5228 tag=80C704A1",
+        "map=81547A30 table=80BE8002 entity=80C6BCBD resource=80FC4213 definition+0x3638 tag=80C70632"
+      ]
+    },
+    "0x80806E28": {
+      "occurrences": 13308,
+      "file_types": {
+        "8:0": 13308
+      },
+      "examples": [
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x748 tag=80FDAA89",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD82 definition+0x5F8 tag=815ABD81",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FD3000 definition+0xC18 tag=80FD2FF4",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FD3000 definition+0xE88 tag=80FD2FF8",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FD3000 definition+0x10F8 tag=80FD2FF9",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FD3000 definition+0x1368 tag=80FD2FFD",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FD3000 definition+0x15D8 tag=80FD2FF4",
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FD3000 definition+0x1848 tag=80FD2FF8"
+      ]
+    },
+    "0x80806E53": {
+      "occurrences": 165,
+      "file_types": {
+        "8:0": 165
+      },
+      "examples": [
+        "map=81547A30 table=80B9B4DC entity=80C6BCBD resource=80FC4213 definition+0x2288 tag=80FA34ED",
+        "map=81547A30 table=80BE105F entity=80BEF61B resource=80FDA7B4 definition+0x36E8 tag=80FDA6B6",
+        "map=81547A30 table=80BE1754 entity=80BEF61B resource=80FDA7B4 definition+0x36E8 tag=80FDA6B6",
+        "map=81547A30 table=80BE28D1 entity=80BEF105 resource=80FDA7B4 definition+0x36E8 tag=80FDA6B6",
+        "map=81547A30 table=80BE2B5B entity=80C6A82B resource=80FDA7B4 definition+0x36E8 tag=80FDA6B6",
+        "map=81547A30 table=80BE2BCD entity=80C6A82B resource=80FDA7B4 definition+0x36E8 tag=80FDA6B6",
+        "map=81547A30 table=80BE2C41 entity=80BEF105 resource=80FDA7B4 definition+0x36E8 tag=80FDA6B6",
+        "map=81547A30 table=80BE375D entity=80BEF101 resource=80FDA7B4 definition+0x36E8 tag=80FDA6B6"
+      ]
+    },
+    "0x80806F68": {
+      "occurrences": 241,
+      "file_types": {
+        "8:0": 241
+      },
+      "examples": [
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0xDE8 tag=80FDAA78",
+        "map=81547A30 table=80B9B4DC entity=80C6BCBD resource=80FC4213 definition+0x23B8 tag=80FA34F1",
+        "map=81547A30 table=80B9B872 entity=80C5111C resource=815ABD86 definition+0xDE8 tag=80FDAA78",
+        "map=81547A30 table=80BE0CF7 entity=80C5111C resource=815ABD86 definition+0xDE8 tag=80FDAA78",
+        "map=81547A30 table=80BE0E65 entity=80C5111C resource=815ABD86 definition+0xDE8 tag=80FDAA78",
+        "map=81547A30 table=80BE0E65 entity=80C347A1 resource=815ABAE9 definition+0xDE8 tag=80FDAA78",
+        "map=81547A30 table=80BE1035 entity=80C347A1 resource=815ABAE9 definition+0xDE8 tag=80FDAA78",
+        "map=81547A30 table=80BE1480 entity=80C347A1 resource=815ABAE9 definition+0xDE8 tag=80FDAA78"
+      ]
+    },
+    "0x8080707E": {
+      "occurrences": 176,
+      "file_types": {
+        "8:0": 176
+      },
+      "examples": [
+        "map=81547A30 table=80B9B4DC entity=80C6BCBD resource=80FC4213 definition+0x5BC4 tag=815B8E2D",
+        "map=81547A30 table=80BE1B92 entity=80FB8DCC resource=8157949D definition+0x1D44 tag=80FEABA7",
+        "map=81547A30 table=80BE1B92 entity=80FB8DCC resource=8157949D definition+0x3074 tag=815796C7",
+        "map=81547A30 table=80BE4E44 entity=80C6BCBD resource=80FC4213 definition+0x5BC4 tag=815B8E2D",
+        "map=81547A30 table=80BE7748 entity=80C6BCBD resource=80FC4213 definition+0x5BC4 tag=815B8E2D",
+        "map=81547A30 table=80BE7C2F entity=80FCD657 resource=80BFC652 definition+0x1544 tag=80BFC653",
+        "map=81547A30 table=80BE8002 entity=80C6BCBD resource=80FC4213 definition+0x5BC4 tag=815B8E2D",
+        "map=81547A30 table=80BE8038 entity=80FCD657 resource=80BFC652 definition+0x1544 tag=80BFC653"
+      ]
+    },
+    "0x80807140": {
+      "occurrences": 426,
+      "file_types": {
+        "8:0": 426
+      },
+      "examples": [
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD82 definition+0x758 tag=80FDB4F1",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD82 definition+0x9A8 tag=80FDB4FF",
+        "map=81547A30 table=80B9B872 entity=80C5111C resource=815ABD82 definition+0x758 tag=80FDB4F1",
+        "map=81547A30 table=80B9B872 entity=80C5111C resource=815ABD82 definition+0x9A8 tag=80FDB4FF",
+        "map=81547A30 table=80BE0CF7 entity=80C5111C resource=815ABD82 definition+0x758 tag=80FDB4F1",
+        "map=81547A30 table=80BE0CF7 entity=80C5111C resource=815ABD82 definition+0x9A8 tag=80FDB4FF",
+        "map=81547A30 table=80BE0E65 entity=80C5111C resource=815ABD82 definition+0x758 tag=80FDB4F1",
+        "map=81547A30 table=80BE0E65 entity=80C5111C resource=815ABD82 definition+0x9A8 tag=80FDB4FF"
+      ]
+    },
+    "0x808071D9": {
+      "occurrences": 619,
+      "file_types": {
+        "8:0": 619
+      },
+      "examples": [
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x8A0 tag=80FEBA45",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0xBB0 tag=80FDB5E4",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD87 definition+0x698 tag=815ABD7D",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD87 definition+0x9A8 tag=80FEBA45",
+        "map=81547A30 table=80B9B872 entity=80C5111C resource=815ABD86 definition+0x8A0 tag=80FEBA45",
+        "map=81547A30 table=80B9B872 entity=80C5111C resource=815ABD86 definition+0xBB0 tag=80FDB5E4",
+        "map=81547A30 table=80B9B872 entity=80C5111C resource=815ABD87 definition+0x698 tag=815ABD7D",
+        "map=81547A30 table=80B9B872 entity=80C5111C resource=815ABD87 definition+0x9A8 tag=80FEBA45"
+      ]
+    },
+    "0x808071E8": {
+      "occurrences": 2,
+      "file_types": {
+        "8:0": 2
+      },
+      "examples": [
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x8B9C tag=C0FB4259",
+        "map=80ED6027 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x8B9C tag=C0FB4259"
+      ]
+    },
+    "0x808073A5": {
+      "occurrences": 2,
+      "file_types": {
+        "8:0": 2
+      },
+      "examples": [
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x88C8 tag=C0BF8097",
+        "map=80ED6027 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x88C8 tag=C0BF8097"
+      ]
+    },
+    "0x80808AAE": {
+      "occurrences": 26,
+      "file_types": {
+        "16:0": 26
+      },
+      "examples": [
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x3170 tag=41A80000",
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x3174 tag=41A80000",
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x3178 tag=41A80000",
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x317C tag=41A80000",
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x3184 tag=C1A80000",
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x3194 tag=C1A80000",
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x31A4 tag=C1A80000",
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x31B4 tag=C1A80000"
+      ]
+    },
+    "0x80808BCD": {
+      "occurrences": 68,
+      "file_types": {
+        "8:0": 68
+      },
+      "examples": [
+        "map=81547A30 table=80B9AF77 entity=80C14F95 resource=80FDB7ED definition+0x420 tag=80FDB7EC",
+        "map=81547A30 table=80BE019F entity=80BEF30F resource=80FDB7ED definition+0x420 tag=80FDB7EC",
+        "map=81547A30 table=80BE0B1B entity=80C14F95 resource=80FDB7ED definition+0x420 tag=80FDB7EC",
+        "map=81547A30 table=80BE0CF7 entity=80BEF30F resource=80FDB7ED definition+0x420 tag=80FDB7EC",
+        "map=81547A30 table=80BE0CF7 entity=80C14F95 resource=80FDB7ED definition+0x420 tag=80FDB7EC",
+        "map=81547A30 table=80BE0CF7 entity=80BEF30A resource=80FDB7ED definition+0x420 tag=80FDB7EC",
+        "map=81547A30 table=80BE0E65 entity=80C14F95 resource=80FDB7ED definition+0x420 tag=80FDB7EC",
+        "map=81547A30 table=80BE2B5B entity=80C14F95 resource=80FDB7ED definition+0x420 tag=80FDB7EC"
+      ]
+    },
+    "0x80808E68": {
+      "occurrences": 160,
+      "file_types": {
+        "8:0": 160
+      },
+      "examples": [
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD82 definition+0xBC8 tag=01000200",
+        "map=81547A30 table=80B9B872 entity=80C5111C resource=815ABD82 definition+0xBC8 tag=01000200",
+        "map=81547A30 table=80BE0CF7 entity=80C5111C resource=815ABD82 definition+0xBC8 tag=01000200",
+        "map=81547A30 table=80BE0E65 entity=80C5111C resource=815ABD82 definition+0xBC8 tag=01000200",
+        "map=81547A30 table=80BE0E65 entity=80C347A1 resource=815ABD82 definition+0xBC8 tag=01000200",
+        "map=81547A30 table=80BE1035 entity=80C347A1 resource=815ABD82 definition+0xBC8 tag=01000200",
+        "map=81547A30 table=80BE1480 entity=80C347A1 resource=815ABD82 definition+0xBC8 tag=01000200",
+        "map=81547A30 table=80BE14F2 entity=80BEF314 resource=815ABD82 definition+0xBC8 tag=01000200"
+      ]
+    },
+    "0x80808F49": {
+      "occurrences": 1012,
+      "file_types": {
+        "8:0": 1012
+      },
+      "examples": [
+        "map=81547A30 table=80BE453A entity=80FCD64B resource=80FCD64A definition+0x9C4 tag=80FCD64D",
+        "map=81547A30 table=80BE453A entity=80FCD64B resource=80FCD64A definition+0xABC tag=80FCD64D",
+        "map=81547A30 table=80BE56A5 entity=80FCD64B resource=80FCD64A definition+0x9C4 tag=80FCD64D",
+        "map=81547A30 table=80BE56A5 entity=80FCD64B resource=80FCD64A definition+0xABC tag=80FCD64D",
+        "map=81547A30 table=80BE6628 entity=80FCD64B resource=80FCD64A definition+0x9C4 tag=80FCD64D",
+        "map=81547A30 table=80BE6628 entity=80FCD64B resource=80FCD64A definition+0xABC tag=80FCD64D",
+        "map=81547A30 table=80BE66F1 entity=80FCD64B resource=80FCD64A definition+0x9C4 tag=80FCD64D",
+        "map=81547A30 table=80BE66F1 entity=80FCD64B resource=80FCD64A definition+0xABC tag=80FCD64D"
+      ]
+    },
+    "0x80809468": {
+      "occurrences": 74,
+      "file_types": {
+        "8:0": 74
+      },
+      "examples": [
+        "map=81547A30 table=80BE6B25 entity=80C58605 resource=80C58601 definition+0xDB8 tag=40BE6738",
+        "map=81547A30 table=80BE7C2F entity=80FCD657 resource=80FCD656 definition+0x6B8 tag=40B99C39",
+        "map=81547A30 table=80BE8038 entity=80FCD657 resource=80FCD656 definition+0x6B8 tag=40B99C39",
+        "map=81547A30 table=80BE8326 entity=80FCD657 resource=80FCD656 definition+0x6B8 tag=40B99C39",
+        "map=81547A30 table=80BE990C entity=80FCD657 resource=80FCD656 definition+0x6B8 tag=40B99C39",
+        "map=81547A30 table=80BE9B1C entity=80FCD657 resource=80FCD656 definition+0x6B8 tag=40B99C39",
+        "map=81547A30 table=80C2796A entity=80FCD657 resource=80FCD656 definition+0x6B8 tag=40B99C39",
+        "map=80ED6027 table=80BE6B25 entity=80C58605 resource=80C58601 definition+0xDB8 tag=40BE6738"
+      ]
+    },
+    "0x80809802": {
+      "occurrences": 2484,
+      "file_types": {
+        "8:0": 2484
+      },
+      "examples": [
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x5B0 tag=81001C62",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD87 definition+0xBD8 tag=81001C5C",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD80 definition+0x928 tag=81001C5F",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD80 definition+0x9D0 tag=81001C65",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD80 definition+0xA70 tag=80C2ABE0",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD80 definition+0xAF0 tag=80C2ABE0",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD80 definition+0xB70 tag=80C2ABE0",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD80 definition+0xBF0 tag=80C2ABE0"
+      ]
+    },
+    "0x80809BB6": {
+      "occurrences": 224,
+      "file_types": {
+        "16:0": 224
+      },
+      "examples": [
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=80FD337D definition+0x540 tag=C0BC3C3A",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=80FD337D definition+0x550 tag=40BC3C3A",
+        "map=81547A30 table=80B9B872 entity=80C5111C resource=80FD337D definition+0x540 tag=C0BC3C3A",
+        "map=81547A30 table=80B9B872 entity=80C5111C resource=80FD337D definition+0x550 tag=40BC3C3A",
+        "map=81547A30 table=80BE0CF7 entity=80C5111C resource=80FD337D definition+0x540 tag=C0BC3C3A",
+        "map=81547A30 table=80BE0CF7 entity=80C5111C resource=80FD337D definition+0x550 tag=40BC3C3A",
+        "map=81547A30 table=80BE0E65 entity=80C5111C resource=80FD337D definition+0x540 tag=C0BC3C3A",
+        "map=81547A30 table=80BE0E65 entity=80C5111C resource=80FD337D definition+0x550 tag=40BC3C3A"
+      ]
+    },
+    "0x80809C0F": {
+      "occurrences": 655,
+      "file_types": {
+        "8:0": 655
+      },
+      "examples": [
+        "map=81547A30 table=80B9B4DC entity=80C6BCBD resource=80FC4213 definition+0xADC tag=80C6BCBD",
+        "map=81547A30 table=80BE0CF7 entity=80BCD63C resource=80BCD63A definition+0x4F4 tag=80BCD639",
+        "map=81547A30 table=80BE105F entity=80BEF61B resource=80FDA7B4 definition+0x269C tag=80C6A827",
+        "map=81547A30 table=80BE105F entity=80BEF61B resource=80FDA7B4 definition+0x27DC tag=80C6AF73",
+        "map=81547A30 table=80BE1754 entity=80BEF61B resource=80FDA7B4 definition+0x269C tag=80C6A827",
+        "map=81547A30 table=80BE1754 entity=80BEF61B resource=80FDA7B4 definition+0x27DC tag=80C6AF73",
+        "map=81547A30 table=80BE28D1 entity=80BEF105 resource=80FDA7B4 definition+0x269C tag=80C6A827",
+        "map=81547A30 table=80BE28D1 entity=80BEF105 resource=80FDA7B4 definition+0x27DC tag=80C6AF73"
+      ]
+    },
+    "0x80809C36": {
+      "occurrences": 80470,
+      "file_types": {
+        "8:0": 80470
+      },
+      "examples": [
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x0 tag=815ABD86",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x1A0 tag=815ABD86",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x1F0 tag=815ABD86",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x270 tag=815ABD86",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x308 tag=815ABD86",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x320 tag=815ABD86",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x340 tag=815ABD86",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x3C8 tag=815ABD86"
+      ]
+    },
+    "0x80809C54": {
+      "occurrences": 30800,
+      "file_types": {
+        "8:0": 30800
+      },
+      "examples": [
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x50 tag=80C70B76",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x68 tag=80C70B77",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x80 tag=80C70B78",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0x98 tag=80C70B79",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0xB0 tag=80C70B7A",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0xC8 tag=80C70B7B",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0xE0 tag=80C70B7C",
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=815ABD86 definition+0xF8 tag=80C70B7D"
+      ]
+    },
+    "0x80C19A6E": {
+      "occurrences": 2,
+      "file_types": {
+        "32:6": 2
+      },
+      "examples": [
+        "map=81547A30 table=80BE6B25 entity=80C58605 resource=80C58601 definition+0xDBC tag=40C19A6C",
+        "map=80ED6027 table=80BE6B25 entity=80C58605 resource=80C58601 definition+0xDBC tag=40C19A6C"
+      ]
+    },
+    "0x80C6A90A": {
+      "occurrences": 216,
+      "file_types": {
+        "40:1": 216
+      },
+      "examples": [
+        "map=81547A30 table=80BE7C2F entity=80FCD657 resource=80FCD65B definition+0x1154 tag=40C6A909",
+        "map=81547A30 table=80BE7C2F entity=80FCD657 resource=80FCD65B definition+0x1158 tag=40C6A909",
+        "map=81547A30 table=80BE7C2F entity=80FCD657 resource=80FCD65B definition+0x1214 tag=40C6A909",
+        "map=81547A30 table=80BE8038 entity=80FCD657 resource=80FCD65B definition+0x1154 tag=40C6A909",
+        "map=81547A30 table=80BE8038 entity=80FCD657 resource=80FCD65B definition+0x1158 tag=40C6A909",
+        "map=81547A30 table=80BE8038 entity=80FCD657 resource=80FCD65B definition+0x1214 tag=40C6A909",
+        "map=81547A30 table=80BE8326 entity=80FCD657 resource=80FCD65B definition+0x1154 tag=40C6A909",
+        "map=81547A30 table=80BE8326 entity=80FCD657 resource=80FCD65B definition+0x1158 tag=40C6A909"
+      ]
+    },
+    "0x80F7BB7A": {
+      "occurrences": 46,
+      "file_types": {
+        "48:1": 46
+      },
+      "examples": [
+        "map=81547A30 table=80BE58AB entity=80BCD8B9 resource=80BCD8B7 definition+0x5AC tag=40C00000",
+        "map=81547A30 table=80BE58AB entity=80BCD8B9 resource=80BCD8B7 definition+0x5B0 tag=40C00000",
+        "map=81547A30 table=80BE58AB entity=80BCD8B9 resource=80BCD8B7 definition+0x6CC tag=40C00000",
+        "map=81547A30 table=80BE58AB entity=80BCD8B9 resource=80BCD8B7 definition+0x6D0 tag=40C00000",
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x85EC tag=40C00000",
+        "map=80ED6027 table=80BE58AB entity=80BCD8B9 resource=80BCD8B7 definition+0x5AC tag=40C00000",
+        "map=80ED6027 table=80BE58AB entity=80BCD8B9 resource=80BCD8B7 definition+0x5B0 tag=40C00000",
+        "map=80ED6027 table=80BE58AB entity=80BCD8B9 resource=80BCD8B7 definition+0x6CC tag=40C00000"
+      ]
+    },
+    "0x80FA6B0C": {
+      "occurrences": 6,
+      "file_types": {
+        "32:6": 6
+      },
+      "examples": [
+        "map=81547A30 table=80C5F514 entity=80C516D1 resource=80C7136E definition+0x1CF0 tag=80FA6B0D",
+        "map=81547A30 table=80C5F514 entity=80C516D1 resource=80C7136E definition+0x30E0 tag=80FA6B0D",
+        "map=81547A30 table=80C5F550 entity=80C516D1 resource=80C7136E definition+0x1CF0 tag=80FA6B0D",
+        "map=81547A30 table=80C5F550 entity=80C516D1 resource=80C7136E definition+0x30E0 tag=80FA6B0D"
+      ]
+    },
+    "0x80FF0A38": {
+      "occurrences": 4,
+      "file_types": {
+        "32:6": 4
+      },
+      "examples": [
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x88A0 tag=C0FF0A37",
+        "map=81547A30 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x89FC tag=40FF0A37",
+        "map=80ED6027 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x88A0 tag=C0FF0A37",
+        "map=80ED6027 table=80C63325 entity=80C6A511 resource=80C6A50F definition+0x89FC tag=40FF0A37"
+      ]
+    },
+    "0x81500DBD": {
+      "occurrences": 102,
+      "file_types": {
+        "48:1": 102
+      },
+      "examples": [
+        "map=81547A30 table=80BE453A entity=80FCD64B resource=80FCD64A definition+0x8FC tag=41500000",
+        "map=81547A30 table=80BE453A entity=80FCD64B resource=80FCD64A definition+0x900 tag=41500000",
+        "map=81547A30 table=80BE453A entity=80FCD64B resource=80FCD64A definition+0x9BC tag=41500000",
+        "map=81547A30 table=80BE56A5 entity=80FCD64B resource=80FCD64A definition+0x8FC tag=41500000",
+        "map=81547A30 table=80BE56A5 entity=80FCD64B resource=80FCD64A definition+0x900 tag=41500000",
+        "map=81547A30 table=80BE56A5 entity=80FCD64B resource=80FCD64A definition+0x9BC tag=41500000",
+        "map=81547A30 table=80BE6628 entity=80FCD64B resource=80FCD64A definition+0x8FC tag=41500000",
+        "map=81547A30 table=80BE6628 entity=80FCD64B resource=80FCD64A definition+0x900 tag=41500000"
+      ]
+    },
+    "0x8F98B1A5": {
+      "occurrences": 120,
+      "file_types": {
+        "26:5": 120
+      },
+      "examples": [
+        "map=81547A30 table=80BE453A entity=80FCC6FF resource=80FCC6FE definition+0x2E0 tag=00FFFF39",
+        "map=81547A30 table=80BE453A entity=80FCD64B resource=80FCD64A definition+0x2E0 tag=00FFFF39",
+        "map=81547A30 table=80BE4713 entity=80FCC6FF resource=80FCC6FE definition+0x2E0 tag=00FFFF39",
+        "map=81547A30 table=80BE56A5 entity=80FCC6FF resource=80FCC6FE definition+0x2E0 tag=00FFFF39",
+        "map=81547A30 table=80BE56A5 entity=80FCD64B resource=80FCD64A definition+0x2E0 tag=00FFFF39",
+        "map=81547A30 table=80BE6628 entity=80FCD64B resource=80FCD64A definition+0x2E0 tag=00FFFF39",
+        "map=81547A30 table=80BE66F1 entity=80FCD64B resource=80FCD64A definition+0x2E0 tag=00FFFF39",
+        "map=81547A30 table=80BE68AE entity=80FCD64B resource=80FCD64A definition+0x2E0 tag=00FFFF39"
+      ]
+    },
+    "0xFFFFFFFF": {
+      "occurrences": 114,
+      "file_types": {
+        "0:0": 2,
+        "27:0": 112
+      },
+      "examples": [
+        "map=81547A30 table=80B9AB9C entity=80C5111C resource=80FD337D definition+0x538 tag=40C80000",
+        "map=81547A30 table=80B9B872 entity=80C5111C resource=80FD337D definition+0x538 tag=40C80000",
+        "map=81547A30 table=80BE0CF7 entity=80C5111C resource=80FD337D definition+0x538 tag=40C80000",
+        "map=81547A30 table=80BE0E65 entity=80C5111C resource=80FD337D definition+0x538 tag=40C80000",
+        "map=81547A30 table=80BE0E65 entity=80C347A1 resource=80FD337D definition+0x538 tag=40C80000",
+        "map=81547A30 table=80BE1035 entity=80C347A1 resource=80FD337D definition+0x538 tag=40C80000",
+        "map=81547A30 table=80BE1480 entity=80C347A1 resource=80FD337D definition+0x538 tag=40C80000",
+        "map=81547A30 table=80BE14F2 entity=80BEF314 resource=80FD337D definition+0x538 tag=40C80000"
+      ]
+    }
+  }
+}
