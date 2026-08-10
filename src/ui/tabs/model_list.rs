@@ -130,6 +130,7 @@ impl<P: ModelProvider> ModelListBase<P> {
             atmosphere_lookup_near_1: am.load(TagHash64(0x419374B990AB0000)),
             atmosphere_lookup_far_1: am.load(TagHash64(0x419374B990AB0000)),
             atmosphere_lookup_vertical: am.load(TagHash(0x80BD7A1E)),
+            ..Default::default()
         },));
     }
 

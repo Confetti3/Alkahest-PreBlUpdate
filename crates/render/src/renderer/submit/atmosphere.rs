@@ -19,6 +19,12 @@ pub struct AtmosphereData {
     pub atmosphere_lookup_far_1: Handle<Texture>,
 
     pub atmosphere_lookup_vertical: Handle<Texture>,
+
+    pub shadowkeep_lookup_volume_0: Handle<Texture>,
+    pub shadowkeep_lookup_volume_1: Handle<Texture>,
+    pub shadowkeep_lookup_vertical: Handle<Texture>,
+    pub shadowkeep_lookup_table: Option<Texture>,
+    pub shadowkeep_lookup_parameters: [Vec4; 4],
 }
 
 pub struct SunDirections {
@@ -34,6 +40,61 @@ impl Renderer {
         self.generate_sky_mask(cmd, view);
 
         self.generate_sky_lookup(cmd, view);
+    }
+
+    /// Produce the two lookup surfaces consumed by the preserved Arrivals
+    /// deferred and sky techniques. Returns false while authored textures are
+    /// still loading so the caller can retain the procedural fallback.
+    pub(crate) fn submit_shadowkeep_atmosphere_lookups(
+        &self,
+        cmd: &mut CommandList,
+        view: &MainView,
+    ) -> bool {
+        let frame = self.frame_packet.read();
+        let atmosphere = &frame.misc.atmosphere;
+        let authored_inputs_ready = atmosphere.shadowkeep_lookup_table.is_some()
+            && atmosphere.shadowkeep_lookup_volume_0.is_loaded()
+            && !atmosphere.shadowkeep_lookup_volume_0.is_null()
+            && atmosphere.shadowkeep_lookup_volume_1.is_loaded()
+            && !atmosphere.shadowkeep_lookup_volume_1.is_null()
+            && atmosphere.shadowkeep_lookup_vertical.is_loaded()
+            && !atmosphere.shadowkeep_lookup_vertical.is_null();
+        drop(frame);
+        let Some(pipelines) = self.shadowkeep_atmosphere_pipelines.as_ref() else {
+            return false;
+        };
+        if !authored_inputs_ready {
+            return false;
+        }
+
+        self.clear_surface(cmd, view.atmosphere.sky_lookup_far, [0.0; 4]);
+        self.bind_surfaces(cmd, &[view.atmosphere.sky_lookup_far], None);
+        cmd.output_merger_set_depth_stencil_state(None, 0);
+        cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+        let direction_generated = self.execute_shadowkeep_global_pipeline(
+            cmd,
+            &pipelines.sky_direction_lookup_generate,
+            "shadowkeep/sky_direction_lookup_generate",
+        );
+
+        {
+            let ext = self.externs.get_mut();
+            // Preserved atmosphere-space basis used by the admitted EDZ
+            // placement. Activity-driven basis automation is still separate.
+            ext.postprocess.unkc0 = vec4(-0.08323, 0.00, -0.99653, 1.0);
+            ext.postprocess.unkd0 = vec4(-0.03088, 0.99952, 0.00258, 1.0);
+            ext.postprocess.unke0 = vec4(0.99605, 0.03098, -0.08319, 1.0);
+        }
+        self.clear_surface(cmd, view.atmosphere.sky_lookup_near, [0.0; 4]);
+        self.bind_surfaces(cmd, &[view.atmosphere.sky_lookup_near], None);
+        cmd.output_merger_set_depth_stencil_state(None, 0);
+        cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+        let atmosphere_generated = self.execute_shadowkeep_global_pipeline(
+            cmd,
+            &pipelines.sky_lookup_generate,
+            "shadowkeep/sky_lookup_generate",
+        );
+        direction_generated && atmosphere_generated
     }
 
     fn generate_sky_mask(self: &Arc<Self>, cmd: &mut CommandList, view: &MainView) {

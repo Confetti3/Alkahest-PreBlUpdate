@@ -70,3 +70,10 @@ float4 mainPS(VSOutput input) : SV_TARGET {
     discard;
   return source.Sample(samplerState, input.uv) * exposure_scale * sky_snapshot_intensity.x;
 }
+
+float4 mainPSUnscaled(VSOutput input) : SV_TARGET {
+  float depth = deferred_depth.Sample(samplerState, input.uv).x;
+  if (depth > 0)
+    discard;
+  return source.Sample(samplerState, input.uv);
+}

@@ -685,6 +685,47 @@ impl Renderer {
         }
         let provenance_directory = Path::new("artifacts/shadowkeep-buffer-provenance");
         let mut provenance_captures = Vec::new();
+        let wants_sky = ConVars::get_flag("render.sky")
+            && debug_pipeline.is_none_or(|pipeline| pipeline.has_atmosphere());
+        if capture_provenance && wants_sky {
+            self.clear_surface(cmd, view.atmosphere.sky_lookup_near, [0.0; 4]);
+            if let Ok(capture) = capture_surface_named(
+                cmd,
+                view.surfaces.get(view.atmosphere.sky_lookup_near),
+                provenance_directory,
+                "sky_lookup_before",
+                Some([0.0; 4]),
+                None,
+            ) {
+                provenance_captures.push(capture);
+            }
+        }
+        let atmosphere_lookup_generated = wants_sky
+            && pipelines.deferred_shading.is_available()
+            && pipelines.sky.is_available()
+            && self.submit_shadowkeep_atmosphere_lookups(cmd, view);
+        if capture_provenance && atmosphere_lookup_generated {
+            for (handle, name) in [
+                (view.atmosphere.sky_lookup_far, "sky_direction_lookup_after"),
+                (view.atmosphere.sky_lookup_near, "sky_lookup_after"),
+            ] {
+                match capture_surface_named(
+                    cmd,
+                    view.surfaces.get(handle),
+                    provenance_directory,
+                    name,
+                    None,
+                    None,
+                ) {
+                    Ok(capture) => provenance_captures.push(capture),
+                    Err(error) => error!(
+                        surface = view.surfaces.get(handle).name(),
+                        error = ?error,
+                        "Failed to capture Shadowkeep atmosphere lookup"
+                    ),
+                }
+            }
+        }
         if capture_provenance {
             for (handle, clear_value) in [
                 (view.gbuffers.albedo, None),
@@ -722,118 +763,204 @@ impl Renderer {
         self.bind_surfaces(cmd, &[view.shading_result], None);
         cmd.output_merger_set_depth_stencil_state(None, 0);
         cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
-        let deferred_draw_reached = self.execute_shadowkeep_global_pipeline(
-            cmd,
-            &pipelines.deferred_shading_no_atm,
-            "shadowkeep/deferred_shading_no_atm",
-        );
-        let wants_sky = ConVars::get_flag("render.sky")
-            && debug_pipeline.is_none_or(|pipeline| pipeline.has_atmosphere());
+        let (deferred_pipeline, deferred_name) = if atmosphere_lookup_generated {
+            (&pipelines.deferred_shading, "shadowkeep/deferred_shading")
+        } else {
+            (
+                &pipelines.deferred_shading_no_atm,
+                "shadowkeep/deferred_shading_no_atm",
+            )
+        };
+        let deferred_draw_reached =
+            self.execute_shadowkeep_global_pipeline(cmd, deferred_pipeline, deferred_name);
         if wants_sky {
-            cmd_event_span!(cmd, "shadowkeep/sky_fallback");
-            let mut before_sky_capture = None;
-            if capture_provenance {
-                match capture_surface_named(
-                    cmd,
-                    view.surfaces.get(view.shading_result),
-                    provenance_directory,
-                    "shading_result_before_sky",
-                    Some([0.0, 0.0, 0.0, 1.0]),
-                    None,
-                ) {
-                    Ok(capture) => before_sky_capture = Some(capture),
-                    Err(error) => error!(
-                        error = ?error,
-                        "Failed to capture pre-sky Shadowkeep shading result"
-                    ),
-                }
-            }
-
-            let sun_direction = self
-                .frame_packet
-                .read()
-                .misc
-                .shadowkeep_sun_direction
-                .unwrap_or(Vec4::Z);
-            let target_pixel_to_world = self.externs.view.target_pixel_to_world;
-            let sky_state = ShadowkeepSkyState::from_externs(&self.externs);
-            let include_sun = debug_pipeline.is_none_or(|pipeline| pipeline.has_sun());
-            let sun_color = if include_sun {
-                sky_state.sun
-            } else {
-                Vec4::ZERO
-            };
-            self.shadowkeep_sky_constants
-                .write(
-                    cmd,
-                    &ShadowkeepSkyConstants {
-                        target_pixel_to_world,
-                        camera_position: self.externs.view.position,
-                        sun_direction,
-                        zenith_color: sky_state.zenith,
-                        horizon_color: sky_state.horizon,
-                        sun_color,
-                    },
-                )
-                .expect("Failed to write Shadowkeep sky constants");
-            self.shadowkeep_sky_constants
-                .bind(cmd, ShaderStage::Pixel, 11);
-            cmd.vertex_set_shader(Some(&self.shadowkeep_sky_vs));
-            cmd.pixel_set_shader(Some(&self.shadowkeep_sky_ps));
-            cmd.pixel_set_shader_resources(0, &[Some(&view.gbuffers.depth_proxy.lock().srv)]);
-            cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
-            cmd.flush_states();
-            cmd.set_input_topology(PrimitiveType::TriangleStrip);
-
-            let mut generated_sky_capture = None;
-            if capture_provenance {
-                self.clear_surface(cmd, view.postprocess, [0.0, 0.0, 0.0, 0.0]);
+            if atmosphere_lookup_generated {
+                cmd_event_span!(cmd, "shadowkeep/authentic_atmosphere");
+                let before = capture_provenance
+                    .then(|| {
+                        capture_surface_named(
+                            cmd,
+                            view.surfaces.get(view.shading_result),
+                            provenance_directory,
+                            "shading_result_before_atmosphere",
+                            Some([0.0, 0.0, 0.0, 1.0]),
+                            None,
+                        )
+                    })
+                    .transpose()
+                    .unwrap_or_else(|error| {
+                        error!(error = ?error, "Failed to capture pre-atmosphere shading");
+                        None
+                    });
+                self.clear_surface(cmd, view.postprocess, [0.0; 4]);
                 self.bind_surfaces(cmd, &[view.postprocess], None);
-                cmd.draw(4, 0);
-                match capture_surface_named(
-                    cmd,
-                    view.surfaces.get(view.postprocess),
-                    provenance_directory,
-                    "generated_sky_fallback",
-                    None,
-                    None,
-                ) {
-                    Ok(capture) => generated_sky_capture = Some(capture),
-                    Err(error) => error!(
-                        error = ?error,
-                        "Failed to capture generated Shadowkeep sky fallback"
-                    ),
+                cmd.output_merger_set_depth_stencil_state(None, 0);
+                cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+                self.execute_shadowkeep_global_pipeline(cmd, &pipelines.sky, "shadowkeep/sky");
+                if capture_provenance {
+                    match capture_surface_named(
+                        cmd,
+                        view.surfaces.get(view.postprocess),
+                        provenance_directory,
+                        "generated_sky_authentic",
+                        None,
+                        None,
+                    ) {
+                        Ok(capture) => provenance_captures.push(capture),
+                        Err(error) => error!(
+                            error = ?error,
+                            "Failed to capture generated authentic sky"
+                        ),
+                    }
                 }
                 self.bind_surfaces(cmd, &[view.shading_result], None);
-            }
-            cmd.draw(4, 0);
-
-            if let (Some(scene), Some(sky)) =
-                (before_sky_capture.as_ref(), generated_sky_capture.as_ref())
-            {
-                let luminance = |rgb: [f64; 3]| {
-                    rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722
-                };
-                let scene_mean_luminance = scene.mean_rgb.map(luminance).unwrap_or(0.0);
-                let sky_mean_luminance = sky.mean_rgb.map(luminance).unwrap_or(0.0);
-                let sky_to_scene_ratio = (scene_mean_luminance > f64::EPSILON)
-                    .then_some(sky_mean_luminance / scene_mean_luminance);
-                info!(
-                    scene_mean = ?scene.mean_rgb,
-                    scene_max = ?scene.maximum_rgb,
-                    sky_mean = ?sky.mean_rgb,
-                    sky_max = ?sky.maximum_rgb,
-                    sky_to_scene_luminance_ratio = ?sky_to_scene_ratio,
-                    sky_saturated_pixels = sky.clipped_or_saturated_pixel_count,
-                    uses_degraded_fallback = sky_state.uses_degraded_fallback,
-                    "Shadowkeep sky luminance diagnostic"
+                cmd.output_merger_set_depth_stencil_state(None, 0);
+                cmd.vertex_set_shader(Some(&self.blit_to_background_vs));
+                cmd.pixel_set_shader(Some(&self.blit_to_background_unscaled_ps));
+                cmd.pixel_set_shader_resources(
+                    0,
+                    &[
+                        Some(&view.gbuffers.depth_proxy.lock().srv),
+                        view.surfaces.get(view.postprocess).srv(0),
+                    ],
                 );
-            }
-            if let Some(capture) = before_sky_capture {
-                provenance_captures.push(capture);
-            }
-            if let Some(capture) = generated_sky_capture {
-                provenance_captures.push(capture);
+                cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+                cmd.flush_states();
+                cmd.set_input_topology(PrimitiveType::TriangleStrip);
+                cmd.draw(4, 0);
+                let after = capture_provenance
+                    .then(|| {
+                        capture_surface_named(
+                            cmd,
+                            view.surfaces.get(view.shading_result),
+                            provenance_directory,
+                            "shading_result_after_atmosphere",
+                            Some([0.0, 0.0, 0.0, 1.0]),
+                            None,
+                        )
+                    })
+                    .transpose()
+                    .unwrap_or_else(|error| {
+                        error!(error = ?error, "Failed to capture post-atmosphere shading");
+                        None
+                    });
+                if let (Some(before), Some(after)) = (before.as_ref(), after.as_ref()) {
+                    info!(
+                        before_mean = ?before.mean_rgb,
+                        before_max = ?before.maximum_rgb,
+                        after_mean = ?after.mean_rgb,
+                        after_max = ?after.maximum_rgb,
+                        non_finite_after = after.non_finite_pixel_count,
+                        "Shadowkeep authentic atmosphere diagnostic"
+                    );
+                }
+                provenance_captures.extend(before);
+                provenance_captures.extend(after);
+            } else {
+                cmd_event_span!(cmd, "shadowkeep/sky_fallback");
+                let mut before_sky_capture = None;
+                if capture_provenance {
+                    match capture_surface_named(
+                        cmd,
+                        view.surfaces.get(view.shading_result),
+                        provenance_directory,
+                        "shading_result_before_sky",
+                        Some([0.0, 0.0, 0.0, 1.0]),
+                        None,
+                    ) {
+                        Ok(capture) => before_sky_capture = Some(capture),
+                        Err(error) => error!(
+                            error = ?error,
+                            "Failed to capture pre-sky Shadowkeep shading result"
+                        ),
+                    }
+                }
+
+                let sun_direction = self
+                    .frame_packet
+                    .read()
+                    .misc
+                    .shadowkeep_sun_direction
+                    .unwrap_or(Vec4::Z);
+                let target_pixel_to_world = self.externs.view.target_pixel_to_world;
+                let sky_state = ShadowkeepSkyState::from_externs(&self.externs);
+                let include_sun = debug_pipeline.is_none_or(|pipeline| pipeline.has_sun());
+                let sun_color = if include_sun {
+                    sky_state.sun
+                } else {
+                    Vec4::ZERO
+                };
+                self.shadowkeep_sky_constants
+                    .write(
+                        cmd,
+                        &ShadowkeepSkyConstants {
+                            target_pixel_to_world,
+                            camera_position: self.externs.view.position,
+                            sun_direction,
+                            zenith_color: sky_state.zenith,
+                            horizon_color: sky_state.horizon,
+                            sun_color,
+                        },
+                    )
+                    .expect("Failed to write Shadowkeep sky constants");
+                self.shadowkeep_sky_constants
+                    .bind(cmd, ShaderStage::Pixel, 11);
+                cmd.vertex_set_shader(Some(&self.shadowkeep_sky_vs));
+                cmd.pixel_set_shader(Some(&self.shadowkeep_sky_ps));
+                cmd.pixel_set_shader_resources(0, &[Some(&view.gbuffers.depth_proxy.lock().srv)]);
+                cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+                cmd.flush_states();
+                cmd.set_input_topology(PrimitiveType::TriangleStrip);
+
+                let mut generated_sky_capture = None;
+                if capture_provenance {
+                    self.clear_surface(cmd, view.postprocess, [0.0, 0.0, 0.0, 0.0]);
+                    self.bind_surfaces(cmd, &[view.postprocess], None);
+                    cmd.draw(4, 0);
+                    match capture_surface_named(
+                        cmd,
+                        view.surfaces.get(view.postprocess),
+                        provenance_directory,
+                        "generated_sky_fallback",
+                        None,
+                        None,
+                    ) {
+                        Ok(capture) => generated_sky_capture = Some(capture),
+                        Err(error) => error!(
+                            error = ?error,
+                            "Failed to capture generated Shadowkeep sky fallback"
+                        ),
+                    }
+                    self.bind_surfaces(cmd, &[view.shading_result], None);
+                }
+                cmd.draw(4, 0);
+
+                if let (Some(scene), Some(sky)) =
+                    (before_sky_capture.as_ref(), generated_sky_capture.as_ref())
+                {
+                    let luminance =
+                        |rgb: [f64; 3]| rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+                    let scene_mean_luminance = scene.mean_rgb.map(luminance).unwrap_or(0.0);
+                    let sky_mean_luminance = sky.mean_rgb.map(luminance).unwrap_or(0.0);
+                    let sky_to_scene_ratio = (scene_mean_luminance > f64::EPSILON)
+                        .then_some(sky_mean_luminance / scene_mean_luminance);
+                    info!(
+                        scene_mean = ?scene.mean_rgb,
+                        scene_max = ?scene.maximum_rgb,
+                        sky_mean = ?sky.mean_rgb,
+                        sky_max = ?sky.maximum_rgb,
+                        sky_to_scene_luminance_ratio = ?sky_to_scene_ratio,
+                        sky_saturated_pixels = sky.clipped_or_saturated_pixel_count,
+                        uses_degraded_fallback = sky_state.uses_degraded_fallback,
+                        "Shadowkeep sky luminance diagnostic"
+                    );
+                }
+                if let Some(capture) = before_sky_capture {
+                    provenance_captures.push(capture);
+                }
+                if let Some(capture) = generated_sky_capture {
+                    provenance_captures.push(capture);
+                }
             }
         }
         self.capture_shadowkeep_final_combine_no_film_curve(cmd, view);
@@ -886,7 +1013,8 @@ impl Renderer {
                     ),
                 }
             }
-            let deferred_shading = self.shadowkeep_deferred_provenance(view, deferred_draw_reached);
+            let deferred_shading =
+                self.shadowkeep_deferred_provenance(view, deferred_pipeline, deferred_draw_reached);
             info!(
                 diagnostic = ?deferred_shading,
                 "Shadowkeep deferred shading provenance"
@@ -1360,7 +1488,11 @@ impl Renderer {
                     frame_scope.exposure_scale_for_shading,
                     frame_scope.exposure_illum_relative,
                 ],
-                deferred_shading: self.shadowkeep_deferred_provenance(view, draw_6_reached),
+                deferred_shading: self.shadowkeep_deferred_provenance(
+                    view,
+                    &self.globals.pipelines.deferred_shading_no_atm,
+                    draw_6_reached,
+                ),
                 captures,
             });
         }
@@ -1389,9 +1521,9 @@ impl Renderer {
     fn shadowkeep_deferred_provenance(
         &self,
         view: &MainView,
+        pipeline: &Technique,
         draw_6_reached: bool,
     ) -> DeferredShadingProvenance {
-        let pipeline = &self.globals.pipelines.deferred_shading_no_atm;
         let vertex = pipeline.stage_vertex.as_ref();
         let pixel = pipeline.stage_pixel.as_ref();
         DeferredShadingProvenance {
@@ -1895,50 +2027,92 @@ impl Renderer {
         //     ext.cubemaps.vertex_ao = vao_srv.into();
         // }
 
-        // ext.atmosphere.unk38 = self.common.temporary_depth_lookup.view.clone().into();
-        // ext.atmosphere.unk88 = self.common.temporary_atmos.view.clone().into();
-
-        // TODO(cohae): Most of these need to be verified, currently they are just shifted +0x70 from pre-BL
-        ext.atmosphere.unk110 = if self.era() == crate::renderer::RendererEra::Shadowkeep {
-            ext.global_lighting.unk30
+        if self.era() == crate::renderer::RendererEra::Shadowkeep {
+            let atmosphere = &misc.atmosphere;
+            let finite_channel = |name: &str, fallback: Vec4| {
+                ext.try_get_global_channel_by_name(name)
+                    .filter(|value| value.to_array().into_iter().all(f32::is_finite))
+                    .unwrap_or(fallback)
+            };
+            let finite_scalar =
+                |name: &str, fallback: f32| finite_channel(name, Vec4::splat(fallback)).x;
+            let finite_hash_scalar = |hash: u32| {
+                ext.try_get_global_channel_by_id(hash)
+                    .filter(|value| value.x.is_finite())
+                    .map_or(0.0, |value| value.x)
+            };
+            let lookup_table = atmosphere
+                .shadowkeep_lookup_table
+                .as_ref()
+                .map_or(TextureView::None, |texture| texture.view.clone().into());
+            let (sky_direction_lookup, sky_lookup) = match &view.kind {
+                ViewKind::Main(main) => (
+                    main.atmosphere.sky_lookup_far.into(),
+                    main.atmosphere.sky_lookup_near.into(),
+                ),
+                ViewKind::Shadow(_) => (TextureView::None, TextureView::None),
+            };
+            *ext.shadowkeep_atmosphere = externs::ShadowkeepAtmosphere {
+                lookup_volume_0: atmosphere.shadowkeep_lookup_volume_0.clone().into(),
+                lookup_volume_1: atmosphere.shadowkeep_lookup_volume_1.clone().into(),
+                lookup_vertical: atmosphere.shadowkeep_lookup_vertical.clone().into(),
+                lookup_table,
+                sky_direction_lookup,
+                sky_lookup,
+                time_of_day_normalized: misc.time_of_day,
+                sun_atmosphere_direction: finite_channel(
+                    "sun_atmosphere_direction",
+                    ext.global_lighting.unk30,
+                ),
+                sun_glow_color: finite_channel("sun_glow_color", Vec4::ONE),
+                sun_glow_shape: finite_scalar("sun_glow_shape", 1.0),
+                sun_glow_intensity: finite_scalar("sun_glow_intensity", 0.0),
+                unkf0: finite_hash_scalar(0xF853_533C),
+                fog_density: finite_scalar("fog_density", 0.0),
+                fog_density_lookup_start: finite_scalar("fog_density_lookup_start", 0.0),
+                fog_density_lookup_end: finite_scalar("fog_density_lookup_end", 1.0),
+                fog_height_falloff: finite_scalar("fog_height_falloff", 1.0),
+                fog_decay_color: finite_channel("fog_decay_color", Vec4::ONE),
+                fog_decay_scale: finite_scalar("fog_decay_scale", 1.0),
+                layered_fog_density: finite_scalar("layered_fog_density", 0.0),
+                layered_fog_falloff: finite_scalar("layered_fog_falloff", 1.0),
+                sky_snapshot_rotation: finite_scalar("sky_snapshot_rotation", 0.0),
+                sky_snapshot_intensity: finite_scalar("sky_snapshot_intensity", 1.0),
+                unk14c: finite_hash_scalar(0x79F2_E305),
+                unk150: finite_hash_scalar(0x62E4_542E),
+                unk154: finite_hash_scalar(0x9497_68CF),
+                sky_color_override: finite_channel("sky_color_override", Vec4::ZERO),
+                sky_sun_glow_shape: finite_scalar("sky_sun_glow_shape", 0.0),
+                sky_sun_glow_intensity: finite_scalar("sky_sun_glow_intensity", 0.0),
+                unk178: finite_hash_scalar(0xE685_C537),
+                unk17c: finite_hash_scalar(0xE4A1_BF60),
+                ..Default::default()
+            };
         } else {
-            ext.get_global_channel_by_name("sun_light_direction")
-        };
-
-        // Sun
-        ext.atmosphere.unk140 = ext.get_global_channel_by_id(0x56007c7);
-        ext.atmosphere.unk150 = ext.get_global_channel_by_id(0x4aa1bef5).x;
-        ext.atmosphere.unk154 = ext.get_global_channel_by_id(0x9859daf1).x;
-        // ext.atmosphere.unk158 = ext.get_global_channel_by_id(0xc876108a).x;
-        // ext.atmosphere.unk15c = ext.get_global_channel_by_id(0xe111d856).x;
-        ext.atmosphere.unk160 = ext.get_global_channel_by_id(0xf853533c).x;
-
-        // Fog
-        ext.atmosphere.unk164 = ext.get_global_channel_by_id(0xed4bb08a).x;
-        ext.atmosphere.unk168 = ext.get_global_channel_by_id(0x9e769ed2).x;
-        ext.atmosphere.unk16c = ext.get_global_channel_by_id(0x49fbbce1).x;
-        ext.atmosphere.unk170 = ext.get_global_channel_by_id(0x94d8ecdc).x;
-        // ext.atmosphere.unk174 = ext.get_global_channel_by_id(0xbd2c7fe8).x;
-        ext.atmosphere.unk180 = ext.get_global_channel_by_id(0x9ec7a5e8);
-        ext.atmosphere.unk190 = ext.get_global_channel_by_id(0xb630810b).x;
-        ext.atmosphere.unk194 = ext.get_global_channel_by_id(0x3eeacb23).x;
-        ext.atmosphere.unk198 = ext.get_global_channel_by_id(0x7e92eb31).x;
-        // ext.atmosphere.unk19c = ext.get_global_channel_by_id(0x9f4cb78f).x;
-
-        // ext.atmosphere.unk1a0 = ext.get_global_channel_by_id(0x3e9cb6ed);
-        // ext.atmosphere.unk1b0 = ext.get_global_channel_by_id(0x5fc9836).x;
-        ext.atmosphere.unk1b4 = ext.get_global_channel_by_id(0xe283fbe0).x;
-        ext.atmosphere.unk1b8 = ext.get_global_channel_by_id(0x5f3b8491).x;
-        ext.atmosphere.unk1bc = ext.get_global_channel_by_id(0x79f2e305).x;
-        ext.atmosphere.unk1c0 = ext.get_global_channel_by_id(0x62e4542e).x;
-        ext.atmosphere.unk1c4 = ext.get_global_channel_by_id(0x949768cf).x;
-        ext.atmosphere.unk1d0 = ext.get_global_channel_by_id(0xd9a2d8a3);
-        ext.atmosphere.unk1e0 = ext.get_global_channel_by_id(0xd8281393).x;
-        ext.atmosphere.unk1e4 = ext.get_global_channel_by_id(0x4da73ca7).x;
-        ext.atmosphere.unk1e8 = ext.get_global_channel_by_id(0xe685c537).x;
-        ext.atmosphere.unk1ec = ext.get_global_channel_by_id(0xe4a1bf60).x;
-        // ext.atmosphere.unk1f0 = ext.get_global_channel_by_id(0x63d92f7).x;
-        // ext.atmosphere.unk1f4 = ext.get_global_channel_by_id(0x49864a42).x;
+            ext.atmosphere.unk110 = ext.get_global_channel_by_name("sun_light_direction");
+            ext.atmosphere.unk140 = ext.get_global_channel_by_id(0x56007c7);
+            ext.atmosphere.unk150 = ext.get_global_channel_by_id(0x4aa1bef5).x;
+            ext.atmosphere.unk154 = ext.get_global_channel_by_id(0x9859daf1).x;
+            ext.atmosphere.unk160 = ext.get_global_channel_by_id(0xf853533c).x;
+            ext.atmosphere.unk164 = ext.get_global_channel_by_id(0xed4bb08a).x;
+            ext.atmosphere.unk168 = ext.get_global_channel_by_id(0x9e769ed2).x;
+            ext.atmosphere.unk16c = ext.get_global_channel_by_id(0x49fbbce1).x;
+            ext.atmosphere.unk170 = ext.get_global_channel_by_id(0x94d8ecdc).x;
+            ext.atmosphere.unk180 = ext.get_global_channel_by_id(0x9ec7a5e8);
+            ext.atmosphere.unk190 = ext.get_global_channel_by_id(0xb630810b).x;
+            ext.atmosphere.unk194 = ext.get_global_channel_by_id(0x3eeacb23).x;
+            ext.atmosphere.unk198 = ext.get_global_channel_by_id(0x7e92eb31).x;
+            ext.atmosphere.unk1b4 = ext.get_global_channel_by_id(0xe283fbe0).x;
+            ext.atmosphere.unk1b8 = ext.get_global_channel_by_id(0x5f3b8491).x;
+            ext.atmosphere.unk1bc = ext.get_global_channel_by_id(0x79f2e305).x;
+            ext.atmosphere.unk1c0 = ext.get_global_channel_by_id(0x62e4542e).x;
+            ext.atmosphere.unk1c4 = ext.get_global_channel_by_id(0x949768cf).x;
+            ext.atmosphere.unk1d0 = ext.get_global_channel_by_id(0xd9a2d8a3);
+            ext.atmosphere.unk1e0 = ext.get_global_channel_by_id(0xd8281393).x;
+            ext.atmosphere.unk1e4 = ext.get_global_channel_by_id(0x4da73ca7).x;
+            ext.atmosphere.unk1e8 = ext.get_global_channel_by_id(0xe685c537).x;
+            ext.atmosphere.unk1ec = ext.get_global_channel_by_id(0xe4a1bf60).x;
+        }
 
         // The current fixed 37-register transparent setup belongs to the
         // post-BL scope layout. Shadowkeep owns a shorter, differently laid

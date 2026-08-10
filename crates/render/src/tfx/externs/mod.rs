@@ -47,21 +47,6 @@ impl ExternAccessorExt for &dyn ExternAccessor {
         index: ExternIndex,
         offset: usize,
     ) -> Option<U> {
-        // The preserved Arrivals extern table contains a scalar atmosphere
-        // value at 0x50.  A handful of its shipped expression records issue
-        // a vec4 read for that slot; the legacy accessor treated the typed
-        // mismatch as an absent optional field and supplied Vec4::ZERO.  Keep
-        // that narrow compatibility rule so one atmosphere expression does
-        // not abort the complete material update in the normalized table.
-        if TypeId::of::<U>() == TypeId::of::<Vec4>()
-            && index == ExternIndex::Atmosphere
-            && offset == 0x50
-        {
-            let zero = Vec4::ZERO;
-            // TypeId equality above makes this a Vec4 -> Vec4 copy while
-            // preserving the generic accessor signature.
-            return Some(unsafe { std::mem::transmute_copy(&zero) });
-        }
         // The preserved Arrivals renderer did not expose typed ObjectEffect
         // texture fields. Reads at these two offsets deliberately fell
         // through to its generated extern placeholder. Preserve that behavior
@@ -74,6 +59,17 @@ impl ExternAccessorExt for &dyn ExternAccessor {
             return None;
         }
         let (ptr, typeid) = self.get_value_ptr(index, offset)?;
+        // The later atmosphere table exposes a scalar at 0x50 while a few
+        // optional techniques request a vector. Preserve its historical zero
+        // fallback without masking the genuine Vec4 in the Arrivals layout.
+        if TypeId::of::<U>() == TypeId::of::<Vec4>()
+            && index == ExternIndex::Atmosphere
+            && offset == 0x50
+            && typeid == TypeId::of::<f32>()
+        {
+            let zero = Vec4::ZERO;
+            return Some(unsafe { std::mem::transmute_copy(&zero) });
+        }
         if TypeId::of::<U>() != typeid {
             error!(
                 "Extern type mismatch for {index:?}+0x{offset:X}: expected {:?} ({}), found {:?}",

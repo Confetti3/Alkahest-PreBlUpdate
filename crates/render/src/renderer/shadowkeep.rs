@@ -75,12 +75,17 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
             evidence: "the legacy global-lighting pass runs by default and consumes the screen-space cascade mask".into(),
         },
         CapabilityRecord {
-            name: "Procedural sky / sun fallback and material AO",
-            state: CapabilityState::Degraded,
-            evidence: "the procedural sky/sun fallback is active; authentic atmosphere lookup and era-correct material AO remain incomplete".into(),
+            name: "Authentic atmosphere lookup and sky",
+            state: CapabilityState::Ready,
+            evidence: "authored map atmosphere placements feed preserved lookup-generation, atmosphere-aware deferred-shading, and sky techniques".into(),
         },
         CapabilityRecord {
-            name: "Atmosphere, transparent stages, decals, water, and volumetrics",
+            name: "Procedural sky / sun fallback and material AO",
+            state: CapabilityState::Degraded,
+            evidence: "the procedural sky/sun fallback remains available while authored inputs load; era-correct material AO remains incomplete".into(),
+        },
+        CapabilityRecord {
+            name: "Transparent stages, decals, water, and volumetrics",
             state: CapabilityState::Blocked,
             evidence: "era-specific producers and pass ordering have not been connected".into(),
         },
@@ -103,7 +108,11 @@ pub struct ShadowkeepTechniqueRegistry {
 }
 
 impl ShadowkeepTechniqueRegistry {
-    pub fn new(gpu: Arc<Gpu>, asset_manager: AssetManager, bootstrap: &ShadowkeepRenderBootstrap) -> Self {
+    pub fn new(
+        gpu: Arc<Gpu>,
+        asset_manager: AssetManager,
+        bootstrap: &ShadowkeepRenderBootstrap,
+    ) -> Self {
         Self {
             gpu,
             asset_manager,
@@ -127,7 +136,10 @@ impl ShadowkeepTechniqueRegistry {
             .techniques
             .get(name)
             .with_context(|| format!("Shadowkeep render globals has no technique named {name}"))?;
-        ensure!(tag.is_some(), "Shadowkeep technique {name} is explicitly null");
+        ensure!(
+            tag.is_some(),
+            "Shadowkeep technique {name} is explicitly null"
+        );
         Technique::load_shadowkeep(&self.gpu, &self.asset_manager, tag)
             .with_context(|| format!("Failed to load Shadowkeep technique {name} ({tag})"))
     }
@@ -202,17 +214,22 @@ pub fn pass_status_ledger(pipelines: &GlobalPipelines) -> Vec<ShadowkeepPassReco
             evidence: "sun cascades produce a screen-space mask consumed through ShadowMask.unk00",
         },
         ShadowkeepPassRecord {
-            name: "procedural sky / sun and material AO",
+            name: "authentic atmosphere lookup and sky",
+            state: ShadowkeepPassState::Ready,
+            evidence: "package-authored atmosphere inputs populate both lookup targets; the preserved atmosphere-aware deferred and sky techniques produce finite output",
+        },
+        ShadowkeepPassRecord {
+            name: "procedural sky / sun fallback and material AO",
             state: ShadowkeepPassState::Degraded,
-            evidence: "the visible sky/sun fallback is active; authentic atmosphere lookup and era-correct material AO remain incomplete",
+            evidence: "the fallback remains active while authored atmosphere inputs load; era-correct material AO remains incomplete",
         },
         ShadowkeepPassRecord {
             name: "direct presentation",
             state: ShadowkeepPassState::Ready,
-            evidence: "shading_result is copied directly to the sRGB output target",
+            evidence: "the authentic sky is composited only into clear-depth pixels before shading_result is copied to the sRGB output target",
         },
         ShadowkeepPassRecord {
-            name: "transparent / decal / water / atmosphere / volumetrics",
+            name: "transparent / decal / water / volumetrics",
             state: ShadowkeepPassState::DisabledAsAbsent,
             evidence: "not admitted until an era-specific producer and pass-order capture is available",
         },
@@ -221,10 +238,14 @@ pub fn pass_status_ledger(pipelines: &GlobalPipelines) -> Vec<ShadowkeepPassReco
 
 impl ShadowkeepInputLayouts {
     pub fn load(gpu: &Gpu, input_layouts: &SShadowkeepVertexInputLayouts) -> anyhow::Result<Self> {
-        let mut layouts = std::iter::repeat_with(|| None).take(255).collect::<Vec<_>>();
+        let mut layouts = std::iter::repeat_with(|| None)
+            .take(255)
+            .collect::<Vec<_>>();
         for index in 0..7 {
             let d3d_layout = RenderStates::create_base_input_layout(&gpu.device, index)
-                .with_context(|| format!("Failed to create Shadowkeep built-in input layout {index}"))?;
+                .with_context(|| {
+                    format!("Failed to create Shadowkeep built-in input layout {index}")
+                })?;
             d3d_layout.set_debug_name(format!("Shadowkeep Built-in Input Layout {index}"));
             layouts[index] = Some(d3d_layout);
         }
@@ -234,11 +255,19 @@ impl ShadowkeepInputLayouts {
         );
         for layout in &input_layouts.mapping.layouts {
             let index = layout.index as usize;
-            ensure!(index < layouts.len(), "Shadowkeep input layout index {index} exceeds 254");
+            ensure!(
+                index < layouts.len(),
+                "Shadowkeep input layout index {index} exceeds 254"
+            );
             let mut elements = Vec::new();
-            for (buffer_index, set_index) in [layout.element_0, layout.element_1, layout.element_2, layout.element_3]
-                .into_iter()
-                .enumerate()
+            for (buffer_index, set_index) in [
+                layout.element_0,
+                layout.element_1,
+                layout.element_2,
+                layout.element_3,
+            ]
+            .into_iter()
+            .enumerate()
             {
                 if set_index == u32::MAX {
                     continue;
@@ -247,15 +276,28 @@ impl ShadowkeepInputLayouts {
                     .element_sets
                     .sets
                     .get(set_index as usize)
-                    .with_context(|| format!("input layout {index} references missing element set {set_index}"))?;
+                    .with_context(|| {
+                        format!("input layout {index} references missing element set {set_index}")
+                    })?;
                 for element in &set.elements {
                     let semantic = INPUT_SEMANTICS
                         .get(element.semantic as usize)
-                        .with_context(|| format!("input layout {index} has invalid semantic {}", element.semantic))?;
+                        .with_context(|| {
+                            format!(
+                                "input layout {index} has invalid semantic {}",
+                                element.semantic
+                            )
+                        })?;
                     let format = INPUT_FORMATS
                         .get(element.format as usize)
-                        .with_context(|| format!("input layout {index} has invalid format {}", element.format))?;
-                    ensure!(format.hlsl_type != "", "input layout {index} uses unsupported format {}", element.format);
+                        .with_context(|| {
+                            format!("input layout {index} has invalid format {}", element.format)
+                        })?;
+                    ensure!(
+                        format.hlsl_type != "",
+                        "input layout {index} uses unsupported format {}",
+                        element.format
+                    );
                     elements.push(TigerInputLayoutElement {
                         hlsl_type: format.hlsl_type,
                         format: format.format,
@@ -325,7 +367,12 @@ impl ShadowkeepRendererBootstrap {
         let input_layouts = ShadowkeepInputLayouts::load(&gpu, &raw_input_layouts)?;
         let asset_manager = AssetManager::new_shadowkeep(&gpu);
         let techniques = ShadowkeepTechniqueRegistry::new(gpu, asset_manager, &bootstrap);
-        Ok(Self { profile, bootstrap, input_layouts, techniques })
+        Ok(Self {
+            profile,
+            bootstrap,
+            input_layouts,
+            techniques,
+        })
     }
 
     pub fn capability_ledger(&self) -> Vec<CapabilityRecord> {

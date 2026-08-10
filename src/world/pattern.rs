@@ -445,6 +445,7 @@ pub fn spawn_pattern_from_header(
                     atmosphere_lookup_near_1: am.load(data.unka0_tex),
                     atmosphere_lookup_far_1: am.load(data.unkb0_tex),
                     atmosphere_lookup_vertical: am.load(data.unkc0_tex),
+                    ..Default::default()
                 };
 
                 world.insert_one(entity, atmosphere)?;

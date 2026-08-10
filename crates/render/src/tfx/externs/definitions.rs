@@ -126,7 +126,6 @@ impl View {
 
         // TODO(cohae): Fairly sure this is the same as tptow_no_proj_w but for NDC instead of viewport space
         self.unk2c0 = ptow_no_proj_w * Self::VIEWSPACE_UNORM_TO_SNORM;
-
     }
 
     pub fn position(&self) -> Vec3 {
@@ -274,6 +273,54 @@ extern_struct! {
         0x1FC => unk1fc: f32,
         0x208 => unk208: f32,
         0x210 => unk210: Vec4,
+    }
+}
+
+// Exact atmosphere extern layout consumed by the preserved Arrivals
+// techniques. It overlaps the later layout at incompatible scalar/texture
+// types, so the expression accessor selects this table only for Shadowkeep.
+extern_struct! {
+    struct ShadowkeepAtmosphere("shadowkeep_atmosphere") {
+        0x00 => unk00: TextureView,
+        0x08 => unk08: TextureView,
+        0x10 => unk10: TextureView,
+        0x18 => unk18: TextureView,
+        0x20 => lookup_volume_0: TextureView,
+        0x28 => lookup_volume_1: TextureView,
+        0x30 => time_of_day_normalized: f32,
+        0x38 => sky_direction_lookup: TextureView,
+        0x40 => unk40: TextureView,
+        0x50 => unk50: Vec4,
+        0x60 => lookup_vertical: TextureView,
+        0x80 => lookup_table: TextureView,
+        0x88 => sky_lookup: TextureView,
+        0xA0 => sun_atmosphere_direction: Vec4,
+        0xD0 => sun_glow_color: Vec4,
+        0xE0 => sun_glow_shape: f32,
+        0xE4 => sun_glow_intensity: f32,
+        0xF0 => unkf0: f32,
+        0xF4 => fog_density: f32,
+        0xF8 => fog_density_lookup_start: f32,
+        0xFC => fog_density_lookup_end: f32,
+        0x100 => fog_height_falloff: f32,
+        0x110 => fog_decay_color: Vec4,
+        0x120 => fog_decay_scale: f32,
+        0x124 => layered_fog_density: f32,
+        0x128 => layered_fog_falloff: f32,
+        0x144 => sky_snapshot_rotation: f32,
+        0x148 => sky_snapshot_intensity: f32,
+        0x14C => unk14c: f32,
+        0x150 => unk150: f32,
+        0x154 => unk154: f32,
+        0x160 => sky_color_override: Vec4,
+        0x170 => sky_sun_glow_shape: f32,
+        0x174 => sky_sun_glow_intensity: f32,
+        0x178 => unk178: f32,
+        0x17C => unk17c: f32,
+        0x188 => unk188: f32,
+        0x18C => unk18c: f32,
+        0x190 => unk190: f32,
+        0x1A0 => unk1a0: Vec4,
     }
 }
 
@@ -653,6 +700,7 @@ extern_struct! {
         0x50 => output_res: Vec4,
         0x60 => res_for_input: Vec4,
         0x80 => unk80: Vec4,
+        0xB0 => unkb0: Vec4,
         0xC0 => unkc0: Vec4,
         0xD0 => unkd0: Vec4,
         0xE0 => unke0: Vec4,

@@ -18,6 +18,24 @@ pub struct SAtmosphereDataComponent {
     pub unkc8: [f32; 4 * 4],
 }
 
+/// Table-local Arrivals atmosphere placement (`0x80807086`).
+///
+/// Unlike the post-Beyond-Light component above, the four authored lookup
+/// resources are direct 32-bit package tags. The final four vectors are
+/// retained verbatim until their individual shader semantics are proven.
+#[derive(Clone, Debug)]
+#[tiger_type(id = 0x80807086, size = 0xF8)]
+pub struct SShadowkeepAtmospherePlacement {
+    #[tiger(offset = 0x90)]
+    pub lookup_volume_0: TagHash,
+    pub lookup_volume_1: TagHash,
+    pub lookup_vertical: TagHash,
+    pub lookup_table: TagHash,
+    pub lookup_parameters: [Vec4; 4],
+    #[tiger(offset = 0xF4)]
+    pub sun_angles: TagHash,
+}
+
 #[derive(Debug)]
 #[tiger_type(id = 0x80806A74)]
 pub struct SUnk80806a74 {

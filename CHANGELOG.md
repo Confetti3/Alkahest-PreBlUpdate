@@ -32,7 +32,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- Restored Shadowkeep freeroam scenario discovery, authored cubemap specular IBL, default sky and directional sunlight, and cascaded sun shadows without a raw post-deferred environment overlay.
+- Restored Shadowkeep freeroam scenario discovery, authored cubemap specular IBL, package-authored atmosphere lookup and sky rendering, default directional sunlight, and cascaded sun shadows without raw post-deferred overlays.
 
 
 ## 0.5.2 - 2025-02-11

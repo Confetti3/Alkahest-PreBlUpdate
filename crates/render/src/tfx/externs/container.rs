@@ -106,7 +106,11 @@ impl Externs {
     }
 
     pub fn try_get_global_channel_by_name(&self, name: &str) -> Option<Vec4> {
-        let index = self.get_global_channel_index_by_name(name)?;
+        self.try_get_global_channel_by_id(fnv1(name))
+    }
+
+    pub fn try_get_global_channel_by_id(&self, id: u32) -> Option<Vec4> {
+        let index = self.get_global_channel_index(id)?;
         self.globals.get(index).copied()
     }
 

@@ -37,7 +37,10 @@ use crate::{
     gpu::{cbuffer::ConstantBuffer, debug_text::DebugTextRenderer, profiler::D3D11Profiler},
     object::{RenderObject, RenderObjectHandle},
     renderer::submit::{bloom::PostProcessScope, gbuffer::HzbDownsampleParams},
-    tfx::{externs::Externs, packet::FramePacket, scope::CascadeScope, view::RenderSettings},
+    tfx::{
+        externs::Externs, packet::FramePacket, scope::CascadeScope, technique::Technique,
+        view::RenderSettings,
+    },
     util::{
         arena::Arena,
         threading::{CommandListPool, ThreadMutCell},
@@ -60,6 +63,7 @@ pub struct Renderer {
     era: RendererEra,
     shadowkeep_input_layouts: Option<Arc<shadowkeep::ShadowkeepInputLayouts>>,
     // pub timestamps: TimestampManager,
+    shadowkeep_atmosphere_pipelines: Option<ShadowkeepAtmospherePipelines>,
     pub immediate: Mutex<ImmediateShapeRenderer>,
     pub debug_text: Mutex<DebugTextRenderer>,
     pub externs: ThreadMutCell<Externs>,
@@ -75,6 +79,7 @@ pub struct Renderer {
     debug_ps: d3d11::PixelShader,
     blit_to_background_vs: d3d11::VertexShader,
     blit_to_background_ps: d3d11::PixelShader,
+    blit_to_background_unscaled_ps: d3d11::PixelShader,
     clear_ao_vs: d3d11::VertexShader,
     clear_ao_ps: d3d11::PixelShader,
     clear_ao_all_ps: d3d11::PixelShader,
@@ -122,6 +127,11 @@ pub(crate) struct ShadowkeepSkyConstants {
     pub sun_color: Vec4,
 }
 
+pub(crate) struct ShadowkeepAtmospherePipelines {
+    pub sky_lookup_generate: Technique,
+    pub sky_direction_lookup_generate: Technique,
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct ShadowkeepSkyState {
     pub zenith: Vec4,
@@ -139,8 +149,7 @@ impl ShadowkeepSkyState {
 
     fn fallback_pair(externs: &Externs, color: &str, intensity: &str) -> Vec4 {
         let color = Self::finite_channel(externs, color).unwrap_or(Vec4::ZERO);
-        let intensity = Self::finite_channel(externs, intensity)
-            .map_or(0.0, |value| value.x);
+        let intensity = Self::finite_channel(externs, intensity).map_or(0.0, |value| value.x);
         color * intensity
     }
 
@@ -151,9 +160,8 @@ impl ShadowkeepSkyState {
         fallback_color: &str,
         fallback_intensity: &str,
     ) -> (Vec4, bool) {
-        let preferred = Self::finite_channel(externs, preferred_color).zip(
-            Self::finite_channel(externs, preferred_intensity),
-        );
+        let preferred = Self::finite_channel(externs, preferred_color)
+            .zip(Self::finite_channel(externs, preferred_intensity));
         match preferred {
             Some((color, intensity)) if (color * intensity.x).truncate() != glam::Vec3::ZERO => {
                 (color * intensity.x, false)
@@ -205,18 +213,25 @@ unsafe impl Sync for Renderer {}
 static RENDERER_GLOBAL: OnceLock<Arc<Renderer>> = OnceLock::new();
 impl Renderer {
     pub fn new(gpu: Arc<Gpu>) -> anyhow::Result<Self> {
-        Self::new_with_globals(gpu, RendererEra::Current, None, RenderGlobals::load)
+        Self::new_with_globals(gpu, RendererEra::Current, None, None, RenderGlobals::load)
     }
 
     pub fn new_shadowkeep(
         gpu: Arc<Gpu>,
         bootstrap: crate::renderer::shadowkeep::ShadowkeepRendererBootstrap,
     ) -> anyhow::Result<Self> {
+        let atmosphere_pipelines = ShadowkeepAtmospherePipelines {
+            sky_lookup_generate: bootstrap.techniques.load_technique("sky_lookup_generate")?,
+            sky_direction_lookup_generate: bootstrap
+                .techniques
+                .load_technique("sky_direction_lookup_generate")?,
+        };
         let input_layouts = Arc::new(bootstrap.input_layouts);
         Self::new_with_globals(
             gpu,
             RendererEra::Shadowkeep,
             Some(input_layouts),
+            Some(atmosphere_pipelines),
             move |gpu, asset_manager| {
                 RenderGlobals::load_shadowkeep(gpu, asset_manager, &bootstrap.bootstrap)
             },
@@ -227,6 +242,7 @@ impl Renderer {
         gpu: Arc<Gpu>,
         era: RendererEra,
         shadowkeep_input_layouts: Option<Arc<shadowkeep::ShadowkeepInputLayouts>>,
+        shadowkeep_atmosphere_pipelines: Option<ShadowkeepAtmospherePipelines>,
         load_globals: F,
     ) -> anyhow::Result<Self>
     where
@@ -269,6 +285,12 @@ impl Renderer {
 
         let (blit_to_background_vs, blit_to_background_ps) =
             gpu.compile_shader_vs_ps("blit_to_background", BLIT_TO_BG_SHADER, "mainVS", "mainPS")?;
+        let (_, blit_to_background_unscaled_ps) = gpu.compile_shader_vs_ps(
+            "blit_to_background_unscaled",
+            BLIT_TO_BG_SHADER,
+            "mainVS",
+            "mainPSUnscaled",
+        )?;
 
         let (clear_ao_vs, clear_ao_ps) =
             gpu.compile_shader_vs_ps("clear_ao", CLEAR_AO_SHADER, "mainVS", "mainPS")?;
@@ -298,6 +320,7 @@ impl Renderer {
             load_globals(&gpu, &asset_manager).context("Failed to load render globals")?;
         let mut externs = Externs::new(&globals);
         if era == RendererEra::Shadowkeep {
+            externs.activate_shadowkeep_atmosphere();
             // The preserved fallback table supplied this positional default.
             // The package resource leaves it zero for activity automation,
             // which is outside this renderer path, while the old global-light
@@ -310,6 +333,7 @@ impl Renderer {
             globals,
             era,
             shadowkeep_input_layouts,
+            shadowkeep_atmosphere_pipelines,
             // timestamps: TimestampManager::new(&gpu.device)?,
             asset_manager,
             debug_text: Mutex::new(DebugTextRenderer::create(&gpu)?),
@@ -329,6 +353,7 @@ impl Renderer {
             debug_ps,
             blit_to_background_vs,
             blit_to_background_ps,
+            blit_to_background_unscaled_ps,
             clear_ao_vs,
             clear_ao_ps,
             clear_ao_all_ps,

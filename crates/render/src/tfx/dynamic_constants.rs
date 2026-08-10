@@ -373,7 +373,7 @@ impl DynamicConstants {
 /// extern groups. Running legacy bytes directly makes a sampler load look like
 /// an extern-matrix read, which in turn leaves material constant buffers
 /// undefined and produces an empty G-buffer.
-fn translate_shadowkeep_bytecode(source: &[u8]) -> anyhow::Result<Vec<u8>> {
+pub fn translate_shadowkeep_bytecode(source: &[u8]) -> anyhow::Result<Vec<u8>> {
     let mut translated = Vec::with_capacity(source.len());
     let mut cursor = 0;
     while cursor < source.len() {

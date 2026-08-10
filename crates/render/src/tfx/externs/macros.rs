@@ -5,6 +5,9 @@ macro_rules! extern_container {
             $(
             pub $name: Box<$t>,
             )*
+            pub shadowkeep_atmosphere: Box<ShadowkeepAtmosphere>,
+            use_shadowkeep_atmosphere: bool,
+
 
             pub default_globals: [Vec4; 256],
 
@@ -19,6 +22,8 @@ macro_rules! extern_container {
                     $(
                         $name: Default::default(),
                     )*
+                    shadowkeep_atmosphere: Default::default(),
+                    use_shadowkeep_atmosphere: false,
                     globals: default_globals,
                     default_globals,
                     global_ids,
@@ -51,6 +56,9 @@ macro_rules! extern_container {
 
         impl ExternAccessor for Externs {
             fn get_value_ptr(&self, index: ExternIndex, offset: usize) -> Option<(*const (), TypeId)> {
+                if index == ExternIndex::Atmosphere && self.use_shadowkeep_atmosphere {
+                    return self.shadowkeep_atmosphere.get_field_ptr(offset);
+                }
                 match index {
                     $(
                         ExternIndex::$t => {
@@ -99,14 +107,22 @@ macro_rules! extern_container {
                 r
             }
 
+            pub fn activate_shadowkeep_atmosphere(&mut self) {
+                self.use_shadowkeep_atmosphere = true;
+            }
+
             /// Shadowkeep stores a fixed positional channel table, not the
             /// later channel-ID resource.  Keep the IDs intentionally empty
             /// so name lookup cannot silently invent a mapping.
+            /// Construct the documented positional fallback when no package
+            /// channel table can be decoded.
             pub fn new_shadowkeep() -> Self {
-                Self::from_global_channels(
+                let mut result = Self::from_global_channels(
                     alkahest_data::tfx::shadowkeep::global_channel_defaults(),
                     Vec::new(),
-                )
+                );
+                result.activate_shadowkeep_atmosphere();
+                result
             }
 
             pub fn get_global_channel_by_index(&self, index: usize) -> Option<Vec4> {
