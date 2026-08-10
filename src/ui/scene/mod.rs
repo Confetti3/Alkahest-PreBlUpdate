@@ -10,6 +10,7 @@ use std::{
     time::Instant,
 };
 
+use alkahest_core::ConVars;
 use alkahest_data::tfx::{FeatureRendererSubscription, common::AxisAlignedBBox};
 use alkahest_render::{
     Gpu, Renderer,
@@ -132,7 +133,7 @@ impl Scene {
             frozen_render_time: 0.0,
             sun_light_angle: 60f32,
             render_mode: if is_shadowkeep {
-                RenderMode::ShadingOnly
+                RenderMode::Shaded
             } else {
                 RenderMode::LightDiffuse
             },
@@ -627,6 +628,26 @@ impl Scene {
 
         ui.separator();
 
+        if is_shadowkeep {
+            let mut global_lighting = ConVars::get_flag("render.global_lighting");
+            if ui
+                .checkbox(&mut global_lighting, "Global Lighting")
+                .on_hover_text("Directional global lighting for the Shadowkeep sun.")
+                .changed()
+            {
+                let _ = ConVars::set("render.global_lighting", global_lighting.into());
+            }
+
+            let mut sky = ConVars::get_flag("render.sky");
+            if ui
+                .checkbox(&mut sky, "Sky")
+                .on_hover_text("Procedural Shadowkeep sky fallback.")
+                .changed()
+            {
+                let _ = ConVars::set("render.sky", sky.into());
+            }
+        }
+
         ui.checkbox(&mut view_settings.vertex_ao, "Vertex AO")
             .setting_description_tooltip(
                 "Enables ambient occlusion based on mesh vertex data.\nCan highly impact the look \
@@ -652,11 +673,6 @@ impl Scene {
                     PerformanceImpact::Medium,
                 );
 
-            ui.checkbox(&mut view_settings.sun_shadows, "Sun Shadows")
-                .setting_description_tooltip(
-                    "Enables (dynamic) shadows for the sun light.",
-                    PerformanceImpact::High,
-                );
 
             ui.checkbox(&mut view_settings.anti_aliasing, "Anti-Aliasing")
                 .setting_description_tooltip(
@@ -681,9 +697,12 @@ impl Scene {
                     );
             });
         });
+
+        ui.checkbox(&mut view_settings.sun_shadows, "Sun Shadows")
+            .on_hover_text("Cascaded directional shadows for the Shadowkeep sun.");
         if is_shadowkeep {
             ui.weak(
-                "Bloom, volumetrics, local/sun shadows, anti-aliasing, threaded submit, and HZB are not connected to the Shadowkeep pass graph.",
+                "Bloom, volumetrics, local shadows, anti-aliasing, threaded submit, and HZB are not connected to the Shadowkeep pass graph.",
             );
         }
     }
@@ -858,13 +877,16 @@ impl Scene {
                 s_submit_all_shadowmaps(&self.world, &mut cmd, &self.renderer);
             }
 
-            if self.view.settings().sun_shadows
-                && matches!(
-                    self.render_mode,
-                    RenderMode::ShadedNoAtm | RenderMode::Shaded | RenderMode::ShadingOnly
-                )
+            let debug_pipeline: Option<DebugPipeline> = self.render_mode.into();
+            let wants_sun = debug_pipeline.is_none_or(|pipeline| pipeline.has_sun());
+
+            if ConVars::get_flag("render.global_lighting")
+                && self.view.settings().sun_shadows
+                && wants_sun
             {
                 self.draw_sun_shadows(&mut cmd);
+            } else if let ViewKind::Main(view) = &mut self.view.kind {
+                view.sun_shadow_map_cascades.clear();
             }
         }
 

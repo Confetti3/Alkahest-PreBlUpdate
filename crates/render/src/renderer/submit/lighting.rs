@@ -1,3 +1,4 @@
+use alkahest_core::ConVars;
 use std::sync::Arc;
 
 use alkahest_data::tfx::{
@@ -25,7 +26,9 @@ impl Renderer {
         geo: Option<&GeometryCommandLists>,
         debug_pipeline: Option<DebugPipeline>,
     ) {
-        self.compute_shadow_map(cmd, view);
+        let wants_global_lighting = ConVars::get_flag("render.global_lighting")
+            && debug_pipeline.is_none_or(|pipeline| pipeline.has_sun());
+        self.compute_shadow_map(cmd, view, wants_global_lighting);
 
         // self.compute_ssao(cmd);
         profiling::scope!("submit_lighting");
@@ -292,11 +295,17 @@ impl Renderer {
     //     );
     // }
 
-    pub(crate) fn compute_shadow_map(&self, cmd: &mut CommandList, view: &MainView) {
-        if !view.settings.sun_shadows {
-            view.surfaces
-                .get(view.shadow_mask)
-                .clear_color(cmd, [1.0; 4]);
+    pub(crate) fn compute_shadow_map(
+        &self,
+        cmd: &mut CommandList,
+        view: &MainView,
+        wants_global_lighting: bool,
+    ) {
+        if !wants_global_lighting
+            || !view.settings.sun_shadows
+            || view.sun_shadow_map_cascades.is_empty()
+        {
+            self.clear_surface(cmd, view.shadow_mask, [1.0; 4]);
             return;
         }
 
@@ -322,7 +331,10 @@ impl Renderer {
             .read()
             .misc
             .shadowkeep_sun_direction
-            .unwrap_or_else(|| self.externs.get_global_channel_by_name("sun_light_direction"))
+            .unwrap_or_else(|| {
+                self.externs
+                    .get_global_channel_by_name("sun_light_direction")
+            })
             .xyz();
         if sun_dir.length() < 0.01 {
             sun_dir = Vec3::Z;
@@ -330,35 +342,33 @@ impl Renderer {
         let sun_dir = -sun_dir.normalize();
 
         self.clear_surface(cmd, view.shadow_mask, [1f32; 4]);
-        if true {
-            for (cascade_index, (world_to_cascade, cascade_srv)) in
-                view.sun_shadow_map_cascades.iter().enumerate().rev()
-            {
-                let depth = view.gbuffers.depth_proxy.lock().srv.clone();
-                self.cascade_scope
-                    .write(
-                        cmd,
-                        &CascadeScope {
-                            target_pixel_to_world,
-                            camera_to_projective: self.externs.view.camera_to_projective,
-                            world_to_camera: self.externs.view.world_to_camera,
-                            light_dir: sun_dir.normalize().into(),
-                            // plane_distance: Self::CASCADE_DISTANCE_RANGES[cascade_index],
-                            plane_distance: Self::get_cascade_distance_range(cascade_index).1,
-                            world_to_cascade: *world_to_cascade,
-                        },
-                    )
-                    .expect("Failed to write cascade scope");
-                self.cascade_scope.bind(cmd, ShaderStage::Vertex, 0);
-                self.cascade_scope.bind(cmd, ShaderStage::Pixel, 0);
-                cmd.pixel_set_shader_resources(0, &[Some(&depth), Some(cascade_srv)]);
-                cmd.pixel_set_samplers(1, &[Some(&self.common.sampler_linear)]);
-                cmd.flush_states();
-                cmd.vertex_set_shader(Some(&self.shadow_map_vs));
-                cmd.pixel_set_shader(Some(&self.shadow_map_ps));
-                cmd.set_input_topology(PrimitiveType::TriangleStrip);
-                cmd.draw(4, 0);
-            }
+        for (cascade_index, (world_to_cascade, cascade_srv)) in
+            view.sun_shadow_map_cascades.iter().enumerate().rev()
+        {
+            let depth = view.gbuffers.depth_proxy.lock().srv.clone();
+            self.cascade_scope
+                .write(
+                    cmd,
+                    &CascadeScope {
+                        target_pixel_to_world,
+                        camera_to_projective: self.externs.view.camera_to_projective,
+                        world_to_camera: self.externs.view.world_to_camera,
+                        light_dir: sun_dir.normalize().into(),
+                        // plane_distance: Self::CASCADE_DISTANCE_RANGES[cascade_index],
+                        plane_distance: Self::get_cascade_distance_range(cascade_index).1,
+                        world_to_cascade: *world_to_cascade,
+                    },
+                )
+                .expect("Failed to write cascade scope");
+            self.cascade_scope.bind(cmd, ShaderStage::Vertex, 0);
+            self.cascade_scope.bind(cmd, ShaderStage::Pixel, 0);
+            cmd.pixel_set_shader_resources(0, &[Some(&depth), Some(cascade_srv)]);
+            cmd.pixel_set_samplers(1, &[Some(&self.common.sampler_point)]);
+            cmd.flush_states();
+            cmd.vertex_set_shader(Some(&self.shadow_map_vs));
+            cmd.pixel_set_shader(Some(&self.shadow_map_ps));
+            cmd.set_input_topology(PrimitiveType::TriangleStrip);
+            cmd.draw(4, 0);
         }
     }
 }

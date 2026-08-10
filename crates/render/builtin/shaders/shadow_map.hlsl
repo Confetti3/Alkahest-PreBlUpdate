@@ -106,49 +106,80 @@ float InterleavedGradientNoise(float2 position_screen)
 
 float4 mainPS(VSOutput input) : SV_TARGET
 {
-    float depth = deferred_depth.Sample(samplerState, input.uv).x;
-    if (depth == 0)
-        return float4(1, 1, 1, 1);
+    // The shadow mask is half resolution, so retain UV-based depth sampling.
+    float depth = deferred_depth.SampleLevel(samplerState, input.uv, 0).x;
 
-    float2 viewportPos = input.pos.xy;
-    float4 worldPos = mul(target_pixel_to_world, float4(viewportPos, depth, 1.0));
+    // Reverse-Z clear value: no scene geometry.
+    if (depth <= 0.000001)
+        return float4(1.0, 1.0, 1.0, 1.0);
+
+    float4 worldPos =
+        mul(target_pixel_to_world, float4(input.pos.xy, depth, 1.0));
+
+    if (abs(worldPos.w) <= 0.000001)
+        discard;
+
     worldPos /= worldPos.w;
 
-    float4 posLightSpace = mul(cascade_world_to_viewport, float4(worldPos.xyz, 1.0));
-    posLightSpace /= posLightSpace.w; // Normalize homogeneous coordinates
-
-    float2 cascadeUv;
-    cascadeUv.x = posLightSpace.x * 0.5 + 0.5;
-    cascadeUv.y = 1.0 - (posLightSpace.y * 0.5 + 0.5);
-
-    // Bounds check
-    if(cascadeUv.x < 0.0 || cascadeUv.x > 1.0 || cascadeUv.y < 0.0 || cascadeUv.y > 1.0)
+    // Select the nearest cascade that covers this main-camera depth.
+    float viewDistance = -mul(world_to_camera, worldPos).z;
+    if (viewDistance < 0.0 || viewDistance > plane_distance)
         discard;
-    if (posLightSpace.z < 0.0 || posLightSpace.z > 1.0)
-        return float4(1, 1, 1, 1);
+
+    float4 lightClip =
+        mul(cascade_world_to_viewport, float4(worldPos.xyz, 1.0));
+
+    if (abs(lightClip.w) <= 0.000001)
+        discard;
+
+    float3 lightNdc = lightClip.xyz / lightClip.w;
+
+    float2 cascadeUv = float2(
+        lightNdc.x * 0.5 + 0.5,
+        1.0 - (lightNdc.y * 0.5 + 0.5)
+    );
+
+    if (any(cascadeUv < 0.0) || any(cascadeUv > 1.0))
+        discard;
+
+    // Critical: do not overwrite another cascade with white.
+    if (lightNdc.z < 0.0 || lightNdc.z > 1.0)
+        discard;
 
     float bias = 0.0001;
     float2 texelSize = GetTexelSize(cascade_shadowmap);
-
     float filterSpread = 2.5;
 
-    float randomAngle = InterleavedGradientNoise(input.pos.xy) * 6.28318530718; // 2 * PI
+    float randomAngle =
+        InterleavedGradientNoise(input.pos.xy) * 6.28318530718;
+
     float s = sin(randomAngle);
     float c = cos(randomAngle);
-
-    float2x2 rot = float2x2(c, -s, s, c);
+    float2x2 rotation = float2x2(c, -s, s, c);
 
     float shadow = 0.0;
 
-    [unroll] // Optional: unrolling can help performance for small loops
-    for(int i = 0; i < SAMPLE_NUM; ++i) {
-        float2 rotatedOffset = mul(rot, POISSON_SAMPLES[i]);
-        float2 offset = rotatedOffset * texelSize * filterSpread;
+    [unroll]
+    for (int i = 0; i < SAMPLE_NUM; ++i)
+    {
+        float2 offset =
+            mul(rotation, POISSON_SAMPLES[i])
+            * texelSize
+            * filterSpread;
 
-        float shadowDepth = cascade_shadowmap.Sample(samplerState, cascadeUv + offset).x;
-        shadow += (posLightSpace.z - bias) > shadowDepth ? 0.0 : 1.0;
+        float shadowDepth =
+            cascade_shadowmap.SampleLevel(
+                samplerState,
+                cascadeUv + offset,
+                0
+            ).x;
+
+        shadow +=
+            (lightNdc.z - bias) > shadowDepth
+            ? 0.0
+            : 1.0;
     }
-    shadow /= float(SAMPLE_NUM);
 
-    return float4(shadow.xxx, 1.0); // Return shadow value as grayscale
+    shadow /= float(SAMPLE_NUM);
+    return float4(shadow.xxx, 1.0);
 }

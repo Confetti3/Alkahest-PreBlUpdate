@@ -19,7 +19,7 @@ use alkahest_data::tfx::{
 use glam::{Mat4, Vec4, vec4};
 
 use super::{
-    Renderer,
+    Renderer, ShadowkeepSkyConstants,
     provenance::{
         DeferredShadingProvenance, DirectionalLightAbManifest, DirectionalLightVariantManifest,
         ExposureAbManifest, ExposureVariantProvenance, FinalCombineManifest,
@@ -39,7 +39,7 @@ use crate::{
             self,
             opcodes::{Opcode, OpcodeIterator},
         },
-        externs::{self, GlobalLighting, ScreenArea, TextureView, UberDepth},
+        externs::{self, GlobalLighting, ScreenArea, ShadowMask, TextureView, UberDepth},
         scope::FrameScope,
         technique::{ShaderModule, Technique},
         view::{MainView, ShadowView, View, ViewKind},
@@ -573,8 +573,7 @@ impl Renderer {
         self.clear_surface(cmd, view.lighting.light_diffuse, [0.001, 0.001, 0.001, 0.0]);
         self.clear_surface(cmd, view.lighting.light_specular, [0.0; 4]);
         self.clear_surface(cmd, view.lighting.light_specular_ibl, [0.0; 4]);
-        self.clear_surface(cmd, view.shadow_mask, [1.0; 4]);
-        self.compute_shadow_map(cmd, view);
+        self.compute_shadow_map(cmd, view, wants_global_lighting);
 
         // Arrivals fills the diffuse/specular targets with local/deferred
         // lights before the optional fullscreen global-lighting technique.
@@ -604,10 +603,7 @@ impl Renderer {
             cmd_event_span!(cmd, "shadowkeep/cubemaps");
             let _gpu_span = self.profiler.scope(cmd, "shadowkeep/cubemaps");
             view.lighting.bind_diffuse_ibl(cmd, &view.surfaces);
-            cmd.pixel_set_shader_resources(
-                3,
-                &[view.surfaces.get(view.gbuffers.depth).srv(0)],
-            );
+            cmd.pixel_set_shader_resources(3, &[view.surfaces.get(view.gbuffers.depth).srv(0)]);
             cmd.state = PipelineState::new(Some(23), Some(1), Some(3), Some(1));
             cmd.flush_states();
             self.submit_stage(
@@ -731,23 +727,9 @@ impl Renderer {
             &pipelines.deferred_shading_no_atm,
             "shadowkeep/deferred_shading_no_atm",
         );
-        {
-            cmd_event_span!(cmd, "shadowkeep/specular_ibl_composite");
-            cmd.vertex_set_shader(Some(&self.shadowkeep_ibl_composite_vs));
-            cmd.pixel_set_shader(Some(&self.shadowkeep_ibl_composite_ps));
-            cmd.pixel_set_shader_resources(
-                0,
-                &[view
-                    .surfaces
-                    .get(view.lighting.light_specular_ibl)
-                    .srv(0)],
-            );
-            cmd.state = PipelineState::new(Some(23), Some(0), Some(0), Some(0));
-            cmd.flush_states();
-            cmd.set_input_topology(PrimitiveType::TriangleStrip);
-            cmd.draw(4, 0);
-        }
-        if ConVars::get_flag("render.sky") {
+        let wants_sky = ConVars::get_flag("render.sky")
+            && debug_pipeline.is_none_or(|pipeline| pipeline.has_atmosphere());
+        if wants_sky {
             cmd_event_span!(cmd, "shadowkeep/sky");
             let sun_direction = self
                 .frame_packet
@@ -763,38 +745,40 @@ impl Renderer {
                     .get_global_channel_by_name("up_ambient_intensity")
                     .x;
             let horizon_color = Vec4::new(0.44, 0.32, 0.22, 1.0)
-                * self.externs.get_global_channel_by_name("down_ambient_color")
+                * self
+                    .externs
+                    .get_global_channel_by_name("down_ambient_color")
                 * self
                     .externs
                     .get_global_channel_by_name("down_ambient_intensity")
                     .x;
-            let sun_color = Vec4::new(1.0, 0.82, 0.56, 1.0)
+            let calculated_sun_color = Vec4::new(1.0, 0.82, 0.56, 1.0)
                 * self.externs.get_global_channel_by_name("sun_color")
                 * (self.externs.get_global_channel_by_name("sun_intensity").x * 0.1);
+            let include_sun = debug_pipeline.is_none_or(|pipeline| pipeline.has_sun());
+            let sun_color = if include_sun {
+                calculated_sun_color
+            } else {
+                Vec4::ZERO
+            };
             self.shadowkeep_sky_constants
                 .write(
                     cmd,
-                    &[
-                        target_pixel_to_world.x_axis,
-                        target_pixel_to_world.y_axis,
-                        target_pixel_to_world.z_axis,
-                        target_pixel_to_world.w_axis,
-                        self.externs.view.position,
+                    &ShadowkeepSkyConstants {
+                        target_pixel_to_world,
+                        camera_position: self.externs.view.position,
                         sun_direction,
                         zenith_color,
                         horizon_color,
                         sun_color,
-                    ],
+                    },
                 )
                 .expect("Failed to write Shadowkeep sky constants");
             self.shadowkeep_sky_constants
                 .bind(cmd, ShaderStage::Pixel, 11);
             cmd.vertex_set_shader(Some(&self.shadowkeep_sky_vs));
             cmd.pixel_set_shader(Some(&self.shadowkeep_sky_ps));
-            cmd.pixel_set_shader_resources(
-                0,
-                &[Some(&view.gbuffers.depth_proxy.lock().srv)],
-            );
+            cmd.pixel_set_shader_resources(0, &[Some(&view.gbuffers.depth_proxy.lock().srv)]);
             cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
             cmd.flush_states();
             cmd.set_input_topology(PrimitiveType::TriangleStrip);
@@ -2026,14 +2010,17 @@ impl Renderer {
 
         if self.era() == crate::renderer::RendererEra::Shadowkeep {
             let white: TextureView = self.gpu.placeholder_white.view.clone().into();
-            ext.shadow_mask.unk00 = if view.settings.sun_shadows {
-                view.shadow_mask.into()
-            } else {
-                white.clone()
+            *ext.shadow_mask = ShadowMask {
+                unk00: if view.settings.sun_shadows {
+                    view.shadow_mask.into()
+                } else {
+                    white.clone()
+                },
+                unk08: white.clone(),
+                unk10: white,
+                unk20: view.surfaces.get(view.shadow_mask).resolution_with_recip(),
+                ..Default::default()
             };
-            ext.shadow_mask.unk08 = white;
-            ext.shadow_mask.unk10 = view.gbuffers.uber_depth_half.into();
-            ext.shadow_mask.unk20 = view.surfaces.get(view.shadow_mask).resolution_with_recip();
         } else {
             ext.shadow_mask.unk00 = view.shadow_mask.into();
             ext.shadow_mask.unk10 = view.gbuffers.uber_depth_half.into();
