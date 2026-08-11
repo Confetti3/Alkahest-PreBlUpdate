@@ -698,6 +698,17 @@ fn node_search_text(node: &MapInspectionNode) -> String {
         values.push(raw.clone());
         values.push(format!("0x{raw}"));
     }
+    for source_tag in node
+        .source
+        .base_containers
+        .iter()
+        .copied()
+        .chain(node.source.scenario)
+    {
+        let raw = format!("{source_tag}");
+        values.push(raw.clone());
+        values.push(format!("0x{raw}"));
+    }
     if let Some(class) = node.class {
         values.push(format!("{class:08X}"));
         values.push(format!("0x{class:08X}"));
@@ -754,6 +765,10 @@ impl Default for MapEntityVisibility {
     fn default() -> Self {
         Self { visible: true }
     }
+}
+
+pub fn is_map_entity_visible(visibility: Option<&MapEntityVisibility>) -> bool {
+    visibility.is_none_or(|visibility| visibility.visible)
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -892,9 +907,18 @@ mod tests {
         ));
         builder.bind_world_entity(rigid, entity).unwrap();
         let inspection = builder.finalize();
+
         let change = set_node_visibility(&mut world, &inspection, table, false, true);
         assert_eq!(change.affected, 1);
         assert!(!world.get::<&MapEntityVisibility>(entity).unwrap().visible);
+    }
+    #[test]
+    fn map_inspection_missing_visibility_preserves_extraction_eligibility() {
+        assert!(is_map_entity_visible(None));
+        assert!(is_map_entity_visible(Some(&MapEntityVisibility::default())));
+        assert!(!is_map_entity_visible(Some(&MapEntityVisibility {
+            visible: false,
+        })));
     }
 
     #[test]
@@ -946,5 +970,60 @@ mod tests {
         );
         builder.reference_table(&group, table);
         builder.finalize().validate(&hecs::World::new()).unwrap();
+    }
+
+    #[test]
+    fn map_inspection_search_matches_raw_tags_and_metadata() {
+        let mut builder = MapInspectionGraphBuilder::new(TagHash(1), TagHash(2));
+        let root = builder.root();
+        let mut node = MapInspectionNode::new(
+            MapInspectionNodeKind::RigidModel,
+            MapInspectionDisposition::Rendering,
+            "Resolved Rigid",
+            ShadowkeepTableSources {
+                base_containers: BTreeSet::from([TagHash(0x80AB_CDEF)]),
+                ..Default::default()
+            },
+        );
+        node.tag = Some(TagHash(0x8080_1234));
+        node.class = Some(0x8080_72B8);
+        node.world_id = Some(42);
+        let id = builder.add_node(Some(root), node);
+        let inspection = builder.finalize();
+        for query in [
+            "80801234",
+            "0x80801234",
+            "RESOLVED",
+            "72b8",
+            "42",
+            "80abcdef",
+        ] {
+            assert_eq!(
+                inspection.search(query, MapInspectionFilter::default()),
+                vec![id]
+            );
+        }
+    }
+
+    #[test]
+    fn map_inspection_large_search_is_stable_without_recursion() {
+        let mut builder = MapInspectionGraphBuilder::new(TagHash(1), TagHash(2));
+        let root = builder.root();
+        for index in 0..10_000 {
+            builder.add_node(
+                Some(root),
+                MapInspectionNode::new(
+                    MapInspectionNodeKind::DeferredResource,
+                    MapInspectionDisposition::Deferred,
+                    format!("Deferred {index}"),
+                    ShadowkeepTableSources::default(),
+                ),
+            );
+        }
+        let inspection = builder.finalize();
+        let first = inspection.search("deferred 9999", MapInspectionFilter::default());
+        let second = inspection.search("deferred 9999", MapInspectionFilter::default());
+        assert_eq!(first, second);
+        assert_eq!(first, vec![MapInspectionNodeId(10_000)]);
     }
 }

@@ -425,7 +425,7 @@ impl Scene {
                 if !self.diagnostic_freeze || self.camera_input_while_frozen {
                     self.controller.update(&mut self.camera, ui, &r, delta_time);
 
-                    if r.dragged_by(egui::PointerButton::Middle) {
+                    if !self.diagnostic_freeze && r.dragged_by(egui::PointerButton::Middle) {
                         let delta_adjusted = r.drag_delta() / 4.0;
                         self.sun_light_angle += delta_adjusted.x;
                         self.sun_light_angle = self.sun_light_angle.rem_euclid(360.0);
@@ -901,7 +901,7 @@ impl Scene {
         };
 
         {
-            if let Some((_, (atmos, visibility))) = self
+            if let Some((_, (atmos, _visibility))) = self
                 .world
                 .query::<(&AtmosphereData, Option<&MapEntityVisibility>)>()
                 .iter()

@@ -9,7 +9,7 @@ use alkahest_render::{
 
 use crate::world::{
     object::{DynamicModelParts, ObjectChannels, PermutationConfig},
-    shadowkeep_inspection::MapEntityVisibility,
+    shadowkeep_inspection::{MapEntityVisibility, is_map_entity_visible},
     transform::Transform,
 };
 
@@ -86,7 +86,7 @@ pub fn s_extract_render_objects(world: &hecs::World, frame_packet: &mut FramePac
         .query::<(&StaticRenderObject, Option<&MapEntityVisibility>)>()
         .iter()
     {
-        if visibility.is_some_and(|visibility| !visibility.visible) {
+        if !is_map_entity_visible(visibility) {
             continue;
         }
         frame_packet.push_static_render_object(static_render_object.handle);
@@ -107,7 +107,7 @@ pub fn s_extract_render_objects(world: &hecs::World, frame_packet: &mut FramePac
         )>()
         .iter()
     {
-        if visibility.is_some_and(|visibility| !visibility.visible) {
+        if !is_map_entity_visible(visibility) {
             continue;
         }
         let transform = transform.copied().unwrap_or_default();

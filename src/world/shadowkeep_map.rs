@@ -92,6 +92,30 @@ fn bounded_offset(table_len: usize, offset: u64, required: usize) -> anyhow::Res
     );
     Ok(offset)
 }
+
+fn transform_bounds(bounds: AxisAlignedBBox, matrix: Mat4) -> AxisAlignedBBox {
+    let mut corners = [Vec3::ZERO; 8];
+    for (index, corner) in corners.iter_mut().enumerate() {
+        *corner = matrix.transform_point3(Vec3::new(
+            if index & 1 == 0 {
+                bounds.min.x
+            } else {
+                bounds.max.x
+            },
+            if index & 2 == 0 {
+                bounds.min.y
+            } else {
+                bounds.max.y
+            },
+            if index & 4 == 0 {
+                bounds.min.z
+            } else {
+                bounds.max.z
+            },
+        ));
+    }
+    AxisAlignedBBox::from_points(&corners)
+}
 fn referenced_tags_with_class(bytes: &[u8], reference: u32) -> HashSet<TagHash> {
     let manager = package_manager();
     bytes
@@ -106,7 +130,7 @@ fn referenced_tags_with_class(bytes: &[u8], reference: u32) -> HashSet<TagHash> 
         .collect()
 }
 
-fn shadowkeep_scenario_tables(map: TagHash) -> anyhow::Result<(Option<TagHash>, Vec<TagHash>)> {
+pub fn shadowkeep_scenario_tables(map: TagHash) -> anyhow::Result<(Option<TagHash>, Vec<TagHash>)> {
     let manager = package_manager();
     let package_name = &manager.package_paths[&map.pkg_id()].name;
     let scenario_name = format!("{package_name}_freeroam:scenario_client");
@@ -1315,6 +1339,12 @@ fn load_shadowkeep_rigid_entity(
         component.material_variants,
         component.techniques,
     )?;
+    let (center, radius) = model.model.bounding_sphere();
+    let radius = radius * transform.scale.abs().max_element();
+    inspection.node_mut(node).bounds = Some(AxisAlignedBBox::from_center_extents(
+        transform.translation + transform.rotation * (center * transform.scale),
+        Vec3::splat(radius),
+    ));
     progress
         .gpu_assets_requested
         .fetch_add(1, Ordering::Relaxed);
@@ -2045,6 +2075,10 @@ pub fn load_shadowkeep_map_into_world(
                             .fetch_add(1, Ordering::Relaxed);
                         let (volume_scale, volume_rotation, volume_translation) =
                             component.unkb0.to_scale_rotation_translation();
+                        inspection.node_mut(table_semantic_id).bounds = Some(transform_bounds(
+                            AxisAlignedBBox::from_center_extents(Vec3::ZERO, Vec3::ONE),
+                            component.unkb0,
+                        ));
                         let entity = world.spawn((
                             Transform::new(volume_translation, volume_rotation, volume_scale),
                             DynamicRenderObject::new(renderer.add_object(RenderObject::new(
@@ -2644,6 +2678,8 @@ pub fn load_shadowkeep_map_into_world(
                     matrix.is_finite(),
                     "sky-object transform contains non-finite values"
                 );
+                inspection.node_mut(sky_node_id).bounds =
+                    Some(transform_bounds(object.bounds, matrix));
                 let (scale, rotation, translation) = matrix.to_scale_rotation_translation();
                 let transform = Transform::new(translation, rotation, scale);
                 inspection.node_mut(sky_node_id).transform = Some(transform);

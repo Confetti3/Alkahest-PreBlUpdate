@@ -34,6 +34,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - Restored Shadowkeep freeroam scenario discovery, authored cubemap specular IBL, package-authored atmosphere lookup and sky rendering, default directional sunlight with scene-clock day/night motion, cascaded sun shadows, and a validated compatibility material-occlusion finalizer without raw post-deferred overlays. Atmosphere diagnostics now report the authored texture formats, volume dimensions, lookup parameters, table statistics, and the explicitly synthetic fixed-basis and solar fallbacks.
 - Added a viewport-primary Shadowkeep map inspector: cached package-wide bubble navigation, a table/entry outliner that preserves rendering and non-rendering resources, and authored respawn provenance with in-viewport markers when the package graph contains respawn components.
+- Added the production Shadowkeep entity workspace with stable inspection bindings, non-destructive visibility controls, actionable authored spawn metadata, and the shared cached bubble browser.
 
 ### Fixed
 
