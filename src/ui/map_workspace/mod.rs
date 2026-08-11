@@ -530,3 +530,29 @@ fn inspector(
         ui.colored_label(Color32::LIGHT_RED, error);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn workspace_starts_in_the_visible_world_mode() {
+        let state = MapWorkspaceState::default();
+
+        assert_eq!(state.outliner_mode, MapOutlinerMode::World);
+        assert!(state.show_outliner);
+        assert!(state.show_inspector);
+        assert!(state.show_spawn_markers);
+        assert!(!state.show_diagnostics);
+        assert_eq!(state.hidden_filter, MapHiddenFilter::All);
+    }
+
+    #[test]
+    fn selection_replaces_the_prior_node() {
+        let mut state = MapWorkspaceState::default();
+        state.select_node(MapInspectionNodeId(2));
+        state.select_node(MapInspectionNodeId(7));
+
+        assert_eq!(state.selected, Some(MapInspectionNodeId(7)));
+    }
+}
