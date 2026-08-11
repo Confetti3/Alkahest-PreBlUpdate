@@ -1400,11 +1400,7 @@ impl Renderer {
         let pipelines = &self.globals.pipelines;
         let reports = [
             ShadowkeepPassReport::executed("opaque_gbuffer", plan.opaque.is_ready(), None),
-            ShadowkeepPassReport::unavailable(
-                "decals",
-                plan.decals.is_ready(),
-                "no admitted Shadowkeep decal producer",
-            ),
+            ShadowkeepPassReport::executed("decals", plan.decals.is_ready(), None),
             ShadowkeepPassReport {
                 name: "local_lighting",
                 requested: plan.local_lighting.is_ready(),
