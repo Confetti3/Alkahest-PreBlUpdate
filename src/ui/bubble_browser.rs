@@ -113,19 +113,30 @@ pub fn show(
                 return Some(tag);
             }
         }
+        if let Some(tag) = state.selected {
+            return Some(tag);
+        }
     }
 
     let mut open = None;
     TableBuilder::new(ui)
         .striped(true)
-        .column(Column::remainder().at_least(180.0))
-        .column(Column::initial(150.0))
-        .column(Column::initial(56.0))
+        .column(Column::remainder().at_least(160.0))
+        .column(Column::initial(120.0))
+        .column(Column::initial(52.0))
+        .column(Column::initial(74.0))
+        .column(Column::initial(82.0))
         .column(Column::initial(96.0))
         .header(22.0, |mut header| {
             header.col(|ui| state.sort_button(ui, BubbleSort::Name, "Bubble"));
             header.col(|ui| state.sort_button(ui, BubbleSort::Package, "Package"));
             header.col(|ui| state.sort_button(ui, BubbleSort::Tables, "Tables"));
+            header.col(|ui| {
+                ui.strong("Scenario");
+            });
+            header.col(|ui| {
+                ui.strong("Status");
+            });
             header.col(|ui| state.sort_button(ui, BubbleSort::Tag, "Tag"));
         })
         .body(|body| {
@@ -140,7 +151,23 @@ pub fn show(
                     if response.double_clicked() {
                         open = Some(entry.tag);
                     }
-                    response.on_hover_text(entry.error.as_deref().unwrap_or(&entry.package_path));
+                    response
+                        .clone()
+                        .on_hover_text(entry.error.as_deref().unwrap_or(&entry.package_path));
+                    response.context_menu(|ui| {
+                        if ui.button("Copy tag").clicked() {
+                            ui.ctx().copy_text(entry.tag.to_string());
+                            ui.close();
+                        }
+                        if ui.button("Copy package").clicked() {
+                            ui.ctx().copy_text(entry.package_name.clone());
+                            ui.close();
+                        }
+                        if ui.button("Copy package path").clicked() {
+                            ui.ctx().copy_text(entry.package_path.clone());
+                            ui.close();
+                        }
+                    });
                 });
                 row.col(|ui| {
                     ui.label(&entry.package_name);
@@ -149,14 +176,53 @@ pub fn show(
                     ui.label(entry.table_count.to_string());
                 });
                 row.col(|ui| {
+                    ui.monospace(
+                        entry
+                            .scenario
+                            .map_or_else(|| "—".to_owned(), |tag| tag.to_string()),
+                    );
+                });
+                row.col(|ui| {
                     if entry.readable {
-                        ui.monospace(entry.tag.to_string());
+                        ui.colored_label(Color32::LIGHT_GREEN, "Ready");
                     } else {
-                        ui.colored_label(Color32::LIGHT_RED, format!("{} unreadable", entry.tag));
+                        ui.colored_label(Color32::LIGHT_RED, "Unreadable");
                     }
+                });
+                row.col(|ui| {
+                    ui.monospace(entry.tag.to_string());
                 });
             });
         });
+    if let Some(tag) = state.selected {
+        if let Some(entry) = catalog.entries.iter().find(|entry| entry.tag == tag) {
+            ui.separator();
+            ui.collapsing("Selected bubble details", |ui| {
+                ui.monospace(format!("Tag: {}", entry.tag));
+                ui.label(format!("Package: {}", entry.package_name));
+                ui.label(format!("Path: {}", entry.package_path));
+                ui.label(format!(
+                    "Child map: {}",
+                    entry
+                        .child_map
+                        .map_or_else(|| "—".to_owned(), |tag| tag.to_string())
+                ));
+                ui.label(format!(
+                    "Scenario: {}",
+                    entry
+                        .scenario
+                        .map_or_else(|| "—".to_owned(), |tag| tag.to_string())
+                ));
+                ui.label(format!(
+                    "{} containers · {} tables",
+                    entry.container_count, entry.table_count
+                ));
+                if let Some(error) = &entry.error {
+                    ui.colored_label(Color32::LIGHT_RED, error);
+                }
+            });
+        }
+    }
     open
 }
 
