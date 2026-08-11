@@ -572,6 +572,93 @@ impl Renderer {
         self.compute_shadow_map(cmd, view, wants_sun);
     }
 
+    /// Submits the authored local/deferred-light producer into the legacy
+    /// diffuse/specular MRT pair. The optional capture is diagnostic-only.
+    fn shadowkeep_submit_local_lighting(
+        &self,
+        cmd: &mut CommandList,
+        view: &MainView,
+        capture_provenance: bool,
+    ) -> Option<crate::feature::light::ShadowkeepLightCapture> {
+        if capture_provenance {
+            crate::feature::light::begin_shadowkeep_light_capture();
+        }
+        view.lighting
+            .bind_diffuse_specular(cmd, &view.surfaces, &view.gbuffers);
+        let diffuse = view.surfaces.get(view.lighting.light_diffuse);
+        let specular = view.surfaces.get(view.lighting.light_specular);
+        cmd.rasterizer_set_viewports(&[diffuse.viewport()]);
+        cmd.output_merger_set_render_targets(&[diffuse.rtv.as_ref(), specular.rtv.as_ref()], None);
+        cmd.state = PipelineState::new(Some(8), Some(0), Some(2), Some(2));
+        cmd.flush_states();
+        self.submit_stage(
+            cmd,
+            View::MAIN,
+            RenderStage::LightingApply,
+            FeatureRendererSubscription::all(),
+        );
+        capture_provenance.then(crate::feature::light::finish_shadowkeep_light_capture)
+    }
+
+    /// Accumulates cubemap/probe lighting after local lights. Legacy cubemap
+    /// techniques provide their own state, so discard the override afterward.
+    fn shadowkeep_submit_cubemap_ibl(&self, cmd: &mut CommandList, view: &MainView) {
+        cmd_event_span!(cmd, "shadowkeep/cubemaps");
+        let _gpu_span = self.profiler.scope(cmd, "shadowkeep/cubemaps");
+        view.lighting.bind_diffuse_ibl(cmd, &view.surfaces);
+        cmd.pixel_set_shader_resources(3, &[view.surfaces.get(view.gbuffers.depth).srv(0)]);
+        cmd.state = PipelineState::new(Some(23), Some(1), Some(3), Some(1));
+        cmd.flush_states();
+        self.submit_stage(
+            cmd,
+            View::MAIN,
+            RenderStage::Cubemaps,
+            FeatureRendererSubscription::all(),
+        );
+        cmd.state_override = PipelineState::default();
+    }
+
+    /// Runs the six-vertex global directional-light pass against the same MRT
+    /// targets as local lighting and records its diagnostic manifest only when
+    /// that manifest has been explicitly armed.
+    fn shadowkeep_submit_global_lighting(
+        &self,
+        cmd: &mut CommandList,
+        view: &MainView,
+        pipeline: &Technique,
+        enabled: bool,
+    ) -> bool {
+        let diffuse = view.surfaces.get(view.lighting.light_diffuse);
+        let specular = view.surfaces.get(view.lighting.light_specular);
+        cmd.output_merger_set_render_targets(&[diffuse.rtv.as_ref(), specular.rtv.as_ref()], None);
+        if !enabled {
+            return false;
+        }
+
+        cmd.state = PipelineState::new(Some(8), Some(0), Some(0), Some(0));
+        let draw_reached =
+            self.execute_shadowkeep_global_pipeline(cmd, pipeline, "shadowkeep/global_lighting");
+        self.emit_shadowkeep_global_lighting_manifest(pipeline, draw_reached);
+        draw_reached
+    }
+
+    /// Runs the selected legacy deferred technique against `shading_result`.
+    /// The caller retains technique selection because diagnostics report the
+    /// exact pipeline that was selected for this frame.
+    fn shadowkeep_submit_deferred_shading(
+        &self,
+        cmd: &mut CommandList,
+        view: &MainView,
+        pipeline: &Technique,
+        name: &str,
+    ) -> bool {
+        self.clear_surface(cmd, view.shading_result, [0.0, 0.0, 0.0, 1.0]);
+        self.bind_surfaces(cmd, &[view.shading_result], None);
+        cmd.output_merger_set_depth_stencil_state(None, 0);
+        cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
+        self.execute_shadowkeep_global_pipeline(cmd, pipeline, name)
+    }
+
     fn shadowkeep_pass_plan(&self, debug_pipeline: Option<DebugPipeline>) -> ShadowkeepPassPlan {
         let pipelines = &self.globals.pipelines;
         let settings = self.settings();
@@ -734,41 +821,9 @@ impl Renderer {
         // lights before the optional fullscreen global-lighting technique.
         // Keep that producer in the Shadowkeep path instead of presenting a
         // zero light buffer to deferred shading.
-        if capture_provenance {
-            crate::feature::light::begin_shadowkeep_light_capture();
-        }
-        view.lighting
-            .bind_diffuse_specular(cmd, &view.surfaces, &view.gbuffers);
-        let diffuse = view.surfaces.get(view.lighting.light_diffuse);
-        let specular = view.surfaces.get(view.lighting.light_specular);
-        cmd.rasterizer_set_viewports(&[diffuse.viewport()]);
-        cmd.output_merger_set_render_targets(&[diffuse.rtv.as_ref(), specular.rtv.as_ref()], None);
-        cmd.state = PipelineState::new(Some(8), Some(0), Some(2), Some(2));
-        cmd.flush_states();
-        self.submit_stage(
-            cmd,
-            View::MAIN,
-            RenderStage::LightingApply,
-            FeatureRendererSubscription::all(),
-        );
+        let light_capture = self.shadowkeep_submit_local_lighting(cmd, view, capture_provenance);
         let lighting_apply_stage_submitted = true;
-        let light_capture =
-            capture_provenance.then(crate::feature::light::finish_shadowkeep_light_capture);
-        {
-            cmd_event_span!(cmd, "shadowkeep/cubemaps");
-            let _gpu_span = self.profiler.scope(cmd, "shadowkeep/cubemaps");
-            view.lighting.bind_diffuse_ibl(cmd, &view.surfaces);
-            cmd.pixel_set_shader_resources(3, &[view.surfaces.get(view.gbuffers.depth).srv(0)]);
-            cmd.state = PipelineState::new(Some(23), Some(1), Some(3), Some(1));
-            cmd.flush_states();
-            self.submit_stage(
-                cmd,
-                View::MAIN,
-                RenderStage::Cubemaps,
-                FeatureRendererSubscription::all(),
-            );
-            cmd.state_override = PipelineState::default();
-        }
+        self.shadowkeep_submit_cubemap_ibl(cmd, view);
         if capture_directional_light_ab {
             self.capture_shadowkeep_directional_light_ab(cmd, view, &pipelines.global_lighting);
         }
@@ -802,22 +857,12 @@ impl Renderer {
             );
         }
 
-        let diffuse = view.surfaces.get(view.lighting.light_diffuse);
-        let specular = view.surfaces.get(view.lighting.light_specular);
-        cmd.output_merger_set_render_targets(&[diffuse.rtv.as_ref(), specular.rtv.as_ref()], None);
-        let mut global_lighting_draw_6_reached = false;
-        if wants_global_lighting {
-            cmd.state = PipelineState::new(Some(8), Some(0), Some(0), Some(0));
-            global_lighting_draw_6_reached = self.execute_shadowkeep_global_pipeline(
-                cmd,
-                &pipelines.global_lighting,
-                "shadowkeep/global_lighting",
-            );
-            self.emit_shadowkeep_global_lighting_manifest(
-                &pipelines.global_lighting,
-                global_lighting_draw_6_reached,
-            );
-        }
+        let global_lighting_draw_6_reached = self.shadowkeep_submit_global_lighting(
+            cmd,
+            view,
+            &pipelines.global_lighting,
+            wants_global_lighting,
+        );
         if capture_global_lighting_ab {
             global_lighting_ab_after = self.capture_shadowkeep_global_lighting_surfaces(
                 cmd,
@@ -915,10 +960,6 @@ impl Renderer {
 
         self.capture_shadowkeep_exposure_ab(cmd, view);
 
-        self.clear_surface(cmd, view.shading_result, [0.0, 0.0, 0.0, 1.0]);
-        self.bind_surfaces(cmd, &[view.shading_result], None);
-        cmd.output_merger_set_depth_stencil_state(None, 0);
-        cmd.state = PipelineState::new(Some(0), Some(0), Some(0), Some(0));
         let (deferred_pipeline, deferred_name) = if atmosphere_lookup_generated {
             (&pipelines.deferred_shading, "shadowkeep/deferred_shading")
         } else {
@@ -928,7 +969,7 @@ impl Renderer {
             )
         };
         let deferred_draw_reached =
-            self.execute_shadowkeep_global_pipeline(cmd, deferred_pipeline, deferred_name);
+            self.shadowkeep_submit_deferred_shading(cmd, view, deferred_pipeline, deferred_name);
         if wants_sky {
             if atmosphere_lookup_generated {
                 cmd_event_span!(cmd, "shadowkeep/authentic_atmosphere");
