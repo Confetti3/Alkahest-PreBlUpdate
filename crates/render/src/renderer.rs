@@ -255,6 +255,7 @@ impl Renderer {
         ConVars::register("render.shadowkeep_environment_census", false);
         ConVars::register("render.shadowkeep_sky_diagnostics", false);
         ConVars::register("render.shadowkeep_sky_objects_ab", false);
+        ConVars::register("render.shadowkeep_feature_matrix", false);
         ConVars::register("render.shadowkeep_sky_objects_distance_sort", false);
         ConVars::register("render.global_lighting", era == RendererEra::Shadowkeep);
         ConVars::register("render.shadowkeep_buffer_provenance", false);

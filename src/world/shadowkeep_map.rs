@@ -32,7 +32,7 @@ use alkahest_data::{
 use anyhow::Context;
 use glam::{Mat4, Vec3, Vec4, Vec4Swizzles};
 use parking_lot::Mutex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tiger_parse::{PackageManagerExt, TigerReadable};
 use tiger_pkg::{TagHash, package_manager};
 
@@ -934,6 +934,74 @@ pub struct MapLoadReport {
     pub diagnostics: Vec<MapLoadDiagnostic>,
     pub cancelled: bool,
     pub elapsed: Duration,
+}
+
+/// Opt-in corpus evidence collected from completed map normalizations.
+///
+/// This is intentionally CPU-only and written only when the explicit matrix
+/// diagnostic is armed; ordinary launches must not create artifacts.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct ShadowkeepProductionFeatureMatrix {
+    schema: String,
+    maps: BTreeMap<String, ShadowkeepProductionFeatureMap>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ShadowkeepProductionFeatureMap {
+    table_resource_classes: BTreeMap<String, usize>,
+    entity_resource_classes: BTreeMap<String, usize>,
+    loaded_entity_resource_classes: BTreeMap<String, usize>,
+    deferred_entity_resource_classes: BTreeMap<String, usize>,
+    feature_renderers: BTreeMap<String, usize>,
+}
+
+fn class_counts(counts: &BTreeMap<u32, usize>) -> BTreeMap<String, usize> {
+    counts
+        .iter()
+        .map(|(class, count)| (format!("{class:08X}"), *count))
+        .collect()
+}
+
+fn write_shadowkeep_production_feature_matrix(report: &MapLoadReport) -> anyhow::Result<()> {
+    if !ConVars::get_flag("render.shadowkeep_feature_matrix") {
+        return Ok(());
+    }
+
+    let path = std::path::Path::new("artifacts/shadowkeep-production-feature-matrix.json");
+    let mut matrix: ShadowkeepProductionFeatureMatrix = fs::read(path)
+        .ok()
+        .map(|bytes| serde_json::from_slice(&bytes))
+        .transpose()?
+        .unwrap_or_default();
+    matrix.schema = "alkahest-shadowkeep-production-feature-matrix/v1".to_owned();
+    matrix.maps.insert(
+        report.map.to_string(),
+        ShadowkeepProductionFeatureMap {
+            table_resource_classes: class_counts(&report.resource_class_counts),
+            entity_resource_classes: class_counts(&report.entity_resource_class_counts),
+            loaded_entity_resource_classes: class_counts(&report.loaded_entity_resource_classes),
+            deferred_entity_resource_classes: class_counts(
+                &report.deferred_entity_resource_classes,
+            ),
+            feature_renderers: BTreeMap::from([
+                (
+                    "ChunkedInstanceObjects".to_owned(),
+                    report.static_render_objects,
+                ),
+                ("TerrainPatch".to_owned(), report.terrain_render_objects),
+                ("DeferredLights".to_owned(), report.light_render_objects),
+                ("Cubemaps".to_owned(), report.cubemap_render_objects),
+                (
+                    "SkyTransparent".to_owned(),
+                    report.sky_object_render_objects,
+                ),
+                ("RigidObject".to_owned(), report.rigid_render_objects),
+            ]),
+        },
+    );
+    fs::create_dir_all("artifacts")?;
+    fs::write(path, serde_json::to_vec_pretty(&matrix)?)?;
+    Ok(())
 }
 
 impl MapLoadReport {
@@ -1985,6 +2053,9 @@ pub fn load_shadowkeep_map_into_world(
         "completed Shadowkeep map normalization"
     );
     report.elapsed = started.elapsed();
+    if let Err(error) = write_shadowkeep_production_feature_matrix(&report) {
+        tracing::error!(error = ?error, "failed to write Shadowkeep production feature matrix");
+    }
     Ok((world, report))
 }
 
