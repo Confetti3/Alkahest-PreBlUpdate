@@ -219,6 +219,56 @@
         "RigidObject": 675,
         "SkyTransparent": 0,
         "TerrainPatch": 25
+      },
+      "feature_families": {
+        "atmosphere": {
+          "present_in_map": true,
+          "loader_implemented": true,
+          "render_pass_implemented": true,
+          "production_status": "Ready"
+        },
+        "cubemap_ibl": {
+          "present_in_map": true,
+          "loader_implemented": true,
+          "render_pass_implemented": true,
+          "production_status": "Ready"
+        },
+        "local_lights": {
+          "present_in_map": true,
+          "loader_implemented": true,
+          "render_pass_implemented": true,
+          "production_status": "Ready"
+        },
+        "rigid_models": {
+          "present_in_map": true,
+          "loader_implemented": true,
+          "render_pass_implemented": true,
+          "production_status": "Ready"
+        },
+        "shadowing_lights": {
+          "present_in_map": true,
+          "loader_implemented": true,
+          "render_pass_implemented": true,
+          "production_status": "Ready"
+        },
+        "sky_objects": {
+          "present_in_map": true,
+          "loader_implemented": true,
+          "render_pass_implemented": false,
+          "production_status": "Deferred"
+        },
+        "static_geometry": {
+          "present_in_map": true,
+          "loader_implemented": true,
+          "render_pass_implemented": true,
+          "production_status": "Ready"
+        },
+        "terrain": {
+          "present_in_map": true,
+          "loader_implemented": true,
+          "render_pass_implemented": true,
+          "production_status": "Ready"
+        }
       }
     }
   }
