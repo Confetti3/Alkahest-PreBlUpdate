@@ -706,6 +706,15 @@ impl Scene {
             {
                 let _ = ConVars::set("render.shadowkeep_sky_objects", sky_objects.into());
             }
+
+            let mut feature_matrix = ConVars::get_flag("render.shadowkeep_feature_matrix");
+            if ui
+                .checkbox(&mut feature_matrix, "Collect Feature Matrix")
+                .on_hover_text("Diagnostic only: records normalized map resource counts to a small JSON manifest.")
+                .changed()
+            {
+                let _ = ConVars::set("render.shadowkeep_feature_matrix", feature_matrix.into());
+            }
         }
 
         ui.checkbox(&mut view_settings.vertex_ao, "Vertex AO")
