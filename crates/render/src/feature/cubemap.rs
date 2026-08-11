@@ -1,6 +1,6 @@
-use std::{
-    sync::Arc,
-    sync::atomic::{AtomicBool, Ordering},
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 use alkahest_data::tfx::{

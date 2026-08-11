@@ -36,6 +36,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - Added a viewport-primary Shadowkeep map inspector: cached package-wide bubble navigation, a table/entry outliner that preserves rendering and non-rendering resources, and authored respawn provenance with in-viewport markers when the package graph contains respawn components.
 - Added the production Shadowkeep entity workspace with stable inspection bindings, non-destructive visibility controls, actionable authored spawn metadata, and the shared cached bubble browser.
 
+### Changed
+
+- Shortened Shadowkeep startup by deferring freeroam scenario traversal until a bubble opens, added persistent multi-select map filters and collapsible source/world hierarchies, reduced default helper noise, and correlated squad-spawn rules to real map placements through exact same-scenario WorldID references.
+
 ### Fixed
 
 - Restored Shadowkeep entity-only rigid-model entries that were skipped when their unrelated table-local resource pointer was empty, recovering omitted map geometry.

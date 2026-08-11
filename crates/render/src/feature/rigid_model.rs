@@ -1,18 +1,22 @@
 use std::{any::Any, sync::Arc};
 
 use ahash::AHashMap;
-use alkahest_core::convar::ConVars;
-use alkahest_core::job::{SCHEDULER, potassium::JobHandle};
-use alkahest_data::shadowkeep::{
-    SShadowkeepDynamicMaterialVariant, SShadowkeepDynamicModel, lod_category_from_legacy,
-    primitive_type_from_legacy,
+use alkahest_core::{
+    convar::ConVars,
+    job::{SCHEDULER, potassium::JobHandle},
 };
-use alkahest_data::tfx::{
-    RenderStage, ShaderStage, TfxScopeBits,
-    common::AxisAlignedBBox,
-    features::dynamic::{
-        RenderStageSubscription, SDynamicMesh, SDynamicMeshMaterialVariants, SDynamicMeshPart,
-        SDynamicModel,
+use alkahest_data::{
+    shadowkeep::{
+        SShadowkeepDynamicMaterialVariant, SShadowkeepDynamicModel, lod_category_from_legacy,
+        primitive_type_from_legacy,
+    },
+    tfx::{
+        RenderStage, ShaderStage, TfxScopeBits,
+        common::AxisAlignedBBox,
+        features::dynamic::{
+            RenderStageSubscription, SDynamicMesh, SDynamicMeshMaterialVariants, SDynamicMeshPart,
+            SDynamicModel,
+        },
     },
 };
 use anyhow::Context;
@@ -176,9 +180,8 @@ impl DynamicModel {
                     part_ranges[RenderStage::COUNT] = mesh.part_range_per_render_stage[23];
                     let mut layouts = [0u8; RenderStage::COUNT];
                     for (index, layout) in mesh.input_layout_per_render_stage.iter().enumerate() {
-                        layouts[index] = u8::try_from(*layout).context(
-                            "Shadowkeep dynamic input-layout index exceeds u8",
-                        )?;
+                        layouts[index] = u8::try_from(*layout)
+                            .context("Shadowkeep dynamic input-layout index exceeds u8")?;
                     }
                     Ok(SDynamicMesh {
                         vertex0_buffer: mesh.vertex0_buffer,
@@ -192,29 +195,37 @@ impl DynamicModel {
                         color_buffer: TagHash::NONE,
                         skinning_buffer: TagHash::NONE,
                         unk1c: mesh.unk14,
-                        parts: mesh.parts.iter().map(|part| {
-                            Ok(SDynamicMeshPart {
-                                technique: part.technique,
-                                variant_shader_index: part.variant_shader_index,
-                                primitive_type: primitive_type_from_legacy(part.primitive_type).context(
-                                    "Shadowkeep dynamic part has an unsupported primitive topology",
-                                )?,
-                                unk7: part.unk7,
-                                index_start: part.index_start,
-                                index_count: part.index_count,
-                                unk10: part.unk10,
-                                external_identifier: part.external_identifier,
-                                unk16: part.unk16,
-                                flags: 0,
-                                gear_dye_change_color_index: 0,
-                                lod_category: lod_category_from_legacy(part.lod_category).context(
-                                    "Shadowkeep dynamic part has an unsupported LOD category",
-                                )?,
-                                unk1e: 0,
-                                lod_run: 0,
-                                unk20: part.unk1c,
+                        parts: mesh
+                            .parts
+                            .iter()
+                            .map(|part| {
+                                Ok(SDynamicMeshPart {
+                                    technique: part.technique,
+                                    variant_shader_index: part.variant_shader_index,
+                                    primitive_type: primitive_type_from_legacy(part.primitive_type)
+                                        .context(
+                                            "Shadowkeep dynamic part has an unsupported primitive \
+                                             topology",
+                                        )?,
+                                    unk7: part.unk7,
+                                    index_start: part.index_start,
+                                    index_count: part.index_count,
+                                    unk10: part.unk10,
+                                    external_identifier: part.external_identifier,
+                                    unk16: part.unk16,
+                                    flags: 0,
+                                    gear_dye_change_color_index: 0,
+                                    lod_category: lod_category_from_legacy(part.lod_category)
+                                        .context(
+                                            "Shadowkeep dynamic part has an unsupported LOD \
+                                             category",
+                                        )?,
+                                    unk1e: 0,
+                                    lod_run: 0,
+                                    unk20: part.unk1c,
+                                })
                             })
-                        }).collect::<anyhow::Result<_>>()?,
+                            .collect::<anyhow::Result<_>>()?,
                         part_range_per_render_stage: part_ranges,
                         input_layout_per_render_stage: layouts,
                         _pad7a: [0; 3],

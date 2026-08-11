@@ -10,9 +10,8 @@ use alkahest_data::tfx::{
 use anyhow::Context;
 use glam::Vec4;
 use itertools::Itertools;
-use tiger_pkg::{TagHash, package_manager};
-
 use parking_lot::Mutex;
+use tiger_pkg::{TagHash, package_manager};
 
 use super::expression_vm::{self, interpreter::InterpreterState};
 use crate::{

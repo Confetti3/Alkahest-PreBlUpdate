@@ -20,10 +20,10 @@ use alkahest_data::{
     map::{ComponentData, SMapNodeTable, SRespawnPointsComponent},
     shadowkeep::{
         SShadowkeepBubbleDefinition, SShadowkeepBubbleParent, SShadowkeepCubemapPlacement,
-        SShadowkeepDynamicModel, SShadowkeepEntity, SShadowkeepLightCollection,
-        SShadowkeepMapDataTable, SShadowkeepOcclusionBounds, SShadowkeepRigidModelComponent,
-        SShadowkeepShadowingLight, SShadowkeepSkyObjectCollection, SShadowkeepStaticPlacement,
-        SShadowkeepTerrainPlacement, SShadowkeepTextureHeader,
+        SShadowkeepDynamicModel, SShadowkeepEntity, SShadowkeepEntityResource,
+        SShadowkeepLightCollection, SShadowkeepMapDataTable, SShadowkeepOcclusionBounds,
+        SShadowkeepRigidModelComponent, SShadowkeepShadowingLight, SShadowkeepSkyObjectCollection,
+        SShadowkeepStaticPlacement, SShadowkeepTerrainPlacement, SShadowkeepTextureHeader,
     },
     tfx::{
         RenderStage, TfxFeatureRenderer, atmosphere::SShadowkeepAtmospherePlacement,
@@ -77,6 +77,10 @@ const ENTITY_RESOURCE_EXAMPLE_LIMIT: usize = 5;
 /// 0x8080_8CB5, but map component dispatch uses its 0x8080_8CB3 wrapper.
 const RESPAWN_POINTS_COMPONENT: u32 = 0x8080_8CB3;
 const MAP_NODE_TABLE_COMPONENT: u32 = 0x8080_92D8;
+const ACTIVITY_INTERMEDIATE_RESOURCE: u32 = 0x8080_9B14;
+const ACTIVITY_ENTITY_DEFINITION: u32 = 0x8080_9C36;
+const SQUAD_SPAWN_RULE_RESOURCE: u32 = 0x8080_94CF;
+const SQUAD_SPAWN_RULE_DEFINITION: u32 = 0x8080_94D0;
 pub use crate::world::shadowkeep_inspection::{
     MapInspectionDisposition, ShadowkeepMapInspection, ShadowkeepTableSources,
 };
@@ -116,6 +120,27 @@ fn transform_bounds(bounds: AxisAlignedBBox, matrix: Mat4) -> AxisAlignedBBox {
     }
     AxisAlignedBBox::from_points(&corners)
 }
+
+fn shadow_frustum_bounds(
+    transform: Transform,
+    half_fov: f32,
+    near_plane: f32,
+    far_plane: f32,
+) -> AxisAlignedBBox {
+    let near_extent = near_plane * half_fov.tan();
+    let far_extent = far_plane * half_fov.tan();
+    let local_to_world = transform.local_to_world();
+    let mut corners = [Vec3::ZERO; 8];
+    for (index, corner) in corners.iter_mut().enumerate() {
+        let far = index & 1 != 0;
+        let distance = if far { far_plane } else { near_plane };
+        let extent = if far { far_extent } else { near_extent };
+        let y = if index & 2 == 0 { -extent } else { extent };
+        let z = if index & 4 == 0 { -extent } else { extent };
+        *corner = local_to_world.transform_point3(Vec3::new(distance, y, z));
+    }
+    AxisAlignedBBox::from_points(&corners)
+}
 fn referenced_tags_with_class(bytes: &[u8], reference: u32) -> HashSet<TagHash> {
     let manager = package_manager();
     bytes
@@ -130,7 +155,20 @@ fn referenced_tags_with_class(bytes: &[u8], reference: u32) -> HashSet<TagHash> 
         .collect()
 }
 
-pub fn shadowkeep_scenario_tables(map: TagHash) -> anyhow::Result<(Option<TagHash>, Vec<TagHash>)> {
+#[derive(Default)]
+struct ShadowkeepScenarioEvidence {
+    scenario: Option<TagHash>,
+    tables: Vec<TagHash>,
+    entity_definitions: Vec<TagHash>,
+}
+
+#[derive(Clone, Copy)]
+struct ActivitySpawnReference {
+    definition: TagHash,
+    offset: u64,
+}
+
+fn shadowkeep_scenario_evidence(map: TagHash) -> anyhow::Result<ShadowkeepScenarioEvidence> {
     let manager = package_manager();
     let package_name = &manager.package_paths[&map.pkg_id()].name;
     let scenario_name = format!("{package_name}_freeroam:scenario_client");
@@ -139,7 +177,7 @@ pub fn shadowkeep_scenario_tables(map: TagHash) -> anyhow::Result<(Option<TagHas
         .into_iter()
         .find_map(|(name, tag)| (name == scenario_name).then_some(tag))
     else {
-        return Ok((None, Vec::new()));
+        return Ok(ShadowkeepScenarioEvidence::default());
     };
 
     let phase_records = referenced_tags_with_class(&manager.read_tag(scenario)?, 0x8080_925B);
@@ -165,15 +203,85 @@ pub fn shadowkeep_scenario_tables(map: TagHash) -> anyhow::Result<(Option<TagHas
         ));
     }
     let mut tables = HashSet::new();
+    let mut intermediate_resources = HashSet::new();
     for tag in wrappers {
-        tables.extend(referenced_tags_with_class(
+        let bytes = manager.read_tag(tag)?;
+        tables.extend(referenced_tags_with_class(&bytes, 0x8080_99D6));
+        intermediate_resources.extend(referenced_tags_with_class(
+            &bytes,
+            ACTIVITY_INTERMEDIATE_RESOURCE,
+        ));
+    }
+    let mut entity_definitions = HashSet::new();
+    for tag in intermediate_resources {
+        entity_definitions.extend(referenced_tags_with_class(
             &manager.read_tag(tag)?,
-            0x8080_99D6,
+            ACTIVITY_ENTITY_DEFINITION,
         ));
     }
     let mut tables = tables.into_iter().collect::<Vec<_>>();
     tables.sort_unstable();
-    Ok((Some(scenario), tables))
+    let mut entity_definitions = entity_definitions.into_iter().collect::<Vec<_>>();
+    entity_definitions.sort_unstable();
+    Ok(ShadowkeepScenarioEvidence {
+        scenario: Some(scenario),
+        tables,
+        entity_definitions,
+    })
+}
+
+pub fn shadowkeep_scenario_tables(map: TagHash) -> anyhow::Result<(Option<TagHash>, Vec<TagHash>)> {
+    let evidence = shadowkeep_scenario_evidence(map)?;
+    Ok((evidence.scenario, evidence.tables))
+}
+
+fn serialized_u64_fields(bytes: &[u8]) -> impl Iterator<Item = (usize, u64)> + '_ {
+    (0..bytes.len().saturating_sub(7)).step_by(4).map(|offset| {
+        (
+            offset,
+            u64::from_le_bytes(
+                bytes[offset..offset + 8]
+                    .try_into()
+                    .expect("bounded eight-byte activity field"),
+            ),
+        )
+    })
+}
+
+fn activity_spawn_references(
+    definitions: &[TagHash],
+) -> (HashMap<u64, Vec<ActivitySpawnReference>>, usize) {
+    let manager = package_manager();
+    let mut references = HashMap::<u64, Vec<ActivitySpawnReference>>::new();
+    let mut seen = HashSet::new();
+    let mut rule_count = 0;
+    for &definition in definitions {
+        let Ok(resource) = manager.read_tag_struct::<SShadowkeepEntityResource>(definition) else {
+            continue;
+        };
+        if resource.resource.resource_type != SQUAD_SPAWN_RULE_RESOURCE
+            || resource.definition.resource_type != SQUAD_SPAWN_RULE_DEFINITION
+        {
+            continue;
+        }
+        let Ok(bytes) = manager.read_tag(definition) else {
+            continue;
+        };
+        rule_count += 1;
+        for (offset, world_id) in serialized_u64_fields(&bytes) {
+            if matches!(world_id, 0 | u64::MAX) || !seen.insert((world_id, definition)) {
+                continue;
+            }
+            references
+                .entry(world_id)
+                .or_default()
+                .push(ActivitySpawnReference {
+                    definition,
+                    offset: offset as u64,
+                });
+        }
+    }
+    (references, rule_count)
 }
 
 /// Thread-safe map-load counters, updated by both decoding and asset setup.
@@ -253,13 +361,6 @@ pub fn initialize_shadowkeep_bubble_catalog(
                     let mut tables = BTreeSet::new();
                     for container in &definition.map_resources {
                         tables.extend(container.data_tables.iter().copied());
-                    }
-                    match shadowkeep_scenario_tables(tag) {
-                        Ok((scenario, scenario_tables)) => {
-                            entry.scenario = scenario;
-                            tables.extend(scenario_tables);
-                        }
-                        Err(error) => entry.error = Some(format!("freeroam scenario: {error:#}")),
                     }
                     entry.table_count = tables.len();
                     entry.readable = entry.error.is_none();
@@ -1026,6 +1127,8 @@ pub struct MapLoadReport {
     pub containers: usize,
     pub scenario: Option<TagHash>,
     pub activity_tables: usize,
+    pub activity_spawn_rules: usize,
+    pub activity_correlated_spawns: usize,
     pub tables: usize,
     pub table_sources: BTreeMap<TagHash, ShadowkeepTableSources>,
     pub entries: usize,
@@ -1503,14 +1606,18 @@ pub fn load_shadowkeep_map_into_world(
                 .insert(container_tag);
         }
     }
-    match shadowkeep_scenario_tables(tag) {
-        Ok((scenario, tables)) => {
-            report.scenario = scenario;
-            report.activity_tables = tables.len();
-            for table in tables {
+    let mut spawn_references_by_world_id = HashMap::new();
+    match shadowkeep_scenario_evidence(tag) {
+        Ok(evidence) => {
+            report.scenario = evidence.scenario;
+            report.activity_tables = evidence.tables.len();
+            let (references, rule_count) = activity_spawn_references(&evidence.entity_definitions);
+            spawn_references_by_world_id = references;
+            report.activity_spawn_rules = rule_count;
+            for table in evidence.tables {
                 let sources = table_sources.entry(table).or_default();
                 sources.referenced_by_freeroam_scenario = true;
-                sources.scenario = scenario;
+                sources.scenario = evidence.scenario;
             }
         }
         Err(error) => report.diagnostic(
@@ -1653,6 +1760,34 @@ pub fn load_shadowkeep_map_into_world(
             entry_node.world_id = Some(entry.world_id);
             entry_node.transform = Some(transform);
             let entry_id = inspection.add_node(Some(table_id), entry_node);
+            if table_sources.is_scenario()
+                && let Some(references) = spawn_references_by_world_id.get(&entry.world_id)
+                && let Some(reference) = references.first()
+            {
+                let mut spawn_node = MapInspectionNode::new(
+                    MapInspectionNodeKind::SpawnPoint,
+                    MapInspectionDisposition::NonRendering,
+                    format!(
+                        "Squad spawn placement · {} activity rule{}",
+                        references.len(),
+                        if references.len() == 1 { "" } else { "s" }
+                    ),
+                    table_sources.clone(),
+                );
+                spawn_node.tag = (!entry.entity.is_none()).then_some(entry.entity);
+                spawn_node.class = Some(SQUAD_SPAWN_RULE_RESOURCE);
+                spawn_node.entry_index = Some(entry_index);
+                spawn_node.world_id = Some(entry.world_id);
+                spawn_node.transform = Some(transform);
+                spawn_node.activity_definition = Some(reference.definition);
+                spawn_node.activity_reference_offset = Some(reference.offset);
+                spawn_node.activity_reference_count = Some(references.len());
+                let node_id = inspection.add_node(Some(entry_id), spawn_node);
+                let entity = world.spawn((transform, MapInspectionBinding { node: node_id }));
+                inspection.bind_world_entity(node_id, entity)?;
+                report.spawn_points.push(transform.translation);
+                report.activity_correlated_spawns += 1;
+            }
             let table_semantic_id = entry.data_resource.is_valid.then(|| {
                 let mut table_resource_node = MapInspectionNode::new(
                     MapInspectionNodeKind::TableResource,
@@ -1776,6 +1911,7 @@ pub fn load_shadowkeep_map_into_world(
                                 node.tag = Some(resource_tag);
                                 node.class = Some(class);
                                 node.definition_offset = Some(resource.definition.offset);
+                                node.transform = Some(transform);
                                 inspection.add_node(Some(resource_id), node)
                             });
 
@@ -2063,40 +2199,44 @@ pub fn load_shadowkeep_map_into_world(
                 }
                 CUBEMAP_VOLUME => {
                     report.cubemap_volumes += 1;
-                    let result = (|| -> anyhow::Result<()> {
-                        bounded_offset(table_bytes.len(), entry.data_resource.offset, 0x1A4)?;
-                        let mut cursor = Cursor::new(&table_bytes[..]);
-                        cursor.seek(SeekFrom::Start(entry.data_resource.offset))?;
-                        let placement = SShadowkeepCubemapPlacement::read_ds(&mut cursor)?;
-                        let component = placement.normalized();
-                        let cubemap = CubemapRenderer::load(&renderer.gpu, &component)?;
-                        progress
-                            .gpu_assets_requested
-                            .fetch_add(1, Ordering::Relaxed);
-                        let (volume_scale, volume_rotation, volume_translation) =
-                            component.unkb0.to_scale_rotation_translation();
-                        inspection.node_mut(table_semantic_id).bounds = Some(transform_bounds(
-                            AxisAlignedBBox::from_center_extents(Vec3::ZERO, Vec3::ONE),
-                            component.unkb0,
-                        ));
-                        let entity = world.spawn((
-                            Transform::new(volume_translation, volume_rotation, volume_scale),
-                            DynamicRenderObject::new(renderer.add_object(RenderObject::new(
-                                TfxFeatureRenderer::Cubemaps,
-                                Box::new(cubemap),
-                            ))),
-                            MapInspectionBinding {
-                                node: table_semantic_id,
-                            },
-                            MapEntityVisibility::default(),
-                        ));
-                        inspection.bind_world_entity(table_semantic_id, entity)?;
-                        progress
-                            .visual_resources_loaded
-                            .fetch_add(1, Ordering::Relaxed);
-                        report.cubemap_render_objects += 1;
-                        Ok(())
-                    })();
+                    let result =
+                        (|| -> anyhow::Result<()> {
+                            bounded_offset(table_bytes.len(), entry.data_resource.offset, 0x1A4)?;
+                            let mut cursor = Cursor::new(&table_bytes[..]);
+                            cursor.seek(SeekFrom::Start(entry.data_resource.offset))?;
+                            let placement = SShadowkeepCubemapPlacement::read_ds(&mut cursor)?;
+                            let component = placement.normalized();
+                            let (volume_scale, volume_rotation, volume_translation) =
+                                component.unkb0.to_scale_rotation_translation();
+                            inspection.node_mut(table_semantic_id).bounds = Some(transform_bounds(
+                                AxisAlignedBBox::from_center_extents(Vec3::ZERO, Vec3::ONE),
+                                component.unkb0,
+                            ));
+                            inspection.node_mut(table_semantic_id).transform = Some(
+                                Transform::new(volume_translation, volume_rotation, volume_scale),
+                            );
+                            let cubemap = CubemapRenderer::load(&renderer.gpu, &component)?;
+                            progress
+                                .gpu_assets_requested
+                                .fetch_add(1, Ordering::Relaxed);
+                            let entity = world.spawn((
+                                Transform::new(volume_translation, volume_rotation, volume_scale),
+                                DynamicRenderObject::new(renderer.add_object(RenderObject::new(
+                                    TfxFeatureRenderer::Cubemaps,
+                                    Box::new(cubemap),
+                                ))),
+                                MapInspectionBinding {
+                                    node: table_semantic_id,
+                                },
+                                MapEntityVisibility::default(),
+                            ));
+                            inspection.bind_world_entity(table_semantic_id, entity)?;
+                            progress
+                                .visual_resources_loaded
+                                .fetch_add(1, Ordering::Relaxed);
+                            report.cubemap_render_objects += 1;
+                            Ok(())
+                        })();
                     if let Err(error) = result {
                         report.skipped_resources += 1;
                         let diagnostic = format!("cubemap volume: {error:#}");
@@ -2148,7 +2288,7 @@ pub fn load_shadowkeep_map_into_world(
                                     translation: glam::Vec4::ZERO,
                                 },
                             );
-                            let _bounds = bounds
+                            let local_bounds = bounds
                                 .as_ref()
                                 .and_then(|value| value.bounds.get(index))
                                 .map(|value| value.bb);
@@ -2185,6 +2325,9 @@ pub fn load_shadowkeep_map_into_world(
                             );
                             light_node.element_index = Some(index);
                             light_node.transform = Some(world_transform);
+                            light_node.bounds = local_bounds.map(|bounds| {
+                                transform_bounds(bounds, world_transform.local_to_world())
+                            });
                             let light_node_id =
                                 inspection.add_node(Some(table_semantic_id), light_node);
                             let entity = world.spawn((
@@ -2246,6 +2389,13 @@ pub fn load_shadowkeep_map_into_world(
                             "invalid local shadow far plane {}",
                             light.far_plane
                         );
+                        inspection.node_mut(table_semantic_id).bounds =
+                            Some(shadow_frustum_bounds(
+                                light_transform,
+                                light.half_fov,
+                                0.5,
+                                light.far_plane,
+                            ));
                         let shadowmap =
                             ShadowMap::create(light_transform, fov_degrees, 0.5, light.far_plane);
                         let mut shadow_view = View::new_shadow(
@@ -2343,6 +2493,25 @@ pub fn load_shadowkeep_map_into_world(
                             .gpu_assets_requested
                             .fetch_add(1, Ordering::Relaxed);
                         inspection.node_mut(table_semantic_id).bounds = Some(feature_bounds);
+                        for instance in feature.inspection_instances() {
+                            let (scale, rotation, translation) =
+                                instance.local_to_world.to_scale_rotation_translation();
+                            let mut node = MapInspectionNode::new(
+                                MapInspectionNodeKind::StaticInstance,
+                                MapInspectionDisposition::Rendering,
+                                format!(
+                                    "Static Instance {}:{}",
+                                    instance.group_index, instance.instance_index
+                                ),
+                                table_sources.clone(),
+                            );
+                            node.element_index = Some(instance.instance_index);
+                            node.tag = Some(instance.model);
+                            node.transform = Some(Transform::new(translation, rotation, scale));
+                            node.bounds = Some(instance.bounds);
+                            node.visual_owner = Some(table_semantic_id);
+                            inspection.add_node(Some(table_semantic_id), node);
+                        }
                         let entity = world.spawn((
                             StaticRenderObject::new(renderer.add_object(RenderObject::new(
                                 TfxFeatureRenderer::ChunkedInstanceObjects,
@@ -2635,6 +2804,13 @@ pub fn load_shadowkeep_map_into_world(
                 .entity_model
                 .is_some()
                 .then_some(object.model.entity_model);
+            let matrix = Mat4::from_cols_array(&object.transform);
+            if matrix.is_finite() && object.bounds.min.is_finite() && object.bounds.max.is_finite()
+            {
+                sky_node.bounds = Some(transform_bounds(object.bounds, matrix));
+                let (scale, rotation, translation) = matrix.to_scale_rotation_translation();
+                sky_node.transform = Some(Transform::new(translation, rotation, scale));
+            }
             let sky_node_id = inspection.add_node(Some(candidate.node), sky_node);
             let parallel_bound = &collection.occlusion_bounds[index].bb;
             let identifier = collection.identifiers[index];
@@ -2673,16 +2849,12 @@ pub fn load_shadowkeep_map_into_world(
                         && parallel_bound.max.is_finite(),
                     "sky-object bounds contain non-finite values"
                 );
-                let matrix = Mat4::from_cols_array(&object.transform);
                 anyhow::ensure!(
                     matrix.is_finite(),
                     "sky-object transform contains non-finite values"
                 );
-                inspection.node_mut(sky_node_id).bounds =
-                    Some(transform_bounds(object.bounds, matrix));
                 let (scale, rotation, translation) = matrix.to_scale_rotation_translation();
                 let transform = Transform::new(translation, rotation, scale);
-                inspection.node_mut(sky_node_id).transform = Some(transform);
                 let mut model = DynamicModel::load_shadowkeep(model_tag, Vec::new(), Vec::new())?;
                 model.set_sky_owner(tag, collection_tag);
                 let (model_center, model_radius) = model.model.bounding_sphere();
@@ -2878,7 +3050,7 @@ mod tests {
         MapLoadReport, RESPAWN_POINTS_COMPONENT, ShadowkeepBubbleCatalogEntry,
         ShadowkeepEnvironmentSelectionReason, ShadowkeepTableSources, SkyObjectCollectionEvidence,
         SkyObjectPlacementCandidate, bounded_offset, select_shadowkeep_environment,
-        shadowkeep_bubble_catalog_matches,
+        serialized_u64_fields, shadowkeep_bubble_catalog_matches,
     };
 
     fn collection_candidate(
@@ -2940,6 +3112,18 @@ mod tests {
     fn respawn_dispatch_class_is_distinct_from_payload_type() {
         assert_eq!(RESPAWN_POINTS_COMPONENT, 0x8080_8CB3);
         assert_eq!(SRespawnPointsComponent::ID, Some(0x8080_8CB5));
+    }
+
+    #[test]
+    fn activity_world_id_scan_includes_four_byte_aligned_fields() {
+        let expected: u64 = 0xAA49_D9C7_DCC3_6F1F;
+        let mut bytes = [0u8; 16];
+        bytes[4..12].copy_from_slice(&expected.to_le_bytes());
+
+        assert_eq!(
+            serialized_u64_fields(&bytes).find(|(_, world_id)| *world_id == expected),
+            Some((4, expected))
+        );
     }
     #[test]
     fn cancellation_is_shared_with_progress_observers() {

@@ -11,6 +11,7 @@ use alkahest_data::shadowkeep::{
     SShadowkeepEntityResource, SShadowkeepMapDataTable, SShadowkeepTextureHeader,
 };
 use anyhow::{Context, Result};
+use glam::Vec4Swizzles;
 use tiger_parse::PackageManagerExt;
 use tiger_pkg::{TagHash, package_manager};
 
@@ -27,6 +28,8 @@ fn referenced_tags_with_class(bytes: &[u8], reference: u32) -> BTreeSet<TagHash>
         })
         .collect()
 }
+const SQUAD_SPAWN_RULE_RESOURCE: u32 = 0x8080_94CF;
+const SQUAD_SPAWN_RULE_DEFINITION: u32 = 0x8080_94D0;
 fn resolve_texture_wide(bytes: &[u8], offset: usize) -> Option<TagHash> {
     let hash32 = TagHash(u32::from_le_bytes(
         bytes.get(offset..offset + 4)?.try_into().ok()?,
@@ -106,6 +109,39 @@ fn main() -> Result<()> {
             0x8080_9C36,
         ));
     }
+    let mut spawn_references = BTreeMap::<u64, Vec<(TagHash, usize)>>::new();
+    let mut activity_spawn_rules = 0usize;
+    for entity_definition in &entity_definitions {
+        let Ok(resource) = manager.read_tag_struct::<SShadowkeepEntityResource>(*entity_definition)
+        else {
+            continue;
+        };
+        if resource.resource.resource_type != SQUAD_SPAWN_RULE_RESOURCE
+            || resource.definition.resource_type != SQUAD_SPAWN_RULE_DEFINITION
+        {
+            continue;
+        }
+        let bytes = manager.read_tag(*entity_definition)?;
+        activity_spawn_rules += 1;
+        for offset in (0..bytes.len().saturating_sub(7)).step_by(4) {
+            let world_id = u64::from_le_bytes(
+                bytes[offset..offset + 8]
+                    .try_into()
+                    .expect("bounded eight-byte activity field"),
+            );
+            if matches!(world_id, 0 | u64::MAX) {
+                continue;
+            }
+            let references = spawn_references.entry(world_id).or_default();
+            if !references
+                .iter()
+                .any(|(definition, _)| definition == entity_definition)
+            {
+                references.push((*entity_definition, offset));
+            }
+        }
+    }
+    let mut correlated_spawns = Vec::new();
     let mut resource_types = BTreeMap::<u32, usize>::new();
     let mut resource_textures = BTreeMap::<u32, BTreeSet<TagHash>>::new();
     let mut resource_samples = BTreeMap::<u32, TagHash>::new();
@@ -173,6 +209,14 @@ fn main() -> Result<()> {
         let table: SShadowkeepMapDataTable = manager.read_tag_struct(*table_tag)?;
         let table_bytes = manager.read_tag(*table_tag)?;
         for entry in table.data_entries {
+            if let Some(references) = spawn_references.get(&entry.world_id) {
+                correlated_spawns.push((
+                    *table_tag,
+                    entry.world_id,
+                    entry.translation.xyz(),
+                    references.clone(),
+                ));
+            }
             let resource_type = entry.data_resource.resource_type;
             *map_resource_types.entry(resource_type).or_default() += 1;
             if !entry.data_resource.is_valid {
@@ -204,7 +248,8 @@ fn main() -> Result<()> {
 
     println!("map={map_tag} package={package_name} scenario={scenario_tag}");
     println!(
-        "phase_records={} phase_roots={} phase_resources={} wrappers={} intermediates={} entity_definitions={} data_tables={}",
+        "phase_records={} phase_roots={} phase_resources={} wrappers={} intermediates={} \
+         entity_definitions={} data_tables={}",
         phase_records.len(),
         phase_roots.len(),
         entity_resources.len(),
@@ -213,6 +258,22 @@ fn main() -> Result<()> {
         entity_definitions.len(),
         data_tables.len(),
     );
+    println!(
+        "activity_spawn_rules={} activity_correlated_spawns={}",
+        activity_spawn_rules,
+        correlated_spawns.len()
+    );
+    for (table, world_id, translation, references) in correlated_spawns.iter().take(32) {
+        println!(
+            "activity_spawn table={table} world_id={world_id:016X} translation={translation:?} \
+             references={}",
+            references
+                .iter()
+                .map(|(definition, offset)| format!("{definition}@0x{offset:X}"))
+                .collect::<Vec<_>>()
+                .join(",")
+        );
+    }
     for (resource_type, count) in map_resource_types {
         println!("map_resource_type=0x{resource_type:08X} count={count}");
         if count <= 2
@@ -232,25 +293,29 @@ fn main() -> Result<()> {
             .get(&resource_type)
             .map_or(0, BTreeSet::len);
         println!(
-            "entity_resource_type=0x{resource_type:08X} count={count} textures={textures} sample={}",
+            "entity_resource_type=0x{resource_type:08X} count={count} textures={textures} \
+             sample={}",
             resource_samples[&resource_type],
         );
     }
     for (table, resource_type, start, relative, lookups) in lookup_candidates {
         println!(
-            "lookup_candidate table={table} type=0x{resource_type:08X} offset=0x{start:X}+0x{relative:X} textures={lookups:?}"
+            "lookup_candidate table={table} type=0x{resource_type:08X} \
+             offset=0x{start:X}+0x{relative:X} textures={lookups:?}"
         );
     }
     for (resource, resource_type, relative, lookups) in entity_lookup_candidates {
         println!(
-            "entity_lookup_candidate resource={resource} type=0x{resource_type:08X} offset=0x{relative:X} textures={lookups:?}"
+            "entity_lookup_candidate resource={resource} type=0x{resource_type:08X} \
+             offset=0x{relative:X} textures={lookups:?}"
         );
     }
     for (resource, resource_type, texture, width, height, depth, array, mips, format) in
         interesting_textures
     {
         println!(
-            "interesting_texture resource={resource} type=0x{resource_type:08X} texture={texture} shape={width}x{height}x{depth} array={array} mips={mips} format={format}"
+            "interesting_texture resource={resource} type=0x{resource_type:08X} texture={texture} \
+             shape={width}x{height}x{depth} array={array} mips={mips} format={format}"
         );
     }
     Ok(())

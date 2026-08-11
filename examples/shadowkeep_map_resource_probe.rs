@@ -177,7 +177,8 @@ fn main() -> Result<()> {
                 && let Some(package_entry) = manager.get_entry(wide_entry.hash32)
             {
                 println!(
-                    "  wide+0x{:02X}=0x{hash64:016X} -> {} reference=0x{:08X} class={:02X}:{:02X} size={}",
+                    "  wide+0x{:02X}=0x{hash64:016X} -> {} reference=0x{:08X} class={:02X}:{:02X} \
+                     size={}",
                     wide_index * 8,
                     wide_entry.hash32,
                     package_entry.reference,
@@ -232,7 +233,8 @@ fn main() -> Result<()> {
                                 continue;
                             }
                             println!(
-                                "    nested_tag+0x{:04X}={} reference=0x{:08X} class={:02X}:{:02X} size={}",
+                                "    nested_tag+0x{:04X}={} reference=0x{:08X} \
+                                 class={:02X}:{:02X} size={}",
                                 tag_word_index * 4,
                                 nested_tag,
                                 nested_entry.reference,
@@ -267,7 +269,8 @@ fn main() -> Result<()> {
 
     for (table, resource_type, start, relative, lookups) in lookup_candidates {
         println!(
-            "lookup_candidate table={table} type=0x{resource_type:08X} offset=0x{start:X}+0x{relative:X} textures={lookups:?}"
+            "lookup_candidate table={table} type=0x{resource_type:08X} \
+             offset=0x{start:X}+0x{relative:X} textures={lookups:?}"
         );
     }
     Ok(())

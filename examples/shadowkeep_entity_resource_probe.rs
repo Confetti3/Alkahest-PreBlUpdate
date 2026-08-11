@@ -115,7 +115,8 @@ impl GapEvidence {
             projected_distance: None,
             clear_depth_percentage: None,
             nearest_non_clear_depth: None,
-            note: "No matching frozen camera/depth capture was supplied; no spatial semantic claim was made."
+            note: "No matching frozen camera/depth capture was supplied; no spatial semantic \
+                   claim was made."
                 .into(),
         }
     }
@@ -1080,7 +1081,8 @@ fn main() -> Result<()> {
                             ))
                             .or_default() += 1;
                         let example = format!(
-                            "map={map_name} table={table_tag} entity={} resource={resource_tag} definition+0x{:X} tag={}",
+                            "map={map_name} table={table_tag} entity={} resource={resource_tag} \
+                             definition+0x{:X} tag={}",
                             entry.entity, child.definition_offset, child.package.tag
                         );
                         if summary.examples.len() < 8 && !summary.examples.contains(&example) {
@@ -1332,23 +1334,32 @@ fn main() -> Result<()> {
             evidence: vec![
                 format!(
                     "{} of {} occurrences are on entities without a loaded rigid entity component",
-                    class_stats.on_entities_without_loaded_rigid_component,
-                    class_stats.occurrences
+                    class_stats.on_entities_without_loaded_rigid_component, class_stats.occurrences
                 ),
                 format!(
-                    "{stable_rigid_offsets} stable reference offsets resolve to rigid model/technique package classes; {intersection} stable package classes overlap that typed baseline"
+                    "{stable_rigid_offsets} stable reference offsets resolve to rigid \
+                     model/technique package classes; {intersection} stable package classes \
+                     overlap that typed baseline"
                 ),
-                "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.".into(),
-                "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.".into(),
+                "Stable references require at least four occurrences in one definition-length \
+                 cluster and at least 75% same-class coverage at one aligned offset."
+                    .into(),
+                "Matrix, bounds, and mesh-array terms remain zero without a proven schema; \
+                 arbitrary floats are not interpreted."
+                    .into(),
                 match clear_depth_percentage {
                     Some(percentage) => format!(
-                        "{percentage:.2}% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood"
+                        "{percentage:.2}% of on-screen frozen placement origins project over at \
+                         least 50% clear depth in the sampled neighborhood"
                     ),
-                    None => "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.".into(),
+                    None => "Clear-depth contribution is unavailable because no target placement \
+                             origin projected inside a supplied frozen capture."
+                        .into(),
                 },
                 format!("The dominant exact definition hash covers {default:.2}% of occurrences"),
                 format!(
-                    "Map-independent dominant-default penalty is {map_independent_default_penalty:.1}"
+                    "Map-independent dominant-default penalty is \
+                     {map_independent_default_penalty:.1}"
                 ),
             ],
             permission_to_render: false,
@@ -1381,7 +1392,8 @@ fn main() -> Result<()> {
         || "No paired-candidate relationship was requested for this target class.".to_owned(),
         |pair| {
             format!(
-                "{} and {} co-occur on {} entities, including {} entities without a loaded rigid component; P(B|A)={:.6}, P(A|B)={:.6}",
+                "{} and {} co-occur on {} entities, including {} entities without a loaded rigid \
+                 component; P(B|A)={:.6}, P(A|B)={:.6}",
                 pair.class_a,
                 pair.class_b,
                 pair.entities_with_both,
@@ -1395,7 +1407,9 @@ fn main() -> Result<()> {
         label: "F. Unresolved".into(),
         evidence: vec![
             format!(
-                "All {} structural variants use entity-resource package classes {:?}, resource pointer class {}, definition pointer classes {:?}; {} occurrences have a non-empty nested resource table",
+                "All {} structural variants use entity-resource package classes {:?}, resource \
+                 pointer class {}, definition pointer classes {:?}; {} occurrences have a \
+                 non-empty nested resource table",
                 clusters.len(),
                 clusters
                     .iter()
@@ -1406,7 +1420,9 @@ fn main() -> Result<()> {
                 target_nonempty_nested_tables,
             ),
             format!(
-                "{} complete definition hashes and {} structural variants occur across {} valid definitions; {} complete hashes are shared by every supplied map and whole-map hash sets are {}",
+                "{} complete definition hashes and {} structural variants occur across {} valid \
+                 definitions; {} complete hashes are shared by every supplied map and whole-map \
+                 hash sets are {}",
                 target_stats.complete_hash_counts.len(),
                 clusters.len(),
                 target_stats.valid_definitions,
@@ -1418,38 +1434,54 @@ fn main() -> Result<()> {
                 },
             ),
             format!(
-                "{} instances ({:.2}%) co-occur with a loaded 0x808072B8 rigid component; {} occur without a loaded rigid entity component",
+                "{} instances ({:.2}%) co-occur with a loaded 0x808072B8 rigid component; {} \
+                 occur without a loaded rigid entity component",
                 target_stats.on_entities_with_rigid,
                 target_stats.on_entities_with_rigid as f64 * 100.0
                     / target_stats.occurrences.max(1) as f64,
                 target_stats.on_entities_without_loaded_rigid_component
             ),
             format!(
-                "{} stable reference offsets survive the cluster-size and coverage threshold; {} resolve to a package class used by the typed rigid model/technique baseline",
+                "{} stable reference offsets survive the cluster-size and coverage threshold; {} \
+                 resolve to a package class used by the typed rigid model/technique baseline",
                 target_stable_references.len(),
                 stable_visual_references,
             ),
             match target_clear_depth_percentage {
                 Some(percentage) => format!(
-                    "{} frozen on-screen origins were sampled and {percentage:.2}% project over mostly clear depth",
+                    "{} frozen on-screen origins were sampled and {percentage:.2}% project over \
+                     mostly clear depth",
                     target_projected
                 ),
-                None => "No placement origin projected inside a supplied frozen depth capture, so spatial evidence is unavailable.".into(),
+                None => "No placement origin projected inside a supplied frozen depth capture, so \
+                         spatial evidence is unavailable."
+                    .into(),
             },
             pair_evidence_text,
             format!(
-                "unk80 resolves for {target_unk80_resolved} occurrences and is unresolved for {target_unk80_unresolved}; unk84 resolves for {target_unk84_resolved} and is unresolved for {target_unk84_unresolved}"
+                "unk80 resolves for {target_unk80_resolved} occurrences and is unresolved for \
+                 {target_unk80_unresolved}; unk84 resolves for {target_unk84_resolved} and is \
+                 unresolved for {target_unk84_unresolved}"
             ),
-            "Aligned package-tag words remain permissive collision evidence unless they survive the stable same-class/same-offset threshold.".into(),
-            "The four-part renderer gate is closed because no consistent typed definition layout has been proven; permission_to_render remains false.".into(),
+            "Aligned package-tag words remain permissive collision evidence unless they survive \
+             the stable same-class/same-offset threshold."
+                .into(),
+            "The four-part renderer gate is closed because no consistent typed definition layout \
+             has been proven; permission_to_render remains false."
+                .into(),
         ],
         unresolved_questions: vec![
             format!(
-                "The {} definition's field ownership and runtime semantics remain unproven; no production tiger_type is admitted.",
+                "The {} definition's field ownership and runtime semantics remain unproven; no \
+                 production tiger_type is admitted.",
                 class_hex(target_class)
             ),
-            "No package evidence yet establishes a complete model, material, technique, mesh, or indirect visual-child contract for this class.".into(),
-            "Frozen placement-origin correlation is supporting evidence only and cannot establish geometry ownership without a typed layout.".into(),
+            "No package evidence yet establishes a complete model, material, technique, mesh, or \
+             indirect visual-child contract for this class."
+                .into(),
+            "Frozen placement-origin correlation is supporting evidence only and cannot establish \
+             geometry ownership without a typed layout."
+                .into(),
         ],
     };
     let shared_complete_definition_hash_count = shared_complete_definition_hashes.len();
@@ -1468,9 +1500,7 @@ fn main() -> Result<()> {
             .count(),
         complete_definition_hash_sets_identical,
         shared_complete_definition_hash_count,
-        shared_complete_definition_hashes: shared_complete_definition_hashes
-            .into_iter()
-            .collect(),
+        shared_complete_definition_hashes: shared_complete_definition_hashes.into_iter().collect(),
         exact_repeated_default_percentage: repeated_default_percentage,
         valid_definitions: target_stats.valid_definitions,
         invalid_definitions: target_stats.invalid_definitions,
@@ -1497,10 +1527,17 @@ fn main() -> Result<()> {
             .map(|path| path.display().to_string())
             .collect(),
         notes: vec![
-            "Definition spans stop at the next higher valid pointer in the same entity-resource file, otherwise at file end.".into(),
-            "Raw aligned u32 package resolutions are weak evidence; stable offsets require cluster count >= 4 and same package class at the same offset in >= 75% of instances.".into(),
-            "The score ranks investigation candidates and never grants permission to render.".into(),
-            "A placement origin over clear depth is correlation, not proof that the entity component owns geometry.".into(),
+            "Definition spans stop at the next higher valid pointer in the same entity-resource \
+             file, otherwise at file end."
+                .into(),
+            "Raw aligned u32 package resolutions are weak evidence; stable offsets require \
+             cluster count >= 4 and same package class at the same offset in >= 75% of instances."
+                .into(),
+            "The score ranks investigation candidates and never grants permission to render."
+                .into(),
+            "A placement origin over clear depth is correlation, not proof that the entity \
+             component owns geometry."
+                .into(),
         ],
     };
 

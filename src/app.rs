@@ -130,6 +130,28 @@ impl App {
         let shared_state: Arc<SharedState> = SharedState::new()
             .context("Failed to create shared state")?
             .into();
+        let (renderer_task, renderer_status) = if args.no_3d {
+            (None, RendererStatus::Disabled)
+        } else {
+            let renderer_gpu = gpu.clone();
+            let renderer_shared_state = shared_state.clone();
+            (
+                Some(Task::new("shadowkeep_renderer".to_string(), move || {
+                    // The era bootstrap remains renderer-owned and is passed
+                    // into the real constructor; it never falls back to the
+                    // post-BL named render globals.
+                    let bootstrap =
+                        alkahest_render::renderer::shadowkeep::ShadowkeepRendererBootstrap::load(
+                            renderer_gpu.clone(),
+                        )
+                        .context("Failed to construct Shadowkeep renderer bootstrap")?;
+                    *renderer_shared_state.renderer_capabilities.write() =
+                        bootstrap.capability_ledger();
+                    Ok(bootstrap)
+                })),
+                RendererStatus::Initializing,
+            )
+        };
         crate::world::shadowkeep_map::initialize_shadowkeep_bubble_catalog(|hash| {
             shared_state.wordlist.get(&hash).cloned()
         })
@@ -173,28 +195,6 @@ impl App {
             warn!("--test-scene is queued until the Shadowkeep renderer is ready");
         }
 
-        let (renderer_task, renderer_status) = if args.no_3d {
-            (None, RendererStatus::Disabled)
-        } else {
-            let renderer_gpu = gpu.clone();
-            let renderer_shared_state = shared_state.clone();
-            (
-                Some(Task::new("shadowkeep_renderer".to_string(), move || {
-                    // The era bootstrap remains renderer-owned and is passed
-                    // into the real constructor; it never falls back to the
-                    // post-BL named render globals.
-                    let bootstrap =
-                        alkahest_render::renderer::shadowkeep::ShadowkeepRendererBootstrap::load(
-                            renderer_gpu.clone(),
-                        )
-                        .context("Failed to construct Shadowkeep renderer bootstrap")?;
-                    *renderer_shared_state.renderer_capabilities.write() =
-                        bootstrap.capability_ledger();
-                    Ok(bootstrap)
-                })),
-                RendererStatus::Initializing,
-            )
-        };
         *shared_state.renderer_status.write() = renderer_status.clone();
 
         Ok(Self {

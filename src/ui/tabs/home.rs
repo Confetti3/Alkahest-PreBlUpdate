@@ -42,37 +42,7 @@ impl HomeTab {
             result = TabResult::Open(Tab::TagLookup(TagLookupTab::default()));
         }
 
-        ui.add_space(32.0);
         let renderer_status = shared_state.renderer_status.read().clone();
-        ui.label(renderer_status.message());
-        if let crate::app::RendererStatus::Blocked(detail)
-        | crate::app::RendererStatus::Failed(detail) = &renderer_status
-        {
-            ui.label(egui::RichText::new(detail).color(Color32::from_rgb(224, 128, 96)));
-        }
-        egui::CollapsingHeader::new("Renderer capability ledger")
-            .default_open(true)
-            .show(ui, |ui| {
-                for capability in shared_state.renderer_capabilities.read().iter() {
-                    let state = match capability.state {
-                        alkahest_render::renderer::shadowkeep::CapabilityState::Ready => "ready",
-                        alkahest_render::renderer::shadowkeep::CapabilityState::Degraded => {
-                            "degraded"
-                        }
-                        alkahest_render::renderer::shadowkeep::CapabilityState::Blocked => {
-                            "blocked"
-                        }
-                        alkahest_render::renderer::shadowkeep::CapabilityState::AbsentInCorpus => {
-                            "absent in corpus"
-                        }
-                    };
-                    ui.label(format!(
-                        "{}: {} — {}",
-                        capability.name, state, capability.evidence
-                    ));
-                }
-            });
-        ui.add_space(12.0);
         let core_geometry_available =
             shared_state
                 .renderer_capabilities
@@ -87,15 +57,14 @@ impl HomeTab {
                         )
                 });
         let rendered_tabs_available = renderer_status.is_ready() && core_geometry_available;
-        if !rendered_tabs_available {
-            ui.label(RichText::new("Rendered activity, entity, and static-model tabs are disabled until core Shadowkeep geometry submission is available.").color(Color32::GRAY));
-        }
-        // Catalog/list tabs remain useful without a renderer.  Individual
+
+        ui.add_space(32.0);
+        // Catalog/list tabs remain useful without a renderer. Individual
         // rendered scene actions are responsible for showing their structured
         // renderer diagnostic when 3D is unavailable.
         ui.columns(1, |uis| {
             uis[0].style_mut().text_styles.insert(
-                TextStyle::Body,
+                TextStyle::Button,
                 FontId::new(32.0, egui::FontFamily::Name("Medium".into())),
             );
             // uis[0].heading("3D");
@@ -150,6 +119,45 @@ impl HomeTab {
             // let _ = uis[1].d_button(format!("{} TEXTURES", GoogleMaterialSymbols::Image));
             // let _ = uis[1].d_button(format!("{} UI", GoogleMaterialSymbols::DesktopWindows));
         });
+
+        ui.add_space(12.0);
+        ui.label(renderer_status.message());
+        if let crate::app::RendererStatus::Blocked(detail)
+        | crate::app::RendererStatus::Failed(detail) = &renderer_status
+        {
+            ui.label(egui::RichText::new(detail).color(Color32::from_rgb(224, 128, 96)));
+        }
+        if !rendered_tabs_available {
+            ui.label(
+                RichText::new(
+                    "Rendered activity, entity, and static-model tabs are disabled until core \
+                     Shadowkeep geometry submission is available.",
+                )
+                .color(Color32::GRAY),
+            );
+        }
+        egui::CollapsingHeader::new("Renderer capability ledger")
+            .default_open(false)
+            .show(ui, |ui| {
+                for capability in shared_state.renderer_capabilities.read().iter() {
+                    let state = match capability.state {
+                        alkahest_render::renderer::shadowkeep::CapabilityState::Ready => "ready",
+                        alkahest_render::renderer::shadowkeep::CapabilityState::Degraded => {
+                            "degraded"
+                        }
+                        alkahest_render::renderer::shadowkeep::CapabilityState::Blocked => {
+                            "blocked"
+                        }
+                        alkahest_render::renderer::shadowkeep::CapabilityState::AbsentInCorpus => {
+                            "absent in corpus"
+                        }
+                    };
+                    ui.label(format!(
+                        "{}: {} — {}",
+                        capability.name, state, capability.evidence
+                    ));
+                }
+            });
 
         egui::Panel::bottom("home_links")
             .frame(egui::Frame::NONE)

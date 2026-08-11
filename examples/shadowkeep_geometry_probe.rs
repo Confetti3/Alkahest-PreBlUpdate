@@ -47,7 +47,8 @@ impl Scan {
 
     fn finish(&self) -> Result<()> {
         println!(
-            "bubbles={} tables={} entities={} statics={} instances={} terrains={} dynamics={} explicit_nulls={} max_layout={}",
+            "bubbles={} tables={} entities={} statics={} instances={} terrains={} dynamics={} \
+             explicit_nulls={} max_layout={}",
             self.bubbles,
             self.tables,
             self.entities,
@@ -162,7 +163,8 @@ fn validate_dynamic(
                 .expect("fixed legacy stage range");
             if range.start > range.end || range.end > mesh.parts.len() {
                 bail!(
-                    "dynamic {tag} mesh {mesh_index} stage {stage} invalid part range {range:?} / {}",
+                    "dynamic {tag} mesh {mesh_index} stage {stage} invalid part range {range:?} / \
+                     {}",
                     mesh.parts.len()
                 );
             }
@@ -170,7 +172,8 @@ fn validate_dynamic(
                 let layout = mesh.input_layout_per_render_stage[stage as usize];
                 if layout as usize >= layout_count {
                     bail!(
-                        "dynamic {tag} mesh {mesh_index} stage {stage} layout {layout} >= {layout_count}"
+                        "dynamic {tag} mesh {mesh_index} stage {stage} layout {layout} >= \
+                         {layout_count}"
                     );
                 }
             }

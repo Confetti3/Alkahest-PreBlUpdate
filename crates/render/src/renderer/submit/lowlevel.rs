@@ -1,9 +1,11 @@
 use std::{sync::Arc, time::Duration};
 
-use alkahest_core::ConVars;
-use alkahest_core::job::{
-    SCHEDULER,
-    potassium::{JobHandle, WaitResult},
+use alkahest_core::{
+    ConVars,
+    job::{
+        SCHEDULER,
+        potassium::{JobHandle, WaitResult},
+    },
 };
 use alkahest_data::tfx::{FeatureRendererSubscription, RenderStage};
 

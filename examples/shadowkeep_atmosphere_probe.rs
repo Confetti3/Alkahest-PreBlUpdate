@@ -91,7 +91,8 @@ fn main() -> Result<()> {
                     if lookups.iter().all(Option::is_some) {
                         lookup_candidates += 1;
                         println!(
-                            "lookup_candidate table={table_tag} package={package_name} type=0x{:08X} offset=0x{start:X}+0x{:X} textures={:?}",
+                            "lookup_candidate table={table_tag} package={package_name} \
+                             type=0x{:08X} offset=0x{start:X}+0x{:X} textures={:?}",
                             entry.data_resource.resource_type,
                             offset - start,
                             lookups.map(Option::unwrap),
@@ -142,7 +143,8 @@ fn main() -> Result<()> {
         }
     }
     println!(
-        "tables_scanned={tables_scanned} map_atmosphere_resources={atmosphere_resources} lookup_candidates={lookup_candidates}"
+        "tables_scanned={tables_scanned} map_atmosphere_resources={atmosphere_resources} \
+         lookup_candidates={lookup_candidates}"
     );
     let mut texture_shapes = BTreeMap::<(u16, u16, u16, u16, u8, String), (usize, TagHash)>::new();
     for (tag, _) in manager.get_all_by_type(0x20, None) {
@@ -172,7 +174,8 @@ fn main() -> Result<()> {
     }
     for ((width, height, depth, array, mips, format), (count, sample)) in texture_shapes {
         println!(
-            "texture_shape={width}x{height}x{depth} array={array} mips={mips} format={format} count={count} sample={sample}"
+            "texture_shape={width}x{height}x{depth} array={array} mips={mips} format={format} \
+             count={count} sample={sample}"
         );
     }
     Ok(())

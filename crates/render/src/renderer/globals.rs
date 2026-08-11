@@ -33,7 +33,8 @@ fn load_shadowkeep_channel_defaults(tag: TagHash) -> anyhow::Result<GlobalChanne
         .with_context(|| format!("Failed to decode Shadowkeep channel-default tag {tag}"))?;
     anyhow::ensure!(
         parsed.array_count <= 256,
-        "Shadowkeep channel-default array has {} entries; the renderer ABI exposes 256 positional slots",
+        "Shadowkeep channel-default array has {} entries; the renderer ABI exposes 256 positional \
+         slots",
         parsed.array_count
     );
     let exact_named_channels = parsed

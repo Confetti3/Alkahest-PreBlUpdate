@@ -658,7 +658,8 @@ pub fn load_renderer_bootstrap() -> anyhow::Result<ShadowkeepRenderBootstrap> {
         .read_named_tag_struct(CLIENT_BOOTSTRAP_NAME)
         .with_context(|| {
             format!(
-                "Shadowkeep bootstrap {CLIENT_BOOTSTRAP_NAME} (0x{CLIENT_BOOTSTRAP_HASH:08X}, class 0x{CLIENT_BOOTSTRAP_CLASS:08X}) is unavailable"
+                "Shadowkeep bootstrap {CLIENT_BOOTSTRAP_NAME} (0x{CLIENT_BOOTSTRAP_HASH:08X}, \
+                 class 0x{CLIENT_BOOTSTRAP_CLASS:08X}) is unavailable"
             )
         })?;
 

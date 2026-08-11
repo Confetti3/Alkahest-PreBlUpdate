@@ -253,7 +253,8 @@ impl Texture {
             .with_context(|| format!("Texture {hash} has an invalid upload layout"))?;
         ensure!(
             texture_data.len() >= requirement.required_bytes,
-            "Texture {hash} {:?} upload requires {} bytes for {} subresources but package data contains {}",
+            "Texture {hash} {:?} upload requires {} bytes for {} subresources but package data \
+             contains {}",
             requirement.dimension,
             requirement.required_bytes,
             requirement.subresources,

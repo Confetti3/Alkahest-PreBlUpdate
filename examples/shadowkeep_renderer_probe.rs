@@ -23,7 +23,8 @@ fn main() -> anyhow::Result<()> {
         .with_context(|| format!("missing channel-default entry {channel_tag}"))?;
     let channel_bytes = package_manager().read_tag(channel_tag)?;
     println!(
-        "channel_defaults tag={channel_tag} reference=0x{:08X} class={:02X}:{:02X} declared_size={} raw_len={}",
+        "channel_defaults tag={channel_tag} reference=0x{:08X} class={:02X}:{:02X} \
+         declared_size={} raw_len={}",
         channel_entry.reference,
         channel_entry.file_type,
         channel_entry.file_subtype,
@@ -59,7 +60,8 @@ fn main() -> anyhow::Result<()> {
             .with_context(|| format!("failed to parse Shadowkeep technique {name} ({tag})"))?;
     }
     println!(
-        "all referenced scopes and techniques parsed; {} scopes and {} techniques are explicitly null",
+        "all referenced scopes and techniques parsed; {} scopes and {} techniques are explicitly \
+         null",
         absent_scopes.len(),
         absent_pipelines.len()
     );

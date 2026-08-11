@@ -1,6 +1,6 @@
-use alkahest_core::convar::ConVars;
 use std::sync::Arc;
 
+use alkahest_core::convar::ConVars;
 use alkahest_data::tfx::{
     FeatureRendererSubscription, PipelineState, RenderStage, TfxFeatureRenderer,
 };

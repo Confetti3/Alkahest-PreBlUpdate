@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use alkahest_render::{Renderer, camera::Camera};
-use egui::{Color32, Rect, RichText, vec2};
+use egui::{Align, Color32, Layout, Rect, RichText, UiBuilder, vec2};
 use glam::{Quat, Vec2, Vec3};
 use tiger_pkg::TagHash;
 
@@ -10,9 +10,10 @@ use crate::{
     app::SharedState,
     task::Task,
     ui::{
+        bubble_browser::bubble_display_name,
         map_workspace::{MapWorkspaceAction, MapWorkspaceState, show as show_workspace},
         scene::{Scene, controller::CameraController},
-        util::UiExt,
+        util::{DButton, UiExt},
     },
     world::shadowkeep_map::{MapLoadProgress, MapLoadReport, load_shadowkeep_map_into_world},
 };
@@ -29,6 +30,8 @@ pub struct MapTab {
     report: Option<MapLoadReport>,
     scene: Option<Box<Scene>>,
     error: Option<String>,
+    cancel_requested: bool,
+    cancelled: bool,
     workspace: MapWorkspaceState,
     shared: Arc<SharedState>,
 }
@@ -43,13 +46,19 @@ impl MapTab {
             report: None,
             scene: None,
             error: None,
+            cancel_requested: false,
+            cancelled: false,
             workspace: MapWorkspaceState::default(),
             shared: shared.clone(),
         })
     }
 
     fn begin_load_if_ready(&mut self) -> anyhow::Result<()> {
-        if self.load_task.is_some() || self.scene.is_some() || self.error.is_some() {
+        if self.load_task.is_some()
+            || self.scene.is_some()
+            || self.error.is_some()
+            || self.cancelled
+        {
             return Ok(());
         }
         if !self.shared.renderer_status.read().is_ready() {
@@ -64,6 +73,16 @@ impl MapTab {
         Ok(())
     }
 
+    fn reset_load(&mut self) {
+        debug_assert!(self.load_task.is_none());
+        self.progress = MapLoadProgress::default();
+        self.report = None;
+        self.scene = None;
+        self.error = None;
+        self.cancel_requested = false;
+        self.cancelled = false;
+    }
+
     fn complete_load(&mut self) -> anyhow::Result<()> {
         let Some(task) = self.load_task.as_mut() else {
             return Ok(());
@@ -74,6 +93,11 @@ impl MapTab {
         self.load_task = None;
         let (world, report) =
             result.map_err(|_| anyhow::anyhow!("Shadowkeep map-load task panicked"))??;
+        if self.cancel_requested || report.cancelled {
+            self.cancel_requested = false;
+            self.cancelled = true;
+            return Ok(());
+        }
         let mut scene = Scene::new(
             Renderer::instance().clone(),
             Camera::default(),
@@ -82,7 +106,11 @@ impl MapTab {
         )?
         .with_controller(CameraController::new_first_person());
         scene.enable_camera_input_while_frozen();
+        // Shadowkeep bounds are not consistently expressed in the main view's
+        // culling space, so keep the complete authored scene visible.
         scene.view.disable_culling = true;
+        let surfaces = scene.view.surfaces().unwrap();
+        surfaces.set_resolution_scale(surfaces.resolution_scale().min(0.75));
         if let Some(spawn) = report
             .inspection
             .spawn_nodes
@@ -108,6 +136,31 @@ impl MapTab {
         Ok(())
     }
 
+    fn centered_status(ui: &mut egui::Ui, title: &str, detail: Option<&str>, action: &str) -> bool {
+        let (_, rect) = ui.allocate_space(ui.available_size());
+        ui.painter()
+            .rect_filled(rect, 0, Color32::from_rgb(14, 24, 28));
+        let mut clicked = false;
+        ui.scope_builder(
+            UiBuilder::new()
+                .max_rect(rect)
+                .layout(Layout::top_down(Align::Center)),
+            |ui| {
+                ui.add_space(((rect.height() - 160.0) * 0.5).max(0.0));
+                ui.heading(title);
+                if let Some(detail) = detail {
+                    ui.label(detail);
+                }
+                ui.add_space(16.0);
+                clicked = DButton::new(action)
+                    .min_size(vec2(220.0, 60.0))
+                    .ui(ui)
+                    .clicked();
+            },
+        );
+        clicked
+    }
+
     pub fn ui(
         &mut self,
         ui: &mut egui::Ui,
@@ -129,7 +182,7 @@ impl MapTab {
                 egui_d3d11,
             ) {
                 MapWorkspaceAction::OpenBubble(tag) => {
-                    match Self::new(tag, format!("Bubble {tag}"), &self.shared) {
+                    match Self::new(tag, bubble_display_name(tag), &self.shared) {
                         Ok(map) => TabResult::Open(Tab::Map(map)),
                         Err(error) => {
                             error!("Failed to open Shadowkeep map {tag}: {error:#}");
@@ -151,14 +204,14 @@ impl MapTab {
         ui.label(format!("Shadowkeep bubble: {}", self.tag));
         ui.add_space(12.0);
         if let Some(error) = &self.error {
-            ui.label(RichText::new("Map load failed").color(Color32::DARK_RED));
-            ui.label(error);
-            if ui.button("Retry").clicked() {
-                self.progress.cancel();
-                self.progress = MapLoadProgress::default();
-                self.report = None;
-                self.scene = None;
-                self.error = None;
+            if Self::centered_status(ui, "Map load failed", Some(error), "RETRY") {
+                self.reset_load();
+            }
+            return TabResult::Continue;
+        }
+        if self.cancelled {
+            if Self::centered_status(ui, "Map load cancelled", None, "RESTART") {
+                self.reset_load();
             }
             return TabResult::Continue;
         }
@@ -182,19 +235,41 @@ impl MapTab {
         ui.painter()
             .rect_filled(rect, 0, Color32::from_rgb(14, 24, 28));
         ui.d_paint_spinner_at(Rect::from_center_size(rect.center(), vec2(64.0, 64.0)));
-        ui.painter().text(
-            rect.center() + vec2(0.0, 42.0),
-            egui::Align2::CENTER_TOP,
-            format!(
-                "Loading map: {}/{} tables, {} entries, {} visual resources",
-                progress.tables_seen,
-                progress.total_tables,
-                progress.entries_seen,
-                progress.visual_resources_loaded
-            ),
-            egui::FontId::proportional(18.0),
-            Color32::GRAY,
+        let mut cancel_clicked = false;
+        ui.scope_builder(
+            UiBuilder::new()
+                .max_rect(rect)
+                .layout(Layout::top_down(Align::Center)),
+            |ui| {
+                ui.add_space((rect.height() * 0.5 + 42.0).max(0.0));
+                if self.cancel_requested {
+                    ui.label("Cancelling map load…");
+                } else {
+                    ui.label(format!(
+                        "Loading map: {}/{} tables, {} entries, {} visual resources",
+                        progress.tables_seen,
+                        progress.total_tables,
+                        progress.entries_seen,
+                        progress.visual_resources_loaded
+                    ));
+                }
+                ui.weak(format!(
+                    "{} GPU assets requested · {} diagnostics",
+                    progress.gpu_assets_requested, progress.diagnostics
+                ));
+                if !self.cancel_requested {
+                    ui.add_space(12.0);
+                    cancel_clicked = DButton::new("CANCEL")
+                        .min_size(vec2(220.0, 60.0))
+                        .ui(ui)
+                        .clicked();
+                }
+            },
         );
+        if cancel_clicked {
+            self.progress.cancel();
+            self.cancel_requested = true;
+        }
         TabResult::Continue
     }
 }

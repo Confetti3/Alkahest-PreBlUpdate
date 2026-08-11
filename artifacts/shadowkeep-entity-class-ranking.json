@@ -1,14 +1,14 @@
 [
   {
     "class": "0x80808A27",
-    "score": 29.474038919293854,
+    "score": 13.00345068399974,
     "occurrences": 85,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 82.3529411764706,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 2,
     "rigid_stable_reference_class_jaccard_similarity": 0.02857142857142857,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -18,7 +18,7 @@
       "2 stable reference offsets resolve to rigid model/technique package classes; 1 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "82.35% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 37.65% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
@@ -26,14 +26,14 @@
   },
   {
     "class": "0x80806730",
-    "score": 25.02966517960286,
+    "score": 12.842165179602858,
     "occurrences": 768,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 64.19270833333333,
-    "percentage_projecting_over_clear_depth": 60.9375,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -43,297 +43,22 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "60.94% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 40.62% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
-    "class": "0x808071B2",
-    "score": 23.63908787108374,
-    "occurrences": 65,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "65 of 65 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80806FAB",
-    "score": 23.08813608870055,
-    "occurrences": 34,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "34 of 34 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x8080714A",
-    "score": 22.982723387668543,
-    "occurrences": 30,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "30 of 30 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x808071AC",
-    "score": 22.924795995797915,
-    "occurrences": 28,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "28 of 28 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80806E64",
-    "score": 22.352182518111363,
-    "occurrences": 14,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "14 of 14 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80806F59",
-    "score": 22.08278537031645,
-    "occurrences": 10,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "10 of 10 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80806F90",
-    "score": 21.690196080028514,
-    "occurrences": 6,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "6 of 6 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80804D40",
-    "score": 21.397940008672037,
-    "occurrences": 4,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 50.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 50.0,
-    "evidence": [
-      "2 of 4 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 50.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x808089CB",
-    "score": 21.397940008672037,
-    "occurrences": 4,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "4 of 4 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x8080915E",
-    "score": 21.397940008672037,
-    "occurrences": 4,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "4 of 4 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80809B46",
-    "score": 21.397940008672037,
-    "occurrences": 4,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "4 of 4 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
     "class": "0x80808506",
-    "score": 21.29841599803596,
+    "score": 7.760811541211446,
     "occurrences": 718,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 22.42339832869081,
-    "percentage_projecting_over_clear_depth": 67.68802228412257,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -343,371 +68,22 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "67.69% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 15.60% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
-    "class": "0x80803B3A",
-    "score": 20.954242509439325,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "2 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80806B86",
-    "score": 20.954242509439325,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "2 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80806F37",
-    "score": 20.954242509439325,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "2 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80806F5F",
-    "score": 20.954242509439325,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "2 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80806F77",
-    "score": 20.954242509439325,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "2 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80807084",
-    "score": 20.954242509439325,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "2 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80807245",
-    "score": 20.954242509439325,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "2 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80808599",
-    "score": 20.954242509439325,
-    "occurrences": 2,
-    "maps": [
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "2 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x8080899A",
-    "score": 20.954242509439325,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "2 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80808A11",
-    "score": 20.954242509439325,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "2 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80808C75",
-    "score": 20.954242509439325,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "2 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80809298",
-    "score": 20.954242509439325,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "2 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x808084D7",
-    "score": 20.876371337877092,
-    "occurrences": 2230,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 7.354260089686099,
-    "percentage_projecting_over_clear_depth": 70.62780269058295,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 7.174887892376682,
-    "evidence": [
-      "164 of 2230 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "70.63% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 7.17% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x808092D8",
-    "score": 20.55803980677209,
-    "occurrences": 1344,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 15.625,
-    "percentage_projecting_over_clear_depth": 70.38690476190476,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 14.880952380952381,
-    "evidence": [
-      "210 of 1344 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "70.39% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 14.88% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
     "class": "0x8080979F",
-    "score": 20.421143143890763,
+    "score": 7.070079314103528,
     "occurrences": 752,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 19.28191489361702,
-    "percentage_projecting_over_clear_depth": 66.75531914893617,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -717,447 +93,72 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "66.76% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 14.89% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
-    "class": "0x808042AD",
-    "score": 19.539550183850203,
-    "occurrences": 1440,
+    "class": "0x808084D7",
+    "score": 6.7508107997605,
+    "occurrences": 2230,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 77.77777777777777,
+    "percentage_on_entities_without_loaded_rigid_component": 7.354260089686099,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 7.777777777777778,
+    "exact_definition_default_percentage": 7.174887892376682,
     "evidence": [
-      "0 of 1440 occurrences are on entities without a loaded rigid entity component",
+      "164 of 2230 occurrences are on entities without a loaded rigid entity component",
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "77.78% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 7.78% of occurrences",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 7.17% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
-    "class": "0x80805FAC",
-    "score": 16.703817037549797,
-    "occurrences": 11,
+    "class": "0x808092D8",
+    "score": 6.480658854391138,
+    "occurrences": 1344,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
-    "percentage_on_entities_without_loaded_rigid_component": 36.36363636363637,
-    "percentage_projecting_over_clear_depth": 72.72727272727273,
+    "percentage_on_entities_without_loaded_rigid_component": 15.625,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 36.36363636363637,
+    "exact_definition_default_percentage": 14.880952380952381,
     "evidence": [
-      "4 of 11 occurrences are on entities without a loaded rigid entity component",
+      "210 of 1344 occurrences are on entities without a loaded rigid entity component",
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "72.73% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 36.36% of occurrences",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 14.88% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80C70EDC",
-    "score": 15.082023884387237,
-    "occurrences": 654,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 75.38226299694189,
-    "percentage_projecting_over_clear_depth": 60.55045871559633,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 84.25076452599389,
-    "evidence": [
-      "493 of 654 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "60.55% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 84.25% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80803466",
-    "score": 13.869388664400597,
-    "occurrences": 464,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 10.344827586206897,
-    "percentage_projecting_over_clear_depth": 63.36206896551724,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 24.137931034482758,
-    "evidence": [
-      "48 of 464 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "63.36% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 24.14% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x808036E2",
-    "score": 13.869388664400597,
-    "occurrences": 464,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 10.344827586206897,
-    "percentage_projecting_over_clear_depth": 63.36206896551724,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 24.137931034482758,
-    "evidence": [
-      "48 of 464 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "63.36% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 24.14% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80808545",
-    "score": 13.869388664400597,
-    "occurrences": 464,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 10.344827586206897,
-    "percentage_projecting_over_clear_depth": 63.36206896551724,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 24.137931034482758,
-    "evidence": [
-      "48 of 464 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "63.36% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 24.14% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80808F96",
-    "score": 13.869388664400597,
-    "occurrences": 464,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 10.344827586206897,
-    "percentage_projecting_over_clear_depth": 63.36206896551724,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 24.137931034482758,
-    "evidence": [
-      "48 of 464 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "63.36% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 24.14% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x8080348F",
-    "score": 13.56248654717005,
-    "occurrences": 397,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 12.090680100755668,
-    "percentage_projecting_over_clear_depth": 65.99496221662469,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 28.211586901763223,
-    "evidence": [
-      "48 of 397 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "65.99% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 28.21% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x808094A4",
-    "score": 12.470252903706264,
-    "occurrences": 243,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 18.51851851851852,
-    "percentage_projecting_over_clear_depth": 79.83539094650206,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 46.09053497942387,
-    "evidence": [
-      "45 of 243 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "79.84% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 46.09% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80804580",
-    "score": 12.210510281512198,
-    "occurrences": 28,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 7.142857142857143,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 42.857142857142854,
-    "evidence": [
-      "2 of 28 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 42.86% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80808BF1",
-    "score": 11.735570585672908,
-    "occurrences": 405,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 3.45679012345679,
-    "percentage_projecting_over_clear_depth": 68.88888888888889,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 27.65432098765432,
-    "evidence": [
-      "14 of 405 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "68.89% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 27.65% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80803991",
-    "score": 11.419327989405915,
-    "occurrences": 225,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 20.0,
-    "percentage_projecting_over_clear_depth": 78.22222222222223,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 49.77777777777778,
-    "evidence": [
-      "45 of 225 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "78.22% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 49.78% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80803C23",
-    "score": 11.419327989405915,
-    "occurrences": 225,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 20.0,
-    "percentage_projecting_over_clear_depth": 78.22222222222223,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 49.77777777777778,
-    "evidence": [
-      "45 of 225 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "78.22% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 49.78% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80807132",
-    "score": 9.486370231646605,
-    "occurrences": 268,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 10.447761194029852,
-    "percentage_projecting_over_clear_depth": 70.14925373134328,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 41.791044776119406,
-    "evidence": [
-      "28 of 268 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "70.15% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 41.79% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x808038A3",
-    "score": 8.878808107104497,
-    "occurrences": 1011,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 69.5351137487636,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 36.795252225519285,
-    "evidence": [
-      "0 of 1011 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "69.54% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 36.80% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80808864",
-    "score": 8.614022186879629,
-    "occurrences": 232,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 73.70689655172414,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 36.206896551724135,
-    "evidence": [
-      "0 of 232 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "73.71% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 36.21% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80806723",
-    "score": 6.745453274649435,
-    "occurrences": 1432,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 77.16480446927375,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "1432 of 1432 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "77.16% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 15.0"
     ],
     "permission_to_render": false
   },
   {
     "class": "0x80806CBD",
-    "score": 6.138062882519588,
+    "score": 4.186843370324471,
     "occurrences": 123,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 90.2439024390244,
-    "percentage_projecting_over_clear_depth": 9.75609756097561,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -1167,32 +168,57 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "9.76% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 90.24% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
-    "class": "0x80806DE5",
-    "score": 6.039956774912497,
-    "occurrences": 17,
+    "class": "0x808042AD",
+    "score": 3.9839946282946457,
+    "occurrences": 1440,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 7.777777777777778,
+    "evidence": [
+      "0 of 1440 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 7.78% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x808071B2",
+    "score": 3.6390878710837384,
+    "occurrences": 65,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 17.647058823529413,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
     "exact_definition_default_percentage": 100.0,
     "evidence": [
-      "17 of 17 occurrences are on entities without a loaded rigid entity component",
+      "65 of 65 occurrences are on entities without a loaded rigid entity component",
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "17.65% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
@@ -1200,13 +226,13 @@
   },
   {
     "class": "0x80806B5D",
-    "score": 5.768222546758487,
+    "score": 3.204119982655925,
     "occurrences": 39,
     "maps": [
       "80ED6027"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 12.820512820512821,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -1216,72 +242,122 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "12.82% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
-    "class": "0x80804D92",
-    "score": 5.56820151763457,
-    "occurrences": 106,
+    "class": "0x80806FAB",
+    "score": 3.0881360887005513,
+    "occurrences": 34,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
-    "percentage_on_entities_without_loaded_rigid_component": 32.075471698113205,
-    "percentage_projecting_over_clear_depth": 61.320754716981135,
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 67.9245283018868,
+    "exact_definition_default_percentage": 100.0,
     "evidence": [
-      "34 of 106 occurrences are on entities without a loaded rigid entity component",
+      "34 of 34 occurrences are on entities without a loaded rigid entity component",
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "61.32% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 67.92% of occurrences",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
-    "class": "0x8080390E",
-    "score": 5.314295048797982,
-    "occurrences": 209,
+    "class": "0x8080714A",
+    "score": 2.9827233876685426,
+    "occurrences": 30,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 63.63636363636363,
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 40.19138755980861,
+    "exact_definition_default_percentage": 100.0,
     "evidence": [
-      "0 of 209 occurrences are on entities without a loaded rigid entity component",
+      "30 of 30 occurrences are on entities without a loaded rigid entity component",
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "63.64% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 40.19% of occurrences",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80C70EDC",
+    "score": 2.971932141267967,
+    "occurrences": 654,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 75.38226299694189,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 84.25076452599389,
+    "evidence": [
+      "493 of 654 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 84.25% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x808071AC",
+    "score": 2.924795995797915,
+    "occurrences": 28,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "28 of 28 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
     "class": "0x80806B7E",
-    "score": 3.6372263140253622,
+    "score": 2.6848453616444132,
     "occurrences": 21,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 4.761904761904762,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -1291,7 +367,7 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "4.76% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
@@ -1305,7 +381,7 @@
       "80ED6027"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 0.0,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -1315,7 +391,207 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "0.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80806DE5",
+    "score": 2.510545010206613,
+    "occurrences": 17,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "17 of 17 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80806E64",
+    "score": 2.3521825181113627,
+    "occurrences": 14,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "14 of 14 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80805FAC",
+    "score": 2.15836249209525,
+    "occurrences": 11,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 36.36363636363637,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 36.36363636363637,
+    "evidence": [
+      "4 of 11 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 36.36% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80806F59",
+    "score": 2.0827853703164507,
+    "occurrences": 10,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "10 of 10 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80806F90",
+    "score": 1.6901960800285138,
+    "occurrences": 6,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "6 of 6 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80804D40",
+    "score": 1.3979400086720375,
+    "occurrences": 4,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 50.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 50.0,
+    "evidence": [
+      "2 of 4 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 50.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x808089CB",
+    "score": 1.3979400086720375,
+    "occurrences": 4,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "4 of 4 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x8080915E",
+    "score": 1.3979400086720375,
+    "occurrences": 4,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "4 of 4 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
@@ -1329,7 +605,7 @@
       "80ED6027"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 0.0,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -1339,7 +615,7 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "0.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
@@ -1353,7 +629,7 @@
       "80ED6027"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 0.0,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -1363,72 +639,746 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "0.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
-    "class": "0x80804BEE",
-    "score": 0.20306643917703582,
-    "occurrences": 252,
+    "class": "0x80809B46",
+    "score": 1.3979400086720375,
+    "occurrences": 4,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 84.12698412698413,
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 71.42857142857143,
+    "exact_definition_default_percentage": 100.0,
     "evidence": [
-      "0 of 252 occurrences are on entities without a loaded rigid entity component",
+      "4 of 4 occurrences are on entities without a loaded rigid entity component",
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "84.13% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 71.43% of occurrences",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
-    "class": "0x808038B9",
-    "score": -0.25842670135481427,
-    "occurrences": 15,
+    "class": "0x80803466",
+    "score": 1.196974871297149,
+    "occurrences": 464,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 10.344827586206897,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 24.137931034482758,
+    "evidence": [
+      "48 of 464 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 24.14% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x808036E2",
+    "score": 1.196974871297149,
+    "occurrences": 464,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 10.344827586206897,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 24.137931034482758,
+    "evidence": [
+      "48 of 464 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 24.14% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80808545",
+    "score": 1.196974871297149,
+    "occurrences": 464,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 10.344827586206897,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 24.137931034482758,
+    "evidence": [
+      "48 of 464 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 24.14% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80808F96",
+    "score": 1.196974871297149,
+    "occurrences": 464,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 10.344827586206897,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 24.137931034482758,
+    "evidence": [
+      "48 of 464 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 24.14% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80803B3A",
+    "score": 0.9542425094393252,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "2 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80806B86",
+    "score": 0.9542425094393252,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "2 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80806F37",
+    "score": 0.9542425094393252,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "2 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80806F5F",
+    "score": 0.9542425094393252,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "2 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80806F77",
+    "score": 0.9542425094393252,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "2 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80807084",
+    "score": 0.9542425094393252,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "2 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80807245",
+    "score": 0.9542425094393252,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "2 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80808599",
+    "score": 0.9542425094393252,
+    "occurrences": 2,
+    "maps": [
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "2 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x8080899A",
+    "score": 0.9542425094393252,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "2 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80808A11",
+    "score": 0.9542425094393252,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "2 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80808C75",
+    "score": 0.9542425094393252,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "2 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80809298",
+    "score": 0.9542425094393252,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "2 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x8080348F",
+    "score": 0.3634941038451096,
+    "occurrences": 397,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 12.090680100755668,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 28.211586901763223,
+    "evidence": [
+      "48 of 397 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 28.21% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80808BF1",
+    "score": -2.04220719210487,
+    "occurrences": 405,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 3.45679012345679,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 27.65432098765432,
+    "evidence": [
+      "14 of 405 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 27.65% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x808094A4",
+    "score": -3.4968252855941486,
+    "occurrences": 243,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 18.51851851851852,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 46.09053497942387,
+    "evidence": [
+      "45 of 243 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 46.09% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80803991",
+    "score": -4.225116455038531,
+    "occurrences": 225,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 20.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 49.77777777777778,
+    "evidence": [
+      "45 of 225 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 49.78% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80803C23",
+    "score": -4.225116455038531,
+    "occurrences": 225,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 20.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 49.77777777777778,
+    "evidence": [
+      "45 of 225 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 49.78% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80807132",
+    "score": -4.5434805146220505,
+    "occurrences": 268,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 10.447761194029852,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 41.791044776119406,
+    "evidence": [
+      "28 of 268 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 41.79% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x808038A3",
+    "score": -5.028214642648224,
+    "occurrences": 1011,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 86.66666666666667,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 66.66666666666667,
+    "exact_definition_default_percentage": 36.795252225519285,
     "evidence": [
-      "0 of 15 occurrences are on entities without a loaded rigid entity component",
+      "0 of 1011 occurrences are on entities without a loaded rigid entity component",
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "86.67% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 66.67% of occurrences",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 36.80% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80808864",
+    "score": -6.1273571234652024,
+    "occurrences": 232,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 36.206896551724135,
+    "evidence": [
+      "0 of 232 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 36.21% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80804D92",
+    "score": -6.695949425761658,
+    "occurrences": 106,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 32.075471698113205,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 67.9245283018868,
+    "evidence": [
+      "34 of 106 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 67.92% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x8080390E",
+    "score": -7.412977678474745,
+    "occurrences": 209,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 40.19138755980861,
+    "evidence": [
+      "0 of 209 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 40.19% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80804580",
+    "score": -7.7894897184878005,
+    "occurrences": 28,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 7.142857142857143,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 42.857142857142854,
+    "evidence": [
+      "2 of 28 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 42.86% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80806723",
+    "score": -8.687507619205313,
+    "occurrences": 1432,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 100.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "1432 of 1432 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 15.0"
     ],
     "permission_to_render": false
   },
   {
     "class": "0x80806B58",
-    "score": -1.3993261026148076,
+    "score": -10.470364353980926,
     "occurrences": 183,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 100.0,
-    "percentage_projecting_over_clear_depth": 45.3551912568306,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -1438,434 +1388,9 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "45.36% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 15.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80805FB0",
-    "score": -3.6020599913279625,
-    "occurrences": 4,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 50.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 50.0,
-    "evidence": [
-      "0 of 4 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "50.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 50.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x808090E6",
-    "score": -3.7603251114685214,
-    "occurrences": 289,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 71.280276816609,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 76.47058823529412,
-    "evidence": [
-      "0 of 289 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "71.28% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 76.47% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x8080366D",
-    "score": -5.859995271290945,
-    "occurrences": 354,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 13.559322033898304,
-    "percentage_projecting_over_clear_depth": 64.68926553672317,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 93.22033898305085,
-    "evidence": [
-      "48 of 354 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "64.69% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 93.22% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80803E55",
-    "score": -6.429340329978466,
-    "occurrences": 60,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 60 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80804C86",
-    "score": -6.429340329978466,
-    "occurrences": 60,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 60 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80803810",
-    "score": -7.772113295386326,
-    "occurrences": 12,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 12 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80803B73",
-    "score": -7.772113295386326,
-    "occurrences": 12,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 12 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80803F28",
-    "score": -7.772113295386326,
-    "occurrences": 12,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 12 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80803F6D",
-    "score": -7.772113295386326,
-    "occurrences": 12,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 12 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80807E61",
-    "score": -7.772113295386326,
-    "occurrences": 12,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 12 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80807FAB",
-    "score": -7.772113295386326,
-    "occurrences": 12,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 12 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80808BF5",
-    "score": -7.772113295386326,
-    "occurrences": 12,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 12 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80809425",
-    "score": -7.772113295386326,
-    "occurrences": 12,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 12 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80804D3B",
-    "score": -8.309803919971486,
-    "occurrences": 6,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 6 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80804DBA",
-    "score": -9.045757490560675,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80804FBB",
-    "score": -9.045757490560675,
-    "occurrences": 2,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 100.0,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "0 of 2 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "100.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x8080375F",
-    "score": -12.536983596550936,
-    "occurrences": 83,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 48.19277108433735,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 86.74698795180723,
-    "evidence": [
-      "0 of 83 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "48.19% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 86.75% of occurrences",
-      "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
@@ -1877,7 +1402,7 @@
       "80ED6027"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 0.0,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -1887,22 +1412,172 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "0.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 50.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
+    "class": "0x80805FB0",
+    "score": -13.602059991327963,
+    "occurrences": 4,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 50.0,
+    "evidence": [
+      "0 of 4 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 50.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80804BEE",
+    "score": -16.62233038621979,
+    "occurrences": 252,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 71.42857142857143,
+    "evidence": [
+      "0 of 252 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 71.43% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x808038B9",
+    "score": -17.59176003468815,
+    "occurrences": 15,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 66.66666666666667,
+    "evidence": [
+      "0 of 15 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 66.67% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x808090E6",
+    "score": -18.016380474790324,
+    "occurrences": 289,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 76.47058823529412,
+    "evidence": [
+      "0 of 289 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 76.47% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x8080366D",
+    "score": -18.797848378635578,
+    "occurrences": 354,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 13.559322033898304,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 93.22033898305085,
+    "evidence": [
+      "48 of 354 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 93.22% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x8080375F",
+    "score": -22.175537813418405,
+    "occurrences": 83,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 86.74698795180723,
+    "evidence": [
+      "0 of 83 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 86.75% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
     "class": "0x80802E91",
-    "score": -17.662243168647976,
+    "score": -26.27335427975909,
     "occurrences": 72,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 43.05555555555556,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -1912,133 +1587,159 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "43.06% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
-    "class": "0x80803A41",
-    "score": -18.647338677260752,
-    "occurrences": 225,
+    "class": "0x80803E55",
+    "score": -26.429340329978466,
+    "occurrences": 60,
     "maps": [
       "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 20.0,
-    "percentage_projecting_over_clear_depth": 78.22222222222223,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "45 of 225 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "78.22% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 15.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80804C7A",
-    "score": -20.090420408181714,
-    "occurrences": 574,
-    "maps": [
-      "80ED6027",
-      "81547A30"
-    ],
-    "percentage_on_entities_without_loaded_rigid_component": 16.898954703832754,
-    "percentage_projecting_over_clear_depth": 71.602787456446,
-    "stable_rigid_model_or_technique_reference_offsets": 0,
-    "rigid_stable_reference_class_jaccard_similarity": 0.0,
-    "proven_matrix_bounds_or_mesh_array_evidence": 0,
-    "exact_definition_default_percentage": 100.0,
-    "evidence": [
-      "97 of 574 occurrences are on entities without a loaded rigid entity component",
-      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
-      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
-      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "71.60% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
-      "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 15.0"
-    ],
-    "permission_to_render": false
-  },
-  {
-    "class": "0x80FEB6EC",
-    "score": -22.129213350677407,
-    "occurrences": 3,
-    "maps": [
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 33.333333333333336,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
     "exact_definition_default_percentage": 100.0,
     "evidence": [
-      "0 of 3 occurrences are on entities without a loaded rigid entity component",
+      "0 of 60 occurrences are on entities without a loaded rigid entity component",
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "33.33% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
-    "class": "0x80803DC0",
-    "score": -24.929087294706076,
-    "occurrences": 180,
+    "class": "0x80804C86",
+    "score": -26.429340329978466,
+    "occurrences": 60,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 77.77777777777777,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
     "exact_definition_default_percentage": 100.0,
     "evidence": [
-      "0 of 180 occurrences are on entities without a loaded rigid entity component",
+      "0 of 60 occurrences are on entities without a loaded rigid entity component",
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "77.78% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 15.0"
+      "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
   {
-    "class": "0x80804F7E",
-    "score": -24.929087294706076,
-    "occurrences": 180,
+    "class": "0x80803810",
+    "score": -27.772113295386326,
+    "occurrences": 12,
     "maps": [
       "80ED6027",
       "81547A30"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 77.77777777777777,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
     "exact_definition_default_percentage": 100.0,
     "evidence": [
-      "0 of 180 occurrences are on entities without a loaded rigid entity component",
+      "0 of 12 occurrences are on entities without a loaded rigid entity component",
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "77.78% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
-      "Map-independent dominant-default penalty is 15.0"
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80803B73",
+    "score": -27.772113295386326,
+    "occurrences": 12,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 12 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80803F28",
+    "score": -27.772113295386326,
+    "occurrences": 12,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 12 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80803F6D",
+    "score": -27.772113295386326,
+    "occurrences": 12,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 12 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
     ],
     "permission_to_render": false
   },
@@ -2050,7 +1751,7 @@
       "80ED6027"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 0.0,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -2060,7 +1761,132 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "0.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80807E61",
+    "score": -27.772113295386326,
+    "occurrences": 12,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 12 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80807FAB",
+    "score": -27.772113295386326,
+    "occurrences": 12,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 12 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80808BF5",
+    "score": -27.772113295386326,
+    "occurrences": 12,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 12 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80809425",
+    "score": -27.772113295386326,
+    "occurrences": 12,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 12 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80804D3B",
+    "score": -28.309803919971486,
+    "occurrences": 6,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 6 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
@@ -2074,7 +1900,7 @@
       "80ED6027"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 0.0,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -2084,7 +1910,81 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "0.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80FEB6EC",
+    "score": -28.795880017344075,
+    "occurrences": 3,
+    "maps": [
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 3 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80804DBA",
+    "score": -29.045757490560675,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80804FBB",
+    "score": -29.045757490560675,
+    "occurrences": 2,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 2 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
     ],
@@ -2098,7 +1998,7 @@
       "80ED6027"
     ],
     "percentage_on_entities_without_loaded_rigid_component": 0.0,
-    "percentage_projecting_over_clear_depth": 0.0,
+    "percentage_projecting_over_clear_depth": null,
     "stable_rigid_model_or_technique_reference_offsets": 0,
     "rigid_stable_reference_class_jaccard_similarity": 0.0,
     "proven_matrix_bounds_or_mesh_array_evidence": 0,
@@ -2108,9 +2008,109 @@
       "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
       "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
       "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
-      "0.00% of on-screen frozen placement origins project over at least 50% clear depth in the sampled neighborhood",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
       "The dominant exact definition hash covers 100.00% of occurrences",
       "Map-independent dominant-default penalty is 0.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80803A41",
+    "score": -34.291783121705194,
+    "occurrences": 225,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 20.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "45 of 225 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 15.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80804C7A",
+    "score": -34.410977899470915,
+    "occurrences": 574,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 16.898954703832754,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "97 of 574 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 15.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80803DC0",
+    "score": -40.48464285026163,
+    "occurrences": 180,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 180 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 15.0"
+    ],
+    "permission_to_render": false
+  },
+  {
+    "class": "0x80804F7E",
+    "score": -40.48464285026163,
+    "occurrences": 180,
+    "maps": [
+      "80ED6027",
+      "81547A30"
+    ],
+    "percentage_on_entities_without_loaded_rigid_component": 0.0,
+    "percentage_projecting_over_clear_depth": null,
+    "stable_rigid_model_or_technique_reference_offsets": 0,
+    "rigid_stable_reference_class_jaccard_similarity": 0.0,
+    "proven_matrix_bounds_or_mesh_array_evidence": 0,
+    "exact_definition_default_percentage": 100.0,
+    "evidence": [
+      "0 of 180 occurrences are on entities without a loaded rigid entity component",
+      "0 stable reference offsets resolve to rigid model/technique package classes; 0 stable package classes overlap that typed baseline",
+      "Stable references require at least four occurrences in one definition-length cluster and at least 75% same-class coverage at one aligned offset.",
+      "Matrix, bounds, and mesh-array terms remain zero without a proven schema; arbitrary floats are not interpreted.",
+      "Clear-depth contribution is unavailable because no target placement origin projected inside a supplied frozen capture.",
+      "The dominant exact definition hash covers 100.00% of occurrences",
+      "Map-independent dominant-default penalty is 15.0"
     ],
     "permission_to_render": false
   }

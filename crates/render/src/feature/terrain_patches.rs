@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
 use alkahest_core::job::{SCHEDULER, potassium::JobHandle};
-use alkahest_data::shadowkeep::SShadowkeepTerrain;
-use alkahest_data::tfx::{
-    RenderStage, ShaderStage,
-    common::AxisAlignedBBox,
-    features::{
-        ao::SStaticAmbientOcclusion,
-        dynamic::RenderStageSubscription,
-        terrain::{STerrain, TerrainDetailLevel},
+use alkahest_data::{
+    shadowkeep::SShadowkeepTerrain,
+    tfx::{
+        RenderStage, ShaderStage,
+        common::AxisAlignedBBox,
+        features::{
+            ao::SStaticAmbientOcclusion,
+            dynamic::RenderStageSubscription,
+            terrain::{STerrain, TerrainDetailLevel},
+        },
     },
 };
 use glam::Vec4;

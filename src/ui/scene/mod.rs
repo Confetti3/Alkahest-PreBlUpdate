@@ -7,7 +7,7 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    time::Instant,
+    time::{Duration, Instant},
 };
 
 use alkahest_core::ConVars;
@@ -32,13 +32,16 @@ use alkahest_render::{
     },
     visibility::frustum::Frustum,
 };
+use anyhow::Context;
 use bitflags::Flags;
-use d3d11::{ShaderResourceView, Texture2D, Texture2dDesc, dxgi};
+use d3d11::{
+    Box3D, CpuAccessFlags, MapType, ShaderResourceView, Texture2D, Texture2dDesc, Usage, dxgi,
+};
 use egui::{
     FontId, Image, ImageSource, Rect, Response, RichText, Sense, TextStyle, Ui, UiBuilder, Vec2,
     Widget, containers::menu::MenuConfig, load::SizedTexture, vec2,
 };
-use glam::{Mat4, Vec3, Vec4, Vec4Swizzles};
+use glam::{Mat4, UVec2, Vec3, Vec4, Vec4Swizzles};
 use google_material_symbols::GoogleMaterialSymbols;
 
 #[cfg(feature = "wwise")]
@@ -62,6 +65,40 @@ use crate::{
         transform::Transform,
     },
 };
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SceneDepthSample {
+    pub pixel: UVec2,
+    pub reverse_depth: f32,
+    pub world_position: Vec3,
+}
+
+fn unproject_depth_sample(
+    pixel: UVec2,
+    resolution: UVec2,
+    reverse_depth: f32,
+    world_to_clip: Mat4,
+) -> Option<SceneDepthSample> {
+    if resolution.x == 0 || resolution.y == 0 || !reverse_depth.is_finite() || reverse_depth <= 0.0
+    {
+        return None;
+    }
+    let ndc = Vec3::new(
+        ((pixel.x as f32 + 0.5) / resolution.x as f32) * 2.0 - 1.0,
+        1.0 - ((pixel.y as f32 + 0.5) / resolution.y as f32) * 2.0,
+        reverse_depth,
+    );
+    let world = world_to_clip.inverse() * ndc.extend(1.0);
+    if !world.is_finite() || !world.w.is_finite() || world.w.abs() <= f32::EPSILON {
+        return None;
+    }
+    let world_position = world.truncate() / world.w;
+    world_position.is_finite().then_some(SceneDepthSample {
+        pixel,
+        reverse_depth,
+        world_position,
+    })
+}
 
 pub struct Scene {
     pub world: hecs::World,
@@ -88,6 +125,8 @@ pub struct Scene {
 
     surface: d3d11::Texture2D,
     surface_srv: d3d11::ShaderResourceView,
+    depth_readback: Option<Texture2D>,
+    depth_readback_last_warning: Option<Instant>,
 
     profiler_results: Option<String>,
     show_surface_viewer: bool,
@@ -131,9 +170,9 @@ fn shadowkeep_sun_state(time_of_day: f32, heading_degrees: f32) -> (Vec4, f32) {
 
 #[cfg(test)]
 mod tests {
-    use glam::Vec3;
+    use glam::{Mat4, UVec2, Vec3};
 
-    use super::shadowkeep_sun_state;
+    use super::{shadowkeep_sun_state, unproject_depth_sample};
 
     #[test]
     fn shadowkeep_sun_state_tracks_scene_clock() {
@@ -150,6 +189,20 @@ mod tests {
         let (wrapped_direction, wrapped_daylight) = shadowkeep_sun_state(3600.0, 60.0);
         assert!((wrapped_direction - midnight_direction).length() < 0.0001);
         assert_eq!(wrapped_daylight, midnight_daylight);
+    }
+
+    #[test]
+    fn depth_sample_unprojects_pixel_centers_and_rejects_clear_values() {
+        let center = unproject_depth_sample(UVec2::ZERO, UVec2::ONE, 0.75, Mat4::IDENTITY).unwrap();
+        assert_eq!(center.world_position, Vec3::new(0.0, 0.0, 0.75));
+
+        let edge = unproject_depth_sample(UVec2::new(1, 1), UVec2::new(2, 2), 0.5, Mat4::IDENTITY)
+            .unwrap();
+        assert_eq!(edge.world_position, Vec3::new(0.5, -0.5, 0.5));
+        assert!(unproject_depth_sample(UVec2::ZERO, UVec2::ONE, 0.0, Mat4::IDENTITY).is_none());
+        assert!(
+            unproject_depth_sample(UVec2::ZERO, UVec2::ONE, f32::NAN, Mat4::IDENTITY).is_none()
+        );
     }
 }
 
@@ -198,6 +251,8 @@ impl Scene {
             controller: CameraController::new_orbit(Vec3::ZERO, 2.5),
             surface,
             surface_srv,
+            depth_readback: None,
+            depth_readback_last_warning: None,
             last_frame_time: Instant::now(),
             start_time: Instant::now(),
             profiler_results: None,
@@ -254,6 +309,91 @@ impl Scene {
         Ok((texture, srv))
     }
 
+    fn sample_main_depth(&mut self, rect: Rect, pointer: egui::Pos2) -> Option<SceneDepthSample> {
+        if !rect.contains(pointer) || rect.width() <= 0.0 || rect.height() <= 0.0 {
+            return None;
+        }
+        let (width, height) = self.view.framebuffer_resolution();
+        if width == 0 || height == 0 {
+            return None;
+        }
+        let pixel = UVec2::new(
+            (((pointer.x - rect.left()) / rect.width()) * width as f32)
+                .floor()
+                .clamp(0.0, width.saturating_sub(1) as f32) as u32,
+            (((pointer.y - rect.top()) / rect.height()) * height as f32)
+                .floor()
+                .clamp(0.0, height.saturating_sub(1) as f32) as u32,
+        );
+        let result = (|| -> anyhow::Result<Option<SceneDepthSample>> {
+            if self.depth_readback.is_none() {
+                self.depth_readback = Some(
+                    self.renderer.gpu.create_texture2d(
+                        &Texture2dDesc::builder()
+                            .width(1)
+                            .height(1)
+                            .mip_levels(1)
+                            .format(dxgi::Format::R32g8x24Typeless)
+                            .usage(Usage::Staging)
+                            .bind_flags(d3d11::BindFlags::empty())
+                            .cpu_access_flags(CpuAccessFlags::READ)
+                            .build(),
+                        None,
+                    )?,
+                );
+            }
+            let staging = self
+                .depth_readback
+                .as_ref()
+                .context("depth staging texture was not created")?;
+            let ViewKind::Main(main_view) = &self.view.kind else {
+                anyhow::bail!("main depth requested from a non-main view");
+            };
+            let source = main_view.gbuffers.depth_proxy.lock();
+            let source_box = Box3D {
+                left: pixel.x as i32,
+                top: pixel.y as i32,
+                front: 0,
+                right: pixel.x as i32 + 1,
+                bottom: pixel.y as i32 + 1,
+                back: 1,
+            };
+            let context = self.renderer.gpu.context();
+            context.copy_subresource_region(
+                &source.res,
+                0,
+                Some(&source_box),
+                staging,
+                0,
+                (0, 0, 0),
+            );
+            drop(source);
+            let mapped = context.map(staging, 0, MapType::Read, false)?;
+            let reverse_depth = unsafe { std::ptr::read_unaligned(mapped.data.cast::<f32>()) };
+            drop(mapped);
+            Ok(unproject_depth_sample(
+                pixel,
+                UVec2::new(width, height),
+                reverse_depth,
+                self.camera.world_to_clip_space(),
+            ))
+        })();
+        match result {
+            Ok(sample) => sample,
+            Err(error) => {
+                let now = Instant::now();
+                if self
+                    .depth_readback_last_warning
+                    .is_none_or(|last| now.duration_since(last) >= Duration::from_secs(5))
+                {
+                    tracing::warn!(error = %format_args!("{error:#}"), "main depth readback failed");
+                    self.depth_readback_last_warning = Some(now);
+                }
+                None
+            }
+        }
+    }
+
     pub fn set_world(&mut self, world: hecs::World) {
         self.world = world;
     }
@@ -278,7 +418,7 @@ impl Scene {
         overlay: F,
     ) -> Option<R>
     where
-        F: FnOnce(&mut Ui, Rect, &Camera, &Response) -> R,
+        F: FnOnce(&mut Ui, Rect, &Camera, &Response, Option<SceneDepthSample>) -> R,
     {
         let mut overlay = Some(overlay);
         let now = Instant::now();
@@ -435,9 +575,19 @@ impl Scene {
                 subsecond::call(|| {
                     self.render(delta_time, resolution);
                 });
+                let depth_sample = if (r.clicked_by(egui::PointerButton::Primary)
+                    || r.double_clicked_by(egui::PointerButton::Primary))
+                    && r.interact_pointer_pos()
+                        .is_some_and(|pointer| r.rect.contains(pointer))
+                {
+                    r.interact_pointer_pos()
+                        .and_then(|pointer| self.sample_main_depth(r.rect, pointer))
+                } else {
+                    None
+                };
                 overlay
                     .take()
-                    .map(|overlay| overlay(ui, r.rect, &self.camera, &r))
+                    .map(|overlay| overlay(ui, r.rect, &self.camera, &r, depth_sample))
             })
             .inner;
 
@@ -477,7 +627,7 @@ impl Scene {
     }
 
     pub fn show(&mut self, ui: &mut Ui, size: Vec2, egui_d3d11: &mut egui_d3d11::D3D11Renderer) {
-        let _ = self.show_with_overlay(ui, size, egui_d3d11, |_, _, _, _| ());
+        let _ = self.show_with_overlay(ui, size, egui_d3d11, |_, _, _, _, _| ());
     }
 
     fn show_toolbar(&mut self, ui: &mut Ui) {

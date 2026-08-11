@@ -5,24 +5,24 @@ use alkahest_core::job::{
     SCHEDULER,
     potassium::{JobHandle, Priority},
 };
-use alkahest_data::tfx::{
-    RenderStage, ShaderStage,
-    common::AxisAlignedBBox,
-    features::{
-        ao::SStaticAmbientOcclusion,
-        dynamic::RenderStageSubscription,
-        statics::{
-            SStaticInstanceTransform, SStaticMesh, SStaticMeshData, SStaticMeshInstances,
-            SStaticSpecialMesh,
-        },
-    },
-};
 use alkahest_data::{
     shadowkeep::{
         SShadowkeepStaticMesh, SShadowkeepStaticMeshInstances, lod_category_from_legacy,
         primitive_type_from_legacy, render_stage_from_legacy,
     },
     tag::Tag,
+    tfx::{
+        RenderStage, ShaderStage,
+        common::AxisAlignedBBox,
+        features::{
+            ao::SStaticAmbientOcclusion,
+            dynamic::RenderStageSubscription,
+            statics::{
+                SStaticInstanceTransform, SStaticMesh, SStaticMeshData, SStaticMeshInstances,
+                SStaticSpecialMesh,
+            },
+        },
+    },
 };
 use anyhow::Context;
 use bytemuck::{Pod, Zeroable};
@@ -520,6 +520,39 @@ impl StaticInstanceGroup {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct StaticInspectionInstance {
+    pub group_index: usize,
+    pub instance_index: usize,
+    pub model: TagHash,
+    pub local_to_world: Mat4,
+    pub bounds: AxisAlignedBBox,
+}
+
+fn transform_inspection_bounds(bounds: AxisAlignedBBox, matrix: Mat4) -> AxisAlignedBBox {
+    let mut corners = [Vec3::ZERO; 8];
+    for (index, corner) in corners.iter_mut().enumerate() {
+        *corner = matrix.transform_point3(Vec3::new(
+            if index & 1 == 0 {
+                bounds.min.x
+            } else {
+                bounds.max.x
+            },
+            if index & 2 == 0 {
+                bounds.min.y
+            } else {
+                bounds.max.y
+            },
+            if index & 4 == 0 {
+                bounds.min.z
+            } else {
+                bounds.max.z
+            },
+        ));
+    }
+    AxisAlignedBBox::from_points(&corners)
+}
+
 pub struct StaticInstancesRenderer {
     subscribed_stages: RenderStageSubscription,
 
@@ -539,6 +572,36 @@ impl StaticInstancesRenderer {
     /// callers use this conservative value for framing and diagnostics only.
     pub fn bounds(&self) -> AxisAlignedBBox {
         self.bounds
+    }
+
+    pub fn inspection_instances(&self) -> impl Iterator<Item = StaticInspectionInstance> + '_ {
+        self.groups
+            .iter()
+            .enumerate()
+            .flat_map(|(group_index, group)| {
+                let model = self.static_models.get(group.static_index as usize);
+                group.transforms.iter().enumerate().filter_map(
+                    move |(instance_index, transform)| {
+                        let model = model?;
+                        let local_to_world = Mat4::from_scale_rotation_translation(
+                            Vec3::splat(transform.scale),
+                            transform.rotation,
+                            transform.translation,
+                        );
+                        let model_bounds = AxisAlignedBBox::from_center_extents(
+                            model.model.opaque_meshes.mesh_offset,
+                            Vec3::splat(model.model.opaque_meshes.mesh_scale.abs()),
+                        );
+                        Some(StaticInspectionInstance {
+                            group_index,
+                            instance_index,
+                            model: model.hash,
+                            local_to_world,
+                            bounds: transform_inspection_bounds(model_bounds, local_to_world),
+                        })
+                    },
+                )
+            })
     }
 
     pub fn load(gpu: &Arc<Gpu>, instances_hash: TagHash) -> anyhow::Result<Self> {
@@ -1210,5 +1273,23 @@ impl FeatureRenderer for StaticModelRenderer {
 
     fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn static_inspection_bounds_follow_authored_transform() {
+        let model = AxisAlignedBBox::from_center_extents(Vec3::ZERO, Vec3::ONE);
+        let matrix = Mat4::from_scale_rotation_translation(
+            Vec3::splat(2.0),
+            Quat::IDENTITY,
+            Vec3::new(3.0, 4.0, 5.0),
+        );
+        let transformed = transform_inspection_bounds(model, matrix);
+        assert_eq!(transformed.min.truncate(), Vec3::new(2.0, 3.0, 4.0));
+        assert_eq!(transformed.max.truncate(), Vec3::new(4.0, 5.0, 6.0));
     }
 }

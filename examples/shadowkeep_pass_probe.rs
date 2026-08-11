@@ -18,7 +18,8 @@ fn main() -> Result<()> {
     );
     for (label, shader) in [("vs", &light.shader_vertex), ("ps", &light.shader_pixel)] {
         println!(
-            "  light {label}: shader={} textures={:?} bytecode={:02x?} constants={:?} inline={:?} samplers={:?} cbuffer_slot={} cbuffer={}",
+            "  light {label}: shader={} textures={:?} bytecode={:02x?} constants={:?} inline={:?} \
+             samplers={:?} cbuffer_slot={} cbuffer={}",
             shader.shader,
             shader
                 .textures
@@ -63,7 +64,8 @@ fn main() -> Result<()> {
             ("ps", &technique.shader_pixel),
         ] {
             println!(
-                "  {label}: shader={} cbuffer_slot={} cbuffer={} bytecode={} constants={} inline={} samplers={} textures={}",
+                "  {label}: shader={} cbuffer_slot={} cbuffer={} bytecode={} constants={} \
+                 inline={} samplers={} textures={}",
                 shader.shader,
                 shader.constants.constant_buffer_slot,
                 shader.constants.constant_buffer,

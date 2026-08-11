@@ -1,6 +1,6 @@
-use build_time::build_time_utc;
 use std::path::PathBuf;
 
+use build_time::build_time_utc;
 use clap::{Parser, Subcommand};
 use glam::Vec4;
 

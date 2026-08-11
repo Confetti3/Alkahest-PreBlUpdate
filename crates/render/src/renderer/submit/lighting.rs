@@ -1,6 +1,6 @@
-use alkahest_core::ConVars;
 use std::sync::Arc;
 
+use alkahest_core::ConVars;
 use alkahest_data::tfx::{
     FeatureRendererSubscription, PipelineState, PrimitiveType, RenderStage, ShaderStage,
 };

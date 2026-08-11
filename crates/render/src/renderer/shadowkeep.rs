@@ -42,7 +42,9 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
         CapabilityRecord {
             name: "Shadowkeep bootstrap and input layouts",
             state: CapabilityState::Ready,
-            evidence: "client_bootstrap_patchable, render globals, and all dynamic layout records parsed".into(),
+            evidence: "client_bootstrap_patchable, render globals, and all dynamic layout records \
+                       parsed"
+                .into(),
         },
         CapabilityRecord {
             name: "TFX scopes, techniques, and positional channels",
@@ -52,12 +54,16 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
         CapabilityRecord {
             name: "Core geometry submission",
             state: CapabilityState::Ready,
-            evidence: "static placements, terrain patches, and map-contained rigid models produce the shared G-buffer".into(),
+            evidence: "static placements, terrain patches, and map-contained rigid models produce \
+                       the shared G-buffer"
+                .into(),
         },
         CapabilityRecord {
             name: "Local lighting and deferred shading",
             state: CapabilityState::Ready,
-            evidence: "local diffuse/specular MRTs and deferred_shading_no_atm produce non-trivial captures".into(),
+            evidence: "local diffuse/specular MRTs and deferred_shading_no_atm produce \
+                       non-trivial captures"
+                .into(),
         },
         CapabilityRecord {
             name: "Direct presentation",
@@ -67,57 +73,82 @@ pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
         CapabilityRecord {
             name: "Cubemap specular IBL",
             state: CapabilityState::Ready,
-            evidence: "authored cubemap volumes populate light_specular_ibl before deferred shading".into(),
+            evidence: "authored cubemap volumes populate light_specular_ibl before deferred \
+                       shading"
+                .into(),
         },
         CapabilityRecord {
             name: "Global directional lighting and cascaded sun shadows",
             state: CapabilityState::Ready,
-            evidence: "the legacy global-lighting pass runs by default and consumes the screen-space cascade mask".into(),
+            evidence: "the legacy global-lighting pass runs by default and consumes the \
+                       screen-space cascade mask"
+                .into(),
         },
         CapabilityRecord {
             name: "Package atmosphere lookup/background",
             state: CapabilityState::Ready,
-            evidence: "authored map atmosphere placements feed preserved lookup generation, atmosphere-aware deferred shading, and background composition".into(),
+            evidence: "authored map atmosphere placements feed preserved lookup generation, \
+                       atmosphere-aware deferred shading, and background composition"
+                .into(),
         },
         CapabilityRecord {
             name: "Map-authored sky-object models",
             state: CapabilityState::Ready,
-            evidence: "package-matched 0x80806F95 collections render through the isolated legacy SkyTransparent pass; frozen Europa/EDZ A/B captures change shaded color with finite HDR output while preserving depth, atmosphere, local-light, IBL, and shadow-mask buffers".into(),
+            evidence: "package-matched 0x80806F95 collections render through the isolated legacy \
+                       SkyTransparent pass; frozen Europa/EDZ A/B captures change shaded color \
+                       with finite HDR output while preserving depth, atmosphere, local-light, \
+                       IBL, and shadow-mask buffers"
+                .into(),
         },
         CapabilityRecord {
             name: "Phase-specific sky-object environment selection",
             state: CapabilityState::Degraded,
-            evidence: "exact collection overrides and package-name selection are deterministic; activity-owned overlays remain deferred when no table/world pairing proves they belong to the active phase".into(),
+            evidence: "exact collection overrides and package-name selection are deterministic; \
+                       activity-owned overlays remain deferred when no table/world pairing proves \
+                       they belong to the active phase"
+                .into(),
         },
         CapabilityRecord {
             name: "Sky-object LightShaftOcclusion",
             state: CapabilityState::Blocked,
-            evidence: "authored 0x200 subscriptions are reported and deferred because the legacy light-shaft occlusion target/pass is not restored".into(),
+            evidence: "authored 0x200 subscriptions are reported and deferred because the legacy \
+                       light-shaft occlusion target/pass is not restored"
+                .into(),
         },
         CapabilityRecord {
             name: "Shadowkeep material AO compatibility finalizer",
             state: CapabilityState::Ready,
-            evidence: "Frozen comparisons validate RT2 material-occlusion normalization while preserving the remaining Arrivals material channels.".into(),
+            evidence: "Frozen comparisons validate RT2 material-occlusion normalization while \
+                       preserving the remaining Arrivals material channels."
+                .into(),
         },
         CapabilityRecord {
             name: "Shadowkeep solar path",
             state: CapabilityState::Degraded,
-            evidence: "The admitted target maps provide no decodable authored solar track; a continuous scene-clock fallback drives sun direction and daylight.".into(),
+            evidence: "The admitted target maps provide no decodable authored solar track; a \
+                       continuous scene-clock fallback drives sun direction and daylight."
+                .into(),
         },
         CapabilityRecord {
             name: "General transparent/additive geometry",
             state: CapabilityState::Blocked,
-            evidence: "Only the narrow legacy SkyTransparent path is admitted; general transparent and additive feature families remain disconnected.".into(),
+            evidence: "Only the narrow legacy SkyTransparent path is admitted; general \
+                       transparent and additive feature families remain disconnected."
+                .into(),
         },
         CapabilityRecord {
             name: "Authored decals, water, and volumetrics",
             state: CapabilityState::Blocked,
-            evidence: "Their era-specific producers and pass ordering have not been connected.".into(),
+            evidence: "Their era-specific producers and pass ordering have not been connected."
+                .into(),
         },
         CapabilityRecord {
             name: "Activity and ambient scene layers",
             state: CapabilityState::Degraded,
-            evidence: "base bubble and discovered freeroam scenario tables are admitted and unknown classes are counted; no compatible package global-channel producer was found in the admitted graph".into(),
+            evidence: "base bubble and discovered freeroam scenario tables are admitted and \
+                       unknown classes are counted; no compatible package global-channel producer \
+                       was found in the admitted graph"
+                .into(),
         },
     ]
 }
@@ -217,7 +248,8 @@ fn pass_status_ledger_with_global_lighting(
         ShadowkeepPassRecord {
             name: "opaque / G-buffer",
             state: ShadowkeepPassState::Ready,
-            evidence: "Shadowkeep static, terrain, and rigid submissions produce non-empty depth and material targets",
+            evidence: "Shadowkeep static, terrain, and rigid submissions produce non-empty depth \
+                       and material targets",
         },
         ShadowkeepPassRecord {
             name: "local diffuse / specular lighting",
@@ -227,17 +259,20 @@ fn pass_status_ledger_with_global_lighting(
         ShadowkeepPassRecord {
             name: "cubemap specular IBL",
             state: ShadowkeepPassState::Ready,
-            evidence: "authored cubemap volumes populate light_specular_ibl before deferred shading",
+            evidence: "authored cubemap volumes populate light_specular_ibl before deferred \
+                       shading",
         },
         ShadowkeepPassRecord {
             name: "deferred shading",
             state: ShadowkeepPassState::Ready,
-            evidence: "deferred_shading_no_atm consumes local and cubemap lighting into shading_result",
+            evidence: "deferred_shading_no_atm consumes local and cubemap lighting into \
+                       shading_result",
         },
         ShadowkeepPassRecord {
             name: "global directional lighting",
             state: global_lighting_state,
-            evidence: "the legacy global-lighting pass is connected and enabled by default for Shadowkeep",
+            evidence: "the legacy global-lighting pass is connected and enabled by default for \
+                       Shadowkeep",
         },
         ShadowkeepPassRecord {
             name: "cascaded directional shadows",
@@ -247,22 +282,27 @@ fn pass_status_ledger_with_global_lighting(
         ShadowkeepPassRecord {
             name: "authentic atmosphere lookup and sky",
             state: ShadowkeepPassState::Ready,
-            evidence: "package-authored atmosphere inputs populate both lookup targets; the preserved atmosphere-aware deferred and sky techniques produce finite output",
+            evidence: "package-authored atmosphere inputs populate both lookup targets; the \
+                       preserved atmosphere-aware deferred and sky techniques produce finite \
+                       output",
         },
         ShadowkeepPassRecord {
             name: "procedural solar fallback",
             state: ShadowkeepPassState::Degraded,
-            evidence: "the synthetic scene-clock solar path remains explicit because the admitted target maps contain no decodable authored sun-angle track",
+            evidence: "the synthetic scene-clock solar path remains explicit because the admitted \
+                       target maps contain no decodable authored sun-angle track",
         },
         ShadowkeepPassRecord {
             name: "direct presentation",
             state: ShadowkeepPassState::Ready,
-            evidence: "the authentic sky is composited only into clear-depth pixels before shading_result is copied to the sRGB output target",
+            evidence: "the authentic sky is composited only into clear-depth pixels before \
+                       shading_result is copied to the sRGB output target",
         },
         ShadowkeepPassRecord {
             name: "transparent / decal / water / volumetrics",
             state: ShadowkeepPassState::DisabledAsAbsent,
-            evidence: "not admitted until an era-specific producer and pass-order capture is available",
+            evidence: "not admitted until an era-specific producer and pass-order capture is \
+                       available",
         },
     ]
 }

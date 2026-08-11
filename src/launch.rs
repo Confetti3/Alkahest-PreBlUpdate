@@ -34,7 +34,8 @@ pub fn resolve_package_source(args: &AppArgs) -> anyhow::Result<PathBuf> {
     if let Some(command) = args.command.as_ref() {
         let explicit = explicit_source(args).ok_or_else(|| {
             anyhow!(
-                "{} requires an explicit --gamedir <client-root> or --packages <packages-directory>",
+                "{} requires an explicit --gamedir <client-root> or --packages \
+                 <packages-directory>",
                 command.name()
             )
         })?;
@@ -52,7 +53,8 @@ pub fn resolve_package_source(args: &AppArgs) -> anyhow::Result<PathBuf> {
         show_alert(
             "Saved package source is unavailable",
             &format!(
-                "The saved Pre-BL package source no longer exists:\n{}\n\nSelect the preserved Arrivals client root or packages directory.",
+                "The saved Pre-BL package source no longer exists:\n{}\n\nSelect the preserved \
+                 Arrivals client root or packages directory.",
                 source.display()
             ),
         );

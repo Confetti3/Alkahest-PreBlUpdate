@@ -24,6 +24,7 @@ pub enum MapInspectionNodeKind {
     Table,
     Entry,
     StaticGeometry,
+    StaticInstance,
     Terrain,
     RigidModel,
     DynamicModel,
@@ -79,9 +80,11 @@ impl MapInspectionNodeKind {
 
     pub const fn type_group(self) -> MapInspectionTypeFilter {
         match self {
-            Self::StaticGeometry | Self::Terrain | Self::RigidModel | Self::DynamicModel => {
-                MapInspectionTypeFilter::GEOMETRY
-            }
+            Self::StaticGeometry
+            | Self::StaticInstance
+            | Self::Terrain
+            | Self::RigidModel
+            | Self::DynamicModel => MapInspectionTypeFilter::GEOMETRY,
             Self::LightCollection | Self::Light | Self::ShadowingLight => {
                 MapInspectionTypeFilter::LIGHTS
             }
@@ -94,25 +97,15 @@ impl MapInspectionNodeKind {
         }
     }
 
-    pub const fn icon_name(self) -> &'static str {
-        match self {
-            Self::Bubble => "Public",
-            Self::BaseContainer | Self::Scenario => "AccountTree",
-            Self::Table => "TableRows",
-            Self::Entry => "Dataset",
-            Self::StaticGeometry => "Landscape",
-            Self::Terrain => "Terrain",
-            Self::RigidModel | Self::DynamicModel => "DeployedCode",
-            Self::LightCollection | Self::Light | Self::ShadowingLight => "Lightbulb",
-            Self::Cubemap => "PanoramaPhotosphere",
-            Self::Atmosphere => "Cloud",
-            Self::SkyCollection | Self::SkyObject => "WeatherPartlyCloudy",
-            Self::SpawnPoint => "MyLocation",
-            Self::EntityResource | Self::TableResource => "Memory",
-            Self::DeferredResource => "Schedule",
-            Self::FailedResource => "Error",
-            Self::MetadataOnly => "DataObject",
-        }
+    pub const fn is_visual_locator(self) -> bool {
+        self.is_visual_owner()
+            || matches!(
+                self,
+                Self::StaticInstance
+                    | Self::SpawnPoint
+                    | Self::DeferredResource
+                    | Self::FailedResource
+            )
     }
 }
 
@@ -218,10 +211,17 @@ pub struct MapInspectionNode {
     pub definition_offset: Option<u64>,
     pub transform: Option<Transform>,
     pub bounds: Option<AxisAlignedBBox>,
+    pub visual_owner: Option<MapInspectionNodeId>,
     pub world_entity: Option<hecs::Entity>,
     pub source: ShadowkeepTableSources,
     pub name_hash: Option<u32>,
     pub linked_node: Option<MapInspectionNodeId>,
+    /// Activity entity definition whose serialized WorldID identifies this placement.
+    pub activity_definition: Option<TagHash>,
+    /// Byte offset of the exact serialized WorldID reference in that definition.
+    pub activity_reference_offset: Option<u64>,
+    /// Number of same-scenario spawn-rule definitions correlated to this placement.
+    pub activity_reference_count: Option<usize>,
     pub error: Option<String>,
     pub search_text: String,
 }
@@ -248,10 +248,14 @@ impl MapInspectionNode {
             definition_offset: None,
             transform: None,
             bounds: None,
+            visual_owner: None,
             world_entity: None,
             source,
             name_hash: None,
             linked_node: None,
+            activity_definition: None,
+            activity_reference_offset: None,
+            activity_reference_count: None,
             error: None,
             search_text: String::new(),
         }
@@ -274,6 +278,7 @@ pub struct ShadowkeepMapInspection {
     pub world_groups: BTreeMap<MapInspectionNodeKind, Vec<MapInspectionNodeId>>,
     pub source_groups: BTreeMap<MapInspectionSourceGroup, MapInspectionSourceGroupIndex>,
     pub spawn_nodes: Vec<MapInspectionNodeId>,
+    pub(crate) locator_nodes: Vec<MapInspectionNodeId>,
 }
 
 impl Default for ShadowkeepMapInspection {
@@ -287,6 +292,7 @@ impl Default for ShadowkeepMapInspection {
             world_groups: BTreeMap::new(),
             source_groups: BTreeMap::new(),
             spawn_nodes: Vec::new(),
+            locator_nodes: Vec::new(),
         }
     }
 }
@@ -304,6 +310,22 @@ impl ShadowkeepMapInspection {
             .get(id.0 as usize)
             .and_then(|index| *index)?;
         self.nodes.get_mut(index)
+    }
+
+    pub fn locator_nodes(&self) -> &[MapInspectionNodeId] {
+        &self.locator_nodes
+    }
+
+    pub fn visual_owner(&self, id: MapInspectionNodeId) -> Option<MapInspectionNodeId> {
+        let node = self.node(id)?;
+        if node.kind.is_visual_owner() {
+            Some(id)
+        } else {
+            let owner = node.visual_owner?;
+            self.node(owner)
+                .is_some_and(|owner| owner.kind.is_visual_owner())
+                .then_some(owner)
+        }
     }
 
     pub fn bind_world_entity(
@@ -440,6 +462,41 @@ impl ShadowkeepMapInspection {
                         .context("visual inspection node has no visibility component")?;
                 }
             }
+            if let Some(owner) = node.visual_owner {
+                let owner_node = self.node(owner).context("visual proxy owner is missing")?;
+                anyhow::ensure!(
+                    self.ancestors(node.id).any(|ancestor| ancestor == owner),
+                    "visual proxy owner is not an ancestor"
+                );
+                anyhow::ensure!(
+                    owner_node.kind.is_visual_owner(),
+                    "visual proxy owner is not an ECS-owning visual kind"
+                );
+                anyhow::ensure!(
+                    owner_node.world_entity.is_some(),
+                    "visual proxy owner has no world entity"
+                );
+                anyhow::ensure!(
+                    node.world_entity.is_none(),
+                    "visual proxy must not own a world entity"
+                );
+                anyhow::ensure!(
+                    node.bounds.is_none_or(|bounds| {
+                        bounds.min.is_finite()
+                            && bounds.max.is_finite()
+                            && bounds.min.cmple(bounds.max).all()
+                    }),
+                    "visual proxy bounds are invalid"
+                );
+                anyhow::ensure!(
+                    node.transform.is_none_or(|transform| {
+                        transform.translation.is_finite()
+                            && transform.rotation.is_finite()
+                            && transform.scale.is_finite()
+                    }),
+                    "visual proxy transform is invalid"
+                );
+            }
             anyhow::ensure!(
                 !(matches!(
                     node.disposition,
@@ -548,6 +605,7 @@ impl MapInspectionGraphBuilder {
             world_groups: BTreeMap::new(),
             source_groups: BTreeMap::new(),
             spawn_nodes: Vec::new(),
+            locator_nodes: Vec::new(),
         });
         // `add_node` above allocated the stable root identity before the graph
         // backing storage existed. All later additions use the normal branch.
@@ -671,6 +729,7 @@ impl MapInspectionGraphBuilder {
         debug_assert!(self.pending_root.is_none());
         inspection.world_groups.clear();
         inspection.spawn_nodes.clear();
+        inspection.locator_nodes.clear();
         for node in &mut inspection.nodes {
             node.search_text = node_search_text(node);
             inspection
@@ -680,6 +739,17 @@ impl MapInspectionGraphBuilder {
                 .push(node.id);
             if node.kind == MapInspectionNodeKind::SpawnPoint {
                 inspection.spawn_nodes.push(node.id);
+            }
+            if node.kind.is_visual_locator()
+                && (node.bounds.is_some_and(|bounds| {
+                    bounds.min.is_finite()
+                        && bounds.max.is_finite()
+                        && bounds.min.cmple(bounds.max).all()
+                }) || node
+                    .transform
+                    .is_some_and(|transform| transform.translation.is_finite()))
+            {
+                inspection.locator_nodes.push(node.id);
             }
         }
         inspection
@@ -697,6 +767,9 @@ fn node_search_text(node: &MapInspectionNode) -> String {
         let raw = format!("{tag}");
         values.push(raw.clone());
         values.push(format!("0x{raw}"));
+    }
+    if let Some(owner) = node.visual_owner {
+        values.push(format!("owner {}", owner.0));
     }
     for source_tag in node
         .source
@@ -719,6 +792,10 @@ fn node_search_text(node: &MapInspectionNode) -> String {
         node.world_id.map(|value| value.to_string()),
         node.definition_offset.map(|value| format!("{value:X}")),
         node.name_hash.map(|value| format!("{value:08X}")),
+        node.activity_definition.map(|value| value.to_string()),
+        node.activity_reference_offset
+            .map(|value| format!("{value:X}")),
+        node.activity_reference_count.map(|value| value.to_string()),
     ]
     .into_iter()
     .flatten()
@@ -1025,5 +1102,60 @@ mod tests {
         let second = inspection.search("deferred 9999", MapInspectionFilter::default());
         assert_eq!(first, second);
         assert_eq!(first, vec![MapInspectionNodeId(10_000)]);
+    }
+
+    #[test]
+    fn map_inspection_proxy_owners_and_locator_order_are_validated() {
+        let (mut builder, table, owner) = graph();
+        builder.node_mut(owner).bounds = Some(AxisAlignedBBox::from_center_extents(
+            glam::Vec3::ZERO,
+            glam::Vec3::splat(10.0),
+        ));
+        let sibling_owner = builder.add_node(
+            Some(table),
+            MapInspectionNode::new(
+                MapInspectionNodeKind::RigidModel,
+                MapInspectionDisposition::Rendering,
+                "Sibling",
+                ShadowkeepTableSources::default(),
+            ),
+        );
+        let mut proxy = MapInspectionNode::new(
+            MapInspectionNodeKind::StaticInstance,
+            MapInspectionDisposition::Rendering,
+            "Instance",
+            ShadowkeepTableSources::default(),
+        );
+        proxy.visual_owner = Some(owner);
+        proxy.transform = Some(Transform::default());
+        proxy.bounds = Some(AxisAlignedBBox::from_center_extents(
+            glam::Vec3::ZERO,
+            glam::Vec3::ONE,
+        ));
+        let proxy = builder.add_node(Some(owner), proxy);
+        let mut world = hecs::World::new();
+        for id in [owner, sibling_owner] {
+            let entity = world.spawn((
+                MapInspectionBinding { node: id },
+                MapEntityVisibility::default(),
+            ));
+            builder.bind_world_entity(id, entity).unwrap();
+        }
+        let inspection = builder.finalize();
+        inspection.validate(&world).unwrap();
+        assert_eq!(inspection.visual_owner(proxy), Some(owner));
+        assert_eq!(inspection.locator_nodes(), &[owner, proxy]);
+
+        let mut missing = inspection.clone();
+        missing.node_mut(proxy).unwrap().visual_owner = Some(MapInspectionNodeId(999));
+        assert!(missing.validate(&world).is_err());
+
+        let mut non_owner = inspection.clone();
+        non_owner.node_mut(proxy).unwrap().visual_owner = Some(table);
+        assert!(non_owner.validate(&world).is_err());
+
+        let mut non_ancestor = inspection;
+        non_ancestor.node_mut(proxy).unwrap().visual_owner = Some(sibling_owner);
+        assert!(non_ancestor.validate(&world).is_err());
     }
 }
