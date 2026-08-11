@@ -1,0 +1,30 @@
+{
+  "commit": "c824f50",
+  "package_corpus": "//192.168.42.1/AppSandboxSSD/DestinyResearch/builds/arrivals-pristine/packages",
+  "maps": [
+    {
+      "name": "EDZ",
+      "tag": "80ED6027",
+      "result": "Shadowkeep map normalization completed",
+      "screenshot": null,
+      "screenshot_limitation": "Computer window screenshot timed out while the D3D application was active."
+    },
+    {
+      "name": "Europa",
+      "tag": "81547A30",
+      "result": "Shadowkeep map normalization completed",
+      "screenshot": null,
+      "screenshot_limitation": "Not captured after the EDZ Computer timeout."
+    }
+  ],
+  "tests": {
+    "map_inspection": "10 passed",
+    "map_workspace": "2 passed",
+    "bubble_browser": "1 passed",
+    "cargo_check": "passed"
+  },
+  "limitations": [
+    "No trustworthy hardware screenshots or on-screen counts were captured.",
+    "Spawn-bearing corpus census and real-spawn interaction validation were not run."
+  ]
+}
