@@ -1,0 +1,37 @@
+{
+  "schema": "alkahest-shadowkeep-map-inspection-evidence/v1",
+  "commit": "Restore Shadowkeep map inspection tools",
+  "package_corpus": "arrivals-pristine",
+  "maps": [
+    {
+      "bubble": "80ED6027",
+      "label": "EDZ",
+      "cached_tables": 440,
+      "cached_bubbles": 428,
+      "authored_spawn_points": 0,
+      "observed": [
+        "viewport-primary rendered map",
+        "cached scene outliner with deferred entries",
+        "cached bubble browser"
+      ],
+      "screenshot": "shadowkeep-map-inspection-80ED6027.png"
+    },
+    {
+      "bubble": "81547A30",
+      "label": "Europa",
+      "cached_tables": 362,
+      "cached_bubbles": 428,
+      "authored_spawn_points": 0,
+      "observed": [
+        "viewport-primary rendered map",
+        "cached scene outliner with freeroam scenario entries",
+        "cached bubble browser"
+      ],
+      "screenshot": "shadowkeep-map-inspection-81547A30.png"
+    }
+  ],
+  "notes": [
+    "The two exercised maps expose no authored respawn components. The inspector therefore displayed zero spawn points and no inferred marker/name data.",
+    "Respawn markers are rendered only when direct or map-node respawn records are present; they do not change renderer output."
+  ]
+}

@@ -260,7 +260,16 @@ impl Scene {
         self.world.clear();
     }
 
-    pub fn show(&mut self, ui: &mut Ui, size: Vec2, egui_d3d11: &mut egui_d3d11::D3D11Renderer) {
+    pub fn show_with_overlay<F>(
+        &mut self,
+        ui: &mut Ui,
+        size: Vec2,
+        egui_d3d11: &mut egui_d3d11::D3D11Renderer,
+        overlay: F,
+    ) where
+        F: FnOnce(&Ui, Rect, &Camera),
+    {
+        let mut overlay = Some(overlay);
         let now = Instant::now();
         let delta_time = (now - self.last_frame_time).as_secs_f32();
         self.frametimes.push(delta_time);
@@ -414,6 +423,9 @@ impl Scene {
             subsecond::call(|| {
                 self.render(delta_time, resolution);
             });
+            if let Some(overlay) = overlay.take() {
+                overlay(ui, r.rect, &self.camera);
+            }
         });
 
         #[cfg(feature = "wwise")]
@@ -448,6 +460,10 @@ impl Scene {
 
             s_update_audio_sources(&self.world, self.camera.position);
         }
+    }
+
+    pub fn show(&mut self, ui: &mut Ui, size: Vec2, egui_d3d11: &mut egui_d3d11::D3D11Renderer) {
+        self.show_with_overlay(ui, size, egui_d3d11, |_, _, _| {});
     }
 
     fn show_toolbar(&mut self, ui: &mut Ui) {

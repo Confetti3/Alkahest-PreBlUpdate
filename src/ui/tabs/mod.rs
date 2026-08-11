@@ -135,7 +135,8 @@ impl<'a> egui_dock::TabViewer for TabViewer<'a> {
                         self.process_result(tab.ui(ui));
                     }
                     Tab::Map(tab) => {
-                        tab.ui(ui, self.egui_d3d11);
+                        let res = tab.ui(ui, self.egui_d3d11);
+                        self.process_result(res);
                     }
                     Tab::ActivityList(tab) => {
                         let res = tab.ui(ui);

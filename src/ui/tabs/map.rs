@@ -5,11 +5,12 @@ use alkahest_data::shadowkeep::{
 };
 use alkahest_render::renderer::shadowkeep::{ShadowkeepPassState, pass_status_ledger};
 use alkahest_render::{Renderer, camera::Camera};
-use egui::{Color32, Rect, RichText, vec2};
+use egui::{Color32, Rect, RichText, Sense, vec2};
 use glam::{Quat, Vec2, Vec3};
 use tiger_parse::PackageManagerExt;
 use tiger_pkg::{TagHash, package_manager};
 
+use super::{Tab, TabResult};
 use crate::{
     app::SharedState,
     task::Task,
@@ -17,7 +18,10 @@ use crate::{
         scene::{Scene, controller::CameraController},
         util::UiExt,
     },
-    world::shadowkeep_map::{MapLoadProgress, MapLoadReport, load_shadowkeep_map_into_world},
+    world::shadowkeep_map::{
+        MapInspectionDisposition, MapLoadProgress, MapLoadReport, ShadowkeepMapInspection,
+        ShadowkeepSpawnPoint, load_shadowkeep_map_into_world, shadowkeep_bubble_catalog,
+    },
 };
 
 type MapLoadTask = Task<anyhow::Result<(hecs::World, MapLoadReport)>>;
@@ -46,6 +50,9 @@ pub struct MapTab {
 
 impl MapTab {
     pub fn new(tag: TagHash, name: String, shared: &Arc<SharedState>) -> anyhow::Result<Self> {
+        // Populate the process-wide browser while map opening is still cheap.
+        // The catalog itself performs no work from a UI frame.
+        let _ = shadowkeep_bubble_catalog();
         Ok(Self {
             tag,
             name,
@@ -114,7 +121,11 @@ impl MapTab {
         Ok(())
     }
 
-    pub fn ui(&mut self, ui: &mut egui::Ui, egui_d3d11: &mut egui_d3d11::D3D11Renderer) {
+    pub fn ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        egui_d3d11: &mut egui_d3d11::D3D11Renderer,
+    ) -> TabResult {
         if let Err(error) = self
             .begin_load_if_ready()
             .and_then(|_| self.complete_load())
@@ -299,8 +310,35 @@ impl MapTab {
                     ui.small(pass.evidence);
                 }
             });
-            scene.show(ui, ui.available_size(), egui_d3d11);
-            return;
+            let report = self
+                .report
+                .as_ref()
+                .expect("loaded Shadowkeep scene always has a load report");
+            let mut open_bubble = None;
+            ui.horizontal_top(|ui| {
+                ui.allocate_ui_with_layout(
+                    vec2(360.0, ui.available_height()),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |ui| {
+                        open_bubble =
+                            show_map_inspection(ui, &report.inspection, &self.shared);
+                    },
+                );
+                ui.separator();
+                scene.show_with_overlay(ui, ui.available_size(), egui_d3d11, |ui, rect, camera| {
+                    draw_spawn_markers(ui, rect, camera, &report.inspection.spawn_points, &self.shared);
+                });
+            });
+            if let Some((tag, name)) = open_bubble {
+                return match Self::new(tag, name, &self.shared) {
+                    Ok(map) => TabResult::Open(Tab::Map(map)),
+                    Err(error) => {
+                        error!("Failed to open Shadowkeep map {tag}: {error:#}");
+                        TabResult::Continue
+                    }
+                };
+            }
+            return TabResult::Continue;
         }
 
         ui.heading(&self.name);
@@ -316,7 +354,7 @@ impl MapTab {
                 self.scene = None;
                 self.error = None;
             }
-            return;
+            return TabResult::Continue;
         }
         let renderer_status = self.shared.renderer_status.read().clone();
         if matches!(renderer_status, crate::app::RendererStatus::Disabled) {
@@ -339,14 +377,14 @@ impl MapTab {
                     ui.label(RichText::new(error).color(Color32::DARK_RED));
                 }
             }
-            return;
+            return TabResult::Continue;
         }
         if !renderer_status.is_ready() {
             ui.label(
                 RichText::new("Waiting for 3D renderer").color(Color32::from_rgb(224, 192, 96)),
             );
             ui.label(renderer_status.scene_diagnostic());
-            return;
+            return TabResult::Continue;
         }
         let progress = self.progress.snapshot();
         let (_, rect) = ui.allocate_space(ui.available_size());
@@ -361,8 +399,215 @@ impl MapTab {
                 if progress.cancelled { " (cancelling)" } else { "" }),
             egui::FontId::proportional(18.0), Color32::GRAY,
         );
+        TabResult::Continue
     }
 }
+fn inspection_disposition_color(disposition: MapInspectionDisposition) -> Color32 {
+    match disposition {
+        MapInspectionDisposition::Rendering => Color32::from_rgb(128, 220, 148),
+        MapInspectionDisposition::NonRendering => Color32::from_rgb(160, 192, 224),
+        MapInspectionDisposition::Deferred => Color32::from_rgb(232, 192, 96),
+        MapInspectionDisposition::Failed => Color32::from_rgb(232, 112, 112),
+    }
+}
+
+fn authored_spawn_name(shared: &SharedState, spawn: &ShadowkeepSpawnPoint) -> String {
+    match shared.wordlist.get(&spawn.name_hash) {
+        Some(name) => format!("{:08X} ({name})", spawn.name_hash),
+        None => format!("{:08X} (unresolved authored FNV)", spawn.name_hash),
+    }
+}
+
+fn bubble_name(shared: &SharedState, tag: TagHash, map_name_hash: Option<u32>) -> String {
+    map_name_hash.map_or_else(
+        || format!("unreadable_{tag}"),
+        |hash| {
+            shared
+                .wordlist
+                .get(&hash)
+                .cloned()
+                .unwrap_or_else(|| format!("map_{hash:08X}"))
+        },
+    )
+}
+
+fn show_map_inspection(
+    ui: &mut egui::Ui,
+    inspection: &ShadowkeepMapInspection,
+    shared: &SharedState,
+) -> Option<(TagHash, String)> {
+    ui.heading("Map inspection");
+    ui.weak(format!(
+        "{} cached tables · {} authored spawn points",
+        inspection.tables.len(),
+        inspection.spawn_points.len()
+    ));
+
+    ui.collapsing(
+        format!("Spawn points ({})", inspection.spawn_points.len()),
+        |ui| {
+            egui::ScrollArea::vertical()
+                .max_height(180.0)
+                .id_salt(("shadowkeep_spawns", inspection.bubble))
+                .show(ui, |ui| {
+                    for spawn in &inspection.spawn_points {
+                        ui.colored_label(
+                            Color32::from_rgb(144, 216, 232),
+                            format!("#{} · {}", spawn.index, authored_spawn_name(shared, spawn)),
+                        );
+                        ui.monospace(format!(
+                            "position {:?}; rotation {:?}",
+                            spawn.translation, spawn.rotation
+                        ));
+                        ui.monospace(format!(
+                            "table {} · entity {} · resource {} @ {:#X}",
+                            spawn.table, spawn.entity, spawn.resource, spawn.definition_offset
+                        ));
+                        ui.add_space(4.0);
+                    }
+                });
+        },
+    );
+
+    ui.collapsing("Scene outliner", |ui| {
+        egui::ScrollArea::vertical()
+            .max_height(360.0)
+            .id_salt(("shadowkeep_scene_outliner", inspection.bubble))
+            .show(ui, |ui| {
+                for table in &inspection.tables {
+                    let source = if table.sources.base_containers.is_empty() {
+                        "freeroam scenario"
+                    } else if table.sources.referenced_by_freeroam_scenario {
+                        "base + freeroam"
+                    } else {
+                        "base bubble"
+                    };
+                    ui.collapsing(
+                        format!("{} · {} entries · {source}", table.tag, table.entries.len()),
+                        |ui| {
+                            if let Some(error) = &table.error {
+                                ui.colored_label(Color32::LIGHT_RED, error);
+                            }
+                            for entry in &table.entries {
+                                let table_resource = entry
+                                    .table_resource_class
+                                    .map(|class| format!("{class:08X}"))
+                                    .unwrap_or_else(|| "no table resource".to_owned());
+                                ui.collapsing(
+                                    format!(
+                                        "#{:04} · {} · {}",
+                                        entry.index,
+                                        entry.disposition.label(),
+                                        table_resource
+                                    ),
+                                    |ui| {
+                                        ui.colored_label(
+                                            inspection_disposition_color(entry.disposition),
+                                            entry.disposition.label(),
+                                        );
+                                        ui.monospace(format!(
+                                            "entity {} · world {:016X}",
+                                            entry.entity, entry.world_id
+                                        ));
+                                        ui.monospace(format!(
+                                            "translation {:?}; rotation {:?}; scale {}",
+                                            entry.translation, entry.rotation, entry.scale
+                                        ));
+                                        if let Some(offset) = entry.table_resource_offset {
+                                            ui.monospace(format!("table resource @ {offset:#X}"));
+                                        }
+                                        for resource in &entry.entity_resources {
+                                            ui.colored_label(
+                                                inspection_disposition_color(resource.disposition),
+                                                format!(
+                                                    "entity resource {} · {:08X} @ {:#X} · {}",
+                                                    resource.tag,
+                                                    resource.class,
+                                                    resource.definition_offset,
+                                                    if resource.valid { "valid" } else { "invalid" },
+                                                ),
+                                            );
+                                        }
+                                    },
+                                );
+                            }
+                        },
+                    );
+                }
+            });
+    });
+
+    let mut selected = None;
+    ui.collapsing(
+        format!("Cached bubble browser ({})", shadowkeep_bubble_catalog().len()),
+        |ui| {
+            ui.weak("Discovered once from the package graph; opening a bubble reuses this index.");
+            egui::ScrollArea::vertical()
+                .max_height(220.0)
+                .id_salt(("shadowkeep_bubble_browser", inspection.bubble))
+                .show(ui, |ui| {
+                    for bubble in shadowkeep_bubble_catalog() {
+                        let name = bubble_name(shared, bubble.tag, bubble.map_name_hash);
+                        if ui
+                            .button(format!("{name} ({}) · {}", bubble.tag, bubble.package_name))
+                            .clicked()
+                        {
+                            selected = Some((bubble.tag, name));
+                        }
+                    }
+                });
+        },
+    );
+    selected
+}
+
+fn draw_spawn_markers(
+    ui: &egui::Ui,
+    viewport: Rect,
+    camera: &Camera,
+    spawns: &[ShadowkeepSpawnPoint],
+    shared: &SharedState,
+) {
+    let world_to_clip = camera.projection_matrix_standard() * camera.view_matrix();
+    for spawn in spawns {
+        let clip = world_to_clip * spawn.translation.extend(1.0);
+        if clip.w <= 0.0 {
+            continue;
+        }
+        let ndc = clip.truncate() / clip.w;
+        if ndc.x.abs() > 1.0 || ndc.y.abs() > 1.0 || ndc.z.abs() > 1.0 {
+            continue;
+        }
+        let position = viewport.left_top()
+            + vec2(
+                (ndc.x * 0.5 + 0.5) * viewport.width(),
+                (-ndc.y * 0.5 + 0.5) * viewport.height(),
+            );
+        ui.painter()
+            .circle_filled(position, 5.0, Color32::from_rgb(96, 216, 240));
+        ui.painter()
+            .circle_stroke(position, 7.0, egui::Stroke::new(1.0, Color32::WHITE));
+        ui.interact(
+            Rect::from_center_size(position, vec2(16.0, 16.0)),
+            ui.make_persistent_id((
+                "shadowkeep_spawn_marker",
+                spawn.table.0,
+                spawn.entity.0,
+                spawn.index,
+            )),
+            Sense::hover(),
+        )
+        .on_hover_ui(|ui| {
+            ui.monospace(format!(
+                "Spawn #{} · {}",
+                spawn.index,
+                authored_spawn_name(shared, spawn)
+            ));
+            ui.monospace(format!("position {:?}", spawn.translation));
+        });
+    }
+}
+
 
 impl Drop for MapTab {
     fn drop(&mut self) {

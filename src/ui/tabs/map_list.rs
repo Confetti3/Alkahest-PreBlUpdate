@@ -1,13 +1,14 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
-use ahash::HashMap;
-use alkahest_data::shadowkeep::map::SShadowkeepBubbleParent;
 use egui::{Margin, Ui, vec2};
-use tiger_parse::{PackageManagerExt, TigerReadable};
-use tiger_pkg::{TagHash, package_manager};
+use tiger_pkg::TagHash;
 
 use super::{Tab, TabResult, map::MapTab};
-use crate::{app::SharedState, ui::util::DButton};
+use crate::{
+    app::SharedState,
+    ui::util::DButton,
+    world::shadowkeep_map::shadowkeep_bubble_catalog,
+};
 
 pub struct MapListTab {
     map_tags_by_package: Vec<(String, Vec<(TagHash, String)>)>,
@@ -19,52 +20,36 @@ pub struct MapListTab {
 
 impl MapListTab {
     pub fn new(state: &Arc<SharedState>) -> Self {
-        let map_tags: Vec<(TagHash, String)> = package_manager()
-            .get_all_by_reference(SShadowkeepBubbleParent::ID.unwrap())
+        let mut by_package = BTreeMap::<String, Vec<(TagHash, String)>>::new();
+        for bubble in shadowkeep_bubble_catalog() {
+            let name = bubble.map_name_hash.map_or_else(
+                || format!("unreadable_{}", bubble.tag),
+                |hash| {
+                    state
+                        .wordlist
+                        .get(&hash)
+                        .cloned()
+                        .unwrap_or_else(|| format!("map_{hash:08X}"))
+                },
+            );
+            by_package
+                .entry(bubble.package_name.clone())
+                .or_default()
+                .push((bubble.tag, name));
+        }
+        let map_tags_by_package = by_package
             .into_iter()
-            .map(|(t, _)| (t, String::new()))
+            .map(|(package, mut bubbles)| {
+                bubbles.sort_unstable_by(|left, right| left.1.cmp(&right.1));
+                (package, bubbles)
+            })
             .collect();
-
-        let map_tags_by_package = {
-            let mut map = HashMap::default();
-            for (tag, name) in map_tags {
-                let pkg_path = &package_manager().package_paths[&tag.pkg_id()];
-                map.entry(pkg_path.name.clone())
-                    .or_insert_with(Vec::new)
-                    .push((tag, name));
-            }
-            let mut vec: Vec<(String, Vec<(TagHash, String)>)> = map.into_iter().collect();
-            vec.sort_by(|a, b| a.0.cmp(&b.0));
-            vec
-        };
 
         Self {
             map_tags_by_package,
             current_package_index: None,
             state: state.clone(),
         }
-    }
-
-    fn load_map_names(&mut self, index: usize) {
-        for (tag, name) in self.map_tags_by_package[index].1.iter_mut() {
-            if name.is_empty() {
-                if let Ok(bubble_parent) =
-                    package_manager().read_tag_struct::<SShadowkeepBubbleParent>(*tag)
-                {
-                    *name = self
-                        .state
-                        .wordlist
-                        .get(&bubble_parent.map_name)
-                        .cloned()
-                        .unwrap_or_else(|| format!("map_{:08X}", bubble_parent.map_name));
-                } else {
-                    *name = format!("unreadable_{tag}");
-                }
-            }
-        }
-        self.map_tags_by_package[index]
-            .1
-            .sort_by(|(_, a), (_, b)| a.cmp(b));
     }
 
     pub fn ui(&mut self, ui: &mut Ui) -> TabResult {
@@ -77,7 +62,6 @@ impl MapListTab {
                 right: 16,
             })
             .show(ui, |ui| {
-                let mut selected_map = None;
                 ui.horizontal_centered(|ui| {
                     ui.vertical(|ui| {
                         egui::ScrollArea::vertical()
@@ -97,15 +81,10 @@ impl MapListTab {
                                     .clicked()
                                     {
                                         self.current_package_index = Some(i);
-                                        selected_map = Some(i);
                                     }
                                 }
                             });
                     });
-
-                    if let Some(index) = selected_map {
-                        self.load_map_names(index);
-                    }
 
                     ui.separator();
 
@@ -143,4 +122,5 @@ impl MapListTab {
 
         result
     }
+
 }

@@ -9,7 +9,7 @@ use std::{
     fs,
     io::{Cursor, Seek, SeekFrom},
     sync::{
-        Arc,
+        Arc, LazyLock,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::{Duration, Instant},
@@ -17,6 +17,7 @@ use std::{
 
 use alkahest_core::ConVars;
 use alkahest_data::{
+    map::{ComponentData, SMapNodeTable, SRespawnPointsComponent},
     shadowkeep::{
         SShadowkeepBubbleDefinition, SShadowkeepBubbleParent, SShadowkeepCubemapPlacement,
         SShadowkeepDynamicModel, SShadowkeepEntity, SShadowkeepLightCollection,
@@ -67,6 +68,85 @@ const SKY_OBJECT_COLLECTION: u32 = 0x8080_6F95;
 const RIGID_MODEL_COMPONENT: u32 = 0x8080_72B8;
 const SHADOWKEEP_LOOKUP_TABLE_BYTES: usize = 64 * 64 * 4;
 const ENTITY_RESOURCE_EXAMPLE_LIMIT: usize = 5;
+
+/// Resource dispatch class. The `SRespawnPointsComponent` payload type is
+/// 0x8080_8CB5, but map component dispatch uses its 0x8080_8CB3 wrapper.
+const RESPAWN_POINTS_COMPONENT: u32 = 0x8080_8CB3;
+const MAP_NODE_TABLE_COMPONENT: u32 = 0x8080_92D8;
+/// Immutable, load-time-only state used by the map inspection UI. It remains
+/// deliberately separate from ECS render objects: an entry is inspectable even
+/// when its resource does not produce geometry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MapInspectionDisposition {
+    Rendering,
+    NonRendering,
+    Deferred,
+    Failed,
+}
+
+impl MapInspectionDisposition {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Rendering => "rendering",
+            Self::NonRendering => "non-rendering",
+            Self::Deferred => "deferred",
+            Self::Failed => "failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MapInspectionEntityResource {
+    pub tag: TagHash,
+    pub class: u32,
+    pub definition_offset: u64,
+    pub valid: bool,
+    pub disposition: MapInspectionDisposition,
+}
+
+#[derive(Debug, Clone)]
+pub struct MapInspectionEntry {
+    pub index: usize,
+    pub entity: TagHash,
+    pub world_id: u64,
+    pub translation: Vec3,
+    pub rotation: glam::Quat,
+    pub scale: f32,
+    pub table_resource_class: Option<u32>,
+    pub table_resource_offset: Option<u64>,
+    pub disposition: MapInspectionDisposition,
+    pub entity_resources: Vec<MapInspectionEntityResource>,
+}
+
+#[derive(Debug, Clone)]
+pub struct MapInspectionTable {
+    pub tag: TagHash,
+    pub sources: ShadowkeepTableSources,
+    pub entries: Vec<MapInspectionEntry>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShadowkeepSpawnPoint {
+    pub table: TagHash,
+    pub entity: TagHash,
+    pub resource: TagHash,
+    pub definition_offset: u64,
+    pub index: usize,
+    pub translation: Vec3,
+    pub rotation: glam::Quat,
+    /// This is the authored FNV-1 hash. Its value is never derived from a
+    /// display string; callers may only annotate it with a wordlist match.
+    pub name_hash: u32,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ShadowkeepMapInspection {
+    pub bubble: TagHash,
+    pub child_map: TagHash,
+    pub tables: Vec<MapInspectionTable>,
+    pub spawn_points: Vec<ShadowkeepSpawnPoint>,
+}
 
 fn bounded_offset(table_len: usize, offset: u64, required: usize) -> anyhow::Result<usize> {
     let offset = usize::try_from(offset).context("resource offset exceeds addressable memory")?;
@@ -149,6 +229,42 @@ pub struct MapLoadProgress {
     gpu_assets_requested: Arc<AtomicUsize>,
     diagnostics: Arc<Mutex<Vec<String>>>,
     cancelled: Arc<AtomicBool>,
+}
+
+/// A process-wide catalog of all discovered Shadowkeep bubble parents. The
+/// package graph is traversed once, never from a UI frame.
+#[derive(Debug, Clone)]
+pub struct ShadowkeepBubbleCatalogEntry {
+    pub tag: TagHash,
+    pub package_name: String,
+    pub map_name_hash: Option<u32>,
+}
+
+static SHADOWKEEP_BUBBLE_CATALOG: LazyLock<Vec<ShadowkeepBubbleCatalogEntry>> =
+    LazyLock::new(|| {
+        let manager = package_manager();
+        let mut bubbles = manager
+            .get_all_by_reference(SShadowkeepBubbleParent::ID.unwrap())
+            .into_iter()
+            .map(|(tag, _)| ShadowkeepBubbleCatalogEntry {
+                tag,
+                package_name: manager.package_paths[&tag.pkg_id()].name.clone(),
+                map_name_hash: manager
+                    .read_tag_struct::<SShadowkeepBubbleParent>(tag)
+                    .ok()
+                    .map(|parent| parent.map_name),
+            })
+            .collect::<Vec<_>>();
+        bubbles.sort_unstable_by(|left, right| {
+            left.package_name
+                .cmp(&right.package_name)
+                .then_with(|| left.tag.cmp(&right.tag))
+        });
+        bubbles
+    });
+
+pub fn shadowkeep_bubble_catalog() -> &'static [ShadowkeepBubbleCatalogEntry] {
+    &SHADOWKEEP_BUBBLE_CATALOG
 }
 
 impl MapLoadProgress {
@@ -884,6 +1000,7 @@ fn load_shadowkeep_atmosphere(
 #[derive(Debug, Clone, Default)]
 pub struct MapLoadReport {
     pub map: TagHash,
+    pub inspection: ShadowkeepMapInspection,
     pub containers: usize,
     pub scenario: Option<TagHash>,
     pub activity_tables: usize,
@@ -1213,6 +1330,81 @@ fn load_shadowkeep_rigid_entity(
     Ok(())
 }
 
+fn collect_shadowkeep_respawn_points(
+    report: &mut MapLoadReport,
+    table: TagHash,
+    entity: TagHash,
+    resource: TagHash,
+    definition_offset: u64,
+) -> anyhow::Result<()> {
+    let bytes = package_manager().read_tag(resource)?;
+    let offset = bounded_offset(bytes.len(), definition_offset, SRespawnPointsComponent::SIZE)?;
+    let mut cursor = Cursor::new(&bytes[offset..]);
+    let component = SRespawnPointsComponent::read_ds(&mut cursor)?;
+    let Some(respawns) = &*component.tag else {
+        anyhow::bail!("respawn point collection tag is absent");
+    };
+    for (index, spawn) in respawns.unk8.iter().enumerate() {
+        let point = ShadowkeepSpawnPoint {
+            table,
+            entity,
+            resource: component.tag.taghash(),
+            definition_offset,
+            index,
+            translation: spawn.translation.xyz(),
+            rotation: spawn.rotation,
+            name_hash: spawn.unk20,
+        };
+        report.spawn_points.push(point.translation);
+        report.inspection.spawn_points.push(point);
+    }
+    Ok(())
+}
+
+fn collect_shadowkeep_map_node_respawns(
+    report: &mut MapLoadReport,
+    loaded_node_tables: &mut HashSet<TagHash>,
+    table: TagHash,
+    entity: TagHash,
+    resource: TagHash,
+    definition_offset: u64,
+) -> anyhow::Result<()> {
+    let bytes = package_manager().read_tag(resource)?;
+    let offset = bounded_offset(bytes.len(), definition_offset + 0x84, TagHash::SIZE)?;
+    let mut cursor = Cursor::new(&bytes[offset..]);
+    let node_table_tag = TagHash::read_ds(&mut cursor)?;
+    anyhow::ensure!(node_table_tag.is_some(), "map-node table tag is absent");
+    if !loaded_node_tables.insert(node_table_tag) {
+        return Ok(());
+    }
+    let node_table: SMapNodeTable = package_manager().read_tag_struct(node_table_tag)?;
+    for node in node_table.nodes {
+        for component in node.component_data.iter() {
+            let ComponentData::SRespawnPointsComponent(component) = component else {
+                continue;
+            };
+            let Some(points) = &*component.tag else {
+                continue;
+            };
+            for (index, point) in points.unk8.iter().enumerate() {
+                let spawn = ShadowkeepSpawnPoint {
+                    table,
+                    entity,
+                    resource: component.tag.taghash(),
+                    definition_offset,
+                    index,
+                    translation: point.translation.xyz(),
+                    rotation: point.rotation,
+                    name_hash: point.unk20,
+                };
+                report.spawn_points.push(spawn.translation);
+                report.inspection.spawn_points.push(spawn);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Decode a Shadowkeep bubble into the modern world. Static geometry is
 /// immediately normalized into render objects; unimplemented visual families
 /// remain explicit report diagnostics so they cannot silently disappear.
@@ -1230,6 +1422,11 @@ pub fn load_shadowkeep_map_into_world(
         .context("Failed to read Shadowkeep bubble definition")?;
     let mut report = MapLoadReport {
         map: tag,
+        inspection: ShadowkeepMapInspection {
+            bubble: tag,
+            child_map: parent.child_map,
+            ..Default::default()
+        },
         ..Default::default()
     };
     report.containers = definition.map_resources.len();
@@ -1274,6 +1471,7 @@ pub fn load_shadowkeep_map_into_world(
     let mut entity_bound_points = Vec::new();
     let mut loaded_static_collections = HashSet::new();
     let mut loaded_terrain_resources = HashSet::new();
+    let mut loaded_node_tables = HashSet::new();
     let mut visual_bounds: Option<AxisAlignedBBox> = None;
     let mut sky_object_candidates = Vec::new();
     let mut atmosphere_candidates = Vec::new();
@@ -1286,6 +1484,7 @@ pub fn load_shadowkeep_map_into_world(
         let table: SShadowkeepMapDataTable = match package_manager().read_tag_struct(table_hash) {
             Ok(table) => table,
             Err(error) => {
+                let error = format!("could not decode map data table: {error:#}");
                 report.skipped_resources += 1;
                 report.diagnostic(
                     progress,
@@ -1293,15 +1492,22 @@ pub fn load_shadowkeep_map_into_world(
                         table: table_hash,
                         entry_offset: 0,
                         resource_class: 0,
-                        error: format!("could not decode map data table: {error:#}"),
+                        error: error.clone(),
                     },
                 );
+                report.inspection.tables.push(MapInspectionTable {
+                    tag: table_hash,
+                    sources: table_sources,
+                    entries: Vec::new(),
+                    error: Some(error),
+                });
                 continue;
             }
         };
         let table_bytes = match package_manager().read_tag(table_hash) {
             Ok(bytes) => bytes,
             Err(error) => {
+                let error = format!("could not read map data table bytes: {error:#}");
                 report.skipped_resources += table.data_entries.len();
                 report.diagnostic(
                     progress,
@@ -1309,13 +1515,20 @@ pub fn load_shadowkeep_map_into_world(
                         table: table_hash,
                         entry_offset: 0,
                         resource_class: 0,
-                        error: format!("could not read map data table bytes: {error:#}"),
+                        error: error.clone(),
                     },
                 );
+                report.inspection.tables.push(MapInspectionTable {
+                    tag: table_hash,
+                    sources: table_sources,
+                    entries: Vec::new(),
+                    error: Some(error),
+                });
                 continue;
             }
         };
         report.tables += 1;
+        let mut inspected_entries = Vec::with_capacity(table.data_entries.len());
         progress.tables_seen.fetch_add(1, Ordering::Relaxed);
         for entry in &table.data_entries {
             if progress.is_cancelled() {
@@ -1329,6 +1542,37 @@ pub fn load_shadowkeep_map_into_world(
                 entry.rotation,
                 Vec3::splat(entry.translation.w),
             );
+            let table_resource_class = entry
+                .data_resource
+                .is_valid
+                .then_some(entry.data_resource.resource_type);
+            let mut inspection_entry = MapInspectionEntry {
+                index: inspected_entries.len(),
+                entity: entry.entity,
+                world_id: entry.world_id,
+                translation: entry.translation.xyz(),
+                rotation: entry.rotation,
+                scale: entry.translation.w,
+                table_resource_class,
+                table_resource_offset: entry
+                    .data_resource
+                    .is_valid
+                    .then_some(entry.data_resource.offset),
+                disposition: match table_resource_class {
+                    Some(
+                        STATIC_PLACEMENT
+                        | TERRAIN_PLACEMENT
+                        | LIGHT_COLLECTION
+                        | SHADOWING_LIGHT
+                        | CUBEMAP_VOLUME
+                        | ATMOSPHERE_PLACEMENT
+                        | SKY_OBJECT_PLACEMENT,
+                    ) => MapInspectionDisposition::Rendering,
+                    Some(_) => MapInspectionDisposition::Deferred,
+                    None => MapInspectionDisposition::NonRendering,
+                },
+                entity_resources: Vec::new(),
+            };
             let mut loaded_entity_visual = false;
             // Entity payloads are independent of the optional table-local resource pointer.
             // Process them first so entity-only entries are not discarded by the guard below.
@@ -1345,6 +1589,28 @@ pub fn load_shadowkeep_map_into_world(
                             let resource_tag = resource_ref.resource.taghash();
                             let resource = &*resource_ref.resource;
                             let class = resource.resource.resource_type;
+                            inspection_entry
+                                .entity_resources
+                                .push(MapInspectionEntityResource {
+                                    tag: resource_tag,
+                                    class,
+                                    definition_offset: resource.definition.offset,
+                                    valid: resource.resource.is_valid
+                                        && resource.definition.is_valid,
+                                    disposition: if !resource.resource.is_valid
+                                        || !resource.definition.is_valid
+                                    {
+                                        MapInspectionDisposition::Deferred
+                                    } else if class == RIGID_MODEL_COMPONENT {
+                                        MapInspectionDisposition::Rendering
+                                    } else if class == RESPAWN_POINTS_COMPONENT
+                                        || class == MAP_NODE_TABLE_COMPONENT
+                                    {
+                                        MapInspectionDisposition::NonRendering
+                                    } else {
+                                        MapInspectionDisposition::Deferred
+                                    },
+                                });
                             *report
                                 .entity_resource_class_counts
                                 .entry(class)
@@ -1401,6 +1667,13 @@ pub fn load_shadowkeep_map_into_world(
                                                 ),
                                             },
                                         );
+                                        if let Some(resource) =
+                                            inspection_entry.entity_resources.last_mut()
+                                        {
+                                            resource.disposition =
+                                                MapInspectionDisposition::Failed;
+                                        }
+                                        inspection_entry.disposition = MapInspectionDisposition::Failed;
                                     } else {
                                         report.rigid_render_objects += 1;
                                         *report
@@ -1408,6 +1681,82 @@ pub fn load_shadowkeep_map_into_world(
                                             .entry(class)
                                             .or_default() += 1;
                                         loaded_entity_visual = true;
+                                    }
+                                }
+                                RESPAWN_POINTS_COMPONENT => {
+                                    match collect_shadowkeep_respawn_points(
+                                        &mut report,
+                                        table_hash,
+                                        entry.entity,
+                                        resource_tag,
+                                        resource.definition.offset,
+                                    ) {
+                                        Ok(()) => {
+                                            *report
+                                                .loaded_entity_resource_classes
+                                                .entry(class)
+                                                .or_default() += 1;
+                                        }
+                                        Err(error) => {
+                                            report.skipped_resources += 1;
+                                            *report
+                                                .failed_entity_resource_classes
+                                                .entry(class)
+                                                .or_default() += 1;
+                                            inspection_entry.disposition =
+                                                MapInspectionDisposition::Failed;
+                                            report.diagnostic(
+                                                progress,
+                                                MapLoadDiagnostic {
+                                                    table: table_hash,
+                                                    entry_offset: resource.definition.offset,
+                                                    resource_class: class,
+                                                    error: format!(
+                                                        "entity {} resource {}: respawn points: {error:#}",
+                                                        entry.entity, resource_tag,
+                                                    ),
+                                                },
+                                            );
+                                        }
+                                    }
+                                }
+                                MAP_NODE_TABLE_COMPONENT => {
+                                    match collect_shadowkeep_map_node_respawns(
+                                        &mut report,
+                                        &mut loaded_node_tables,
+                                        table_hash,
+                                        entry.entity,
+                                        resource_tag,
+                                        resource.definition.offset,
+                                    ) {
+                                        Ok(()) => {
+                                            *report
+                                                .loaded_entity_resource_classes
+                                                .entry(class)
+                                                .or_default() += 1;
+                                        }
+                                        Err(error) => {
+                                            report.skipped_resources += 1;
+                                            *report
+                                                .failed_entity_resource_classes
+                                                .entry(class)
+                                                .or_default() += 1;
+                                            inspection_entry.disposition =
+                                                MapInspectionDisposition::Failed;
+                                            report.diagnostic(
+                                                progress,
+                                                MapLoadDiagnostic {
+                                                    table: table_hash,
+                                                    entry_offset: resource.definition.offset,
+                                                    resource_class: class,
+                                                    error: format!(
+                                                        "entity {} resource {}: map-node respawn points: \
+                                                         {error:#}",
+                                                        entry.entity, resource_tag,
+                                                    ),
+                                                },
+                                            );
+                                        }
                                     }
                                 }
                                 other => report.defer_entity_resource(other, example),
@@ -1431,6 +1780,7 @@ pub fn load_shadowkeep_map_into_world(
                                 ),
                             },
                         );
+                        inspection_entry.disposition = MapInspectionDisposition::Failed;
                     }
                 }
             }
@@ -1439,6 +1789,7 @@ pub fn load_shadowkeep_map_into_world(
             }
             if !entry.data_resource.is_valid {
                 report.entries_without_table_resource += 1;
+                inspected_entries.push(inspection_entry);
                 continue;
             }
             if entry.data_resource.resource_type != SKY_OBJECT_PLACEMENT {
@@ -1855,7 +2206,14 @@ pub fn load_shadowkeep_map_into_world(
                         .or_default() += 1;
                 }
             }
+            inspected_entries.push(inspection_entry);
         }
+        report.inspection.tables.push(MapInspectionTable {
+            tag: table_hash,
+            sources: table_sources,
+            entries: inspected_entries,
+            error: None,
+        });
     }
     let mut candidates_by_collection = BTreeMap::<TagHash, SkyObjectCollectionEvidence>::new();
     for candidate in sky_object_candidates {
@@ -2236,14 +2594,16 @@ pub fn load_shadowkeep_map_into_world(
 #[cfg(test)]
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
-
+    use alkahest_data::map::SRespawnPointsComponent;
     use glam::{Vec3, Vec4};
+    use tiger_parse::TigerReadable;
     use tiger_pkg::TagHash;
 
     use super::{
         AtmospherePlacementCandidate, EntityResourceExample, MapLoadProgress, MapLoadReport,
-        ShadowkeepEnvironmentSelectionReason, ShadowkeepTableSources, SkyObjectCollectionEvidence,
-        SkyObjectPlacementCandidate, bounded_offset, select_shadowkeep_environment,
+        RESPAWN_POINTS_COMPONENT, ShadowkeepEnvironmentSelectionReason, ShadowkeepTableSources,
+        SkyObjectCollectionEvidence, SkyObjectPlacementCandidate, bounded_offset,
+        select_shadowkeep_environment,
     };
 
     fn collection_candidate(
@@ -2298,6 +2658,12 @@ mod tests {
         assert!(bounded_offset(0x40, u64::MAX, 1).is_err());
     }
 
+
+    #[test]
+    fn respawn_dispatch_class_is_distinct_from_payload_type() {
+        assert_eq!(RESPAWN_POINTS_COMPONENT, 0x8080_8CB3);
+        assert_eq!(SRespawnPointsComponent::ID, Some(0x8080_8CB5));
+    }
     #[test]
     fn cancellation_is_shared_with_progress_observers() {
         let progress = MapLoadProgress::default();
