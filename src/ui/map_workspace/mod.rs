@@ -11,7 +11,9 @@ use crate::{
             MapEntityVisibility, MapInspectionFilter, MapInspectionNodeId, MapInspectionNodeKind,
             ShadowkeepMapInspection, set_node_visibility,
         },
-        shadowkeep_map::{MapLoadReport, shadowkeep_bubble_catalog},
+        shadowkeep_map::{
+            MapLoadReport, shadowkeep_bubble_catalog, shadowkeep_bubble_catalog_matches,
+        },
     },
 };
 
@@ -313,7 +315,7 @@ pub fn show(
                     for entry in shadowkeep_bubble_catalog()
                         .entries
                         .iter()
-                        .filter(|entry| query.is_empty() || entry.search_text.contains(&query))
+                        .filter(|entry| shadowkeep_bubble_catalog_matches(entry, &query))
                     {
                         let response = ui.selectable_label(
                             entry.tag == inspection.bubble,

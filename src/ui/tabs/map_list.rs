@@ -4,7 +4,10 @@ use egui::{Margin, Ui};
 use tiger_pkg::TagHash;
 
 use super::{Tab, TabResult, map::MapTab};
-use crate::{app::SharedState, world::shadowkeep_map::shadowkeep_bubble_catalog};
+use crate::{
+    app::SharedState,
+    world::shadowkeep_map::{shadowkeep_bubble_catalog, shadowkeep_bubble_catalog_matches},
+};
 
 pub struct MapListTab {
     search: String,
@@ -31,7 +34,7 @@ impl MapListTab {
                     for bubble in shadowkeep_bubble_catalog()
                         .entries
                         .iter()
-                        .filter(|entry| query.is_empty() || entry.search_text.contains(&query))
+                        .filter(|entry| shadowkeep_bubble_catalog_matches(entry, &query))
                     {
                         let label = format!(
                             "{} · {} · {} tables",

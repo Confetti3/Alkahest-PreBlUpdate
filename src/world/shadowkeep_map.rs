@@ -277,6 +277,16 @@ pub fn shadowkeep_bubble_catalog() -> &'static ShadowkeepBubbleCatalog {
         .expect("Shadowkeep bubble catalog must be initialized during App::new")
 }
 
+pub(crate) fn shadowkeep_bubble_catalog_matches(
+    entry: &ShadowkeepBubbleCatalogEntry,
+    query: &str,
+) -> bool {
+    query.trim().is_empty()
+        || entry
+            .search_text
+            .contains(&query.trim().to_ascii_lowercase())
+}
+
 impl MapLoadProgress {
     pub fn snapshot(&self) -> MapLoadProgressSnapshot {
         MapLoadProgressSnapshot {
@@ -2829,9 +2839,10 @@ mod tests {
 
     use super::{
         AtmospherePlacementCandidate, EntityResourceExample, MapInspectionNodeId, MapLoadProgress,
-        MapLoadReport, RESPAWN_POINTS_COMPONENT, ShadowkeepEnvironmentSelectionReason,
-        ShadowkeepTableSources, SkyObjectCollectionEvidence, SkyObjectPlacementCandidate,
-        bounded_offset, select_shadowkeep_environment,
+        MapLoadReport, RESPAWN_POINTS_COMPONENT, ShadowkeepBubbleCatalogEntry,
+        ShadowkeepEnvironmentSelectionReason, ShadowkeepTableSources, SkyObjectCollectionEvidence,
+        SkyObjectPlacementCandidate, bounded_offset, select_shadowkeep_environment,
+        shadowkeep_bubble_catalog_matches,
     };
 
     fn collection_candidate(
@@ -3128,5 +3139,28 @@ mod tests {
         );
         assert_eq!(result.deferred_sky_collections, vec![first, second]);
         assert_eq!(result.deferred_atmospheres, vec![0, 1]);
+    }
+
+    #[test]
+    fn catalog_search_matches_resolved_names_tags_and_packages_case_insensitively() {
+        let entry = ShadowkeepBubbleCatalogEntry {
+            tag: TagHash(0x8080_1234),
+            child_map: None,
+            package_name: "sandbox_01".to_owned(),
+            package_path: "sandbox_01.pkg".to_owned(),
+            map_name_hash: None,
+            display_name: "European Dead Zone".to_owned(),
+            search_text: "european dead zone 80801234 sandbox_01".to_owned(),
+            container_count: 0,
+            table_count: 0,
+            scenario: None,
+            readable: true,
+            error: None,
+        };
+
+        assert!(shadowkeep_bubble_catalog_matches(&entry, ""));
+        assert!(shadowkeep_bubble_catalog_matches(&entry, "DEAD ZONE"));
+        assert!(shadowkeep_bubble_catalog_matches(&entry, "sandbox_01"));
+        assert!(!shadowkeep_bubble_catalog_matches(&entry, "europa"));
     }
 }
