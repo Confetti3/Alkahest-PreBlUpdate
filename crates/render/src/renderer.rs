@@ -259,6 +259,7 @@ impl Renderer {
         ConVars::register("render.global_lighting", era == RendererEra::Shadowkeep);
         ConVars::register("render.shadowkeep_buffer_provenance", false);
         ConVars::register("render.shadowkeep_global_lighting_ab", false);
+        ConVars::register("render.shadowkeep_global_lighting_diagnostics", false);
         ConVars::register("render.shadowkeep_directional_light_ab", false);
         ConVars::register("render.shadowkeep_exposure_ab", false);
         ConVars::register("render.shadowkeep_final_combine_no_film_curve", false);

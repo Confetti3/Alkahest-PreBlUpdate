@@ -1918,7 +1918,9 @@ impl Renderer {
     }
 
     fn emit_shadowkeep_global_lighting_manifest(&self, pipeline: &Technique, draw_6_reached: bool) {
-        if self.shadowkeep_global_lighting_manifest_emitted.load() {
+        if !ConVars::get_flag("render.shadowkeep_global_lighting_diagnostics")
+            || self.shadowkeep_global_lighting_manifest_emitted.load()
+        {
             return;
         }
         self.shadowkeep_global_lighting_manifest_emitted.store(true);
