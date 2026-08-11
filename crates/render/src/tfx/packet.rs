@@ -8,6 +8,16 @@ use crate::{
     object::RenderObjectHandle, renderer::submit::atmosphere::AtmosphereData, tfx::view::View,
 };
 
+/// Stable source ordering for legacy map-authored sky objects.
+///
+/// This order is emitted by the Shadowkeep loader and deliberately remains
+/// independent from frame-node distance so Diagnostic Freeze keeps authored
+/// alpha composition deterministic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ShadowkeepSkyOrder {
+    pub collection_order: u16,
+    pub object_index: u16,
+}
 #[derive(Default)]
 pub struct FramePacket {
     // pub alloc: Bump,
@@ -33,6 +43,7 @@ impl FramePacket {
             render_object_handle,
             data: Box::new(()),
             distance: 0.0,
+            sky_order: None,
             visible: VisibilityMask::default(),
         });
     }
@@ -43,10 +54,21 @@ impl FramePacket {
         transform: CompactTransform,
         permutation: usize,
     ) {
+        self.push_dynamic_render_object_ordered(render_object_handle, transform, permutation, None);
+    }
+
+    pub fn push_dynamic_render_object_ordered(
+        &mut self,
+        render_object_handle: RenderObjectHandle,
+        transform: CompactTransform,
+        permutation: usize,
+        sky_order: Option<ShadowkeepSkyOrder>,
+    ) {
         self.frame_nodes.push(FrameNode {
             render_object_handle,
             data: Box::new((transform, permutation)),
             distance: 0.0,
+            sky_order,
             visible: VisibilityMask::default(),
         });
     }
@@ -65,6 +87,7 @@ pub struct FrameNode {
     pub data: Box<dyn Any>,
     /// Distance between the main view and the object
     pub distance: f32,
+    pub sky_order: Option<ShadowkeepSkyOrder>,
     pub visible: VisibilityMask,
 }
 

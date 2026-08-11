@@ -521,7 +521,7 @@ impl FeatureRenderer for DynamicModel {
             self.identifier_mask,
             |model, cmd, _, (_, part)| {
                 if let Some((map, collection)) = model.sky_owner {
-                    record_shadowkeep_sky_object_draw(map, collection, model.hash);
+                    record_shadowkeep_sky_object_draw(stage, map, collection, model.hash);
                 }
                 cmd.draw_indexed(part.index_count, part.index_start, 0);
             },
@@ -548,7 +548,7 @@ impl FeatureRenderer for DynamicModel {
                 identifier_maswk,
                 |model, cmd, (_mesh_index, _mesh), (_part_index, part)| {
                     if let Some((map, collection)) = model.sky_owner {
-                        record_shadowkeep_sky_object_draw(map, collection, model.hash);
+                        record_shadowkeep_sky_object_draw(stage, map, collection, model.hash);
                     }
                     cmd.draw_indexed(part.index_count, part.index_start, 0);
                 },

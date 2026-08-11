@@ -252,9 +252,10 @@ impl Renderer {
         ConVars::register("render.sky", true);
         ConVars::register("render.shadowkeep_sky_objects", true);
         ConVars::register("render.shadowkeep_sky_object_collection", 0u32);
-        ConVars::register("render.shadowkeep_environment_census", true);
-        ConVars::register("render.shadowkeep_sky_diagnostics", true);
-        ConVars::register("render.shadowkeep_sky_objects_ab", true);
+        ConVars::register("render.shadowkeep_environment_census", false);
+        ConVars::register("render.shadowkeep_sky_diagnostics", false);
+        ConVars::register("render.shadowkeep_sky_objects_ab", false);
+        ConVars::register("render.shadowkeep_sky_objects_distance_sort", false);
         ConVars::register("render.global_lighting", era == RendererEra::Shadowkeep);
         ConVars::register("render.shadowkeep_buffer_provenance", false);
         ConVars::register("render.shadowkeep_global_lighting_ab", false);

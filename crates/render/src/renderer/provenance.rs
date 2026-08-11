@@ -168,10 +168,25 @@ struct SkyTechniqueDependencyManifest {
 pub struct SkyObjectsCaptureStats {
     pub draw_indexed_calls: usize,
     pub decals_additive_submission_reached: bool,
+    pub decals_additive_draw_indexed_calls: usize,
     pub transparents_submission_reached: bool,
+    pub transparents_draw_indexed_calls: usize,
     pub maps: Vec<String>,
     pub collections: Vec<String>,
     pub models: Vec<String>,
+}
+
+#[derive(Debug, Default, Serialize)]
+pub struct SkyObjectDomainDelta {
+    pub clear_depth_pixels: usize,
+    pub geometry_pixels: usize,
+    pub changed_clear_depth_pixels: usize,
+    pub changed_geometry_pixels: usize,
+    pub clear_depth_rmse_rgb: [f64; 3],
+    pub geometry_rmse_rgb: [f64; 3],
+    pub clear_depth_mean_abs_delta_rgb: [f64; 3],
+    pub geometry_mean_abs_delta_rgb: [f64; 3],
+    pub gbuffer_depth_byte_identical: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -179,6 +194,7 @@ pub struct SkyObjectsAbManifest {
     pub schema: &'static str,
     pub requested_collection: String,
     pub stats: SkyObjectsCaptureStats,
+    pub domain_delta: Option<SkyObjectDomainDelta>,
     pub before_sky_objects: Vec<SurfaceProvenance>,
     pub after_sky_objects: Vec<SurfaceProvenance>,
 }
@@ -188,7 +204,9 @@ struct SkyObjectsCaptureState {
     active: bool,
     draw_indexed_calls: usize,
     decals_additive_submission_reached: bool,
+    decals_additive_draw_indexed_calls: usize,
     transparents_submission_reached: bool,
+    transparents_draw_indexed_calls: usize,
     maps: BTreeMap<TagHash, ()>,
     collections: BTreeMap<TagHash, ()>,
     models: BTreeMap<TagHash, ()>,
@@ -220,12 +238,26 @@ pub fn record_shadowkeep_sky_objects_submission(stage: alkahest_data::tfx::Rende
     }
 }
 
-pub fn record_shadowkeep_sky_object_draw(map: TagHash, collection: TagHash, model: TagHash) {
+pub fn record_shadowkeep_sky_object_draw(
+    stage: alkahest_data::tfx::RenderStage,
+    map: TagHash,
+    collection: TagHash,
+    model: TagHash,
+) {
     let mut capture = SKY_OBJECTS_CAPTURE.lock();
     if !capture.active {
         return;
     }
     capture.draw_indexed_calls += 1;
+    match stage {
+        alkahest_data::tfx::RenderStage::DecalsAdditive => {
+            capture.decals_additive_draw_indexed_calls += 1;
+        }
+        alkahest_data::tfx::RenderStage::Transparents => {
+            capture.transparents_draw_indexed_calls += 1;
+        }
+        _ => {}
+    }
     capture.maps.insert(map, ());
     capture.collections.insert(collection, ());
     capture.models.insert(model, ());
@@ -237,7 +269,9 @@ pub fn finish_shadowkeep_sky_objects_capture() -> SkyObjectsCaptureStats {
     SkyObjectsCaptureStats {
         draw_indexed_calls: capture.draw_indexed_calls,
         decals_additive_submission_reached: capture.decals_additive_submission_reached,
+        decals_additive_draw_indexed_calls: capture.decals_additive_draw_indexed_calls,
         transparents_submission_reached: capture.transparents_submission_reached,
+        transparents_draw_indexed_calls: capture.transparents_draw_indexed_calls,
         maps: capture.maps.keys().map(ToString::to_string).collect(),
         collections: capture
             .collections
@@ -577,6 +611,168 @@ impl SkyObjectsAbManifest {
             .context("Failed to serialize sky-object A/B manifest")?;
         fs::write(directory.join("manifest.json"), json)
             .context("Failed to write sky-object A/B manifest")
+    }
+}
+
+/// Calculates the sky-object A/B delta in depth domains without requesting
+/// another GPU readback. Both captures already contain tightly packed raw
+/// surfaces because the diagnostic is explicitly armed.
+pub fn sky_object_domain_delta(
+    before_directory: &Path,
+    before: &[SurfaceProvenance],
+    after_directory: &Path,
+    after: &[SurfaceProvenance],
+) -> anyhow::Result<SkyObjectDomainDelta> {
+    fn find_capture<'a>(
+        captures: &'a [SurfaceProvenance],
+        surface: &str,
+    ) -> anyhow::Result<&'a SurfaceProvenance> {
+        captures
+            .iter()
+            .find(|capture| capture.surface == surface)
+            .with_context(|| format!("sky-object A/B capture omitted {surface}"))
+    }
+
+    let before_color = find_capture(before, "shading_result")?;
+    let after_color = find_capture(after, "shading_result")?;
+    let before_depth = find_capture(before, "gbuffer_depth")?;
+    let after_depth = find_capture(after, "gbuffer_depth")?;
+    anyhow::ensure!(
+        before_color.width == after_color.width && before_color.height == after_color.height,
+        "sky-object color capture dimensions changed during A/B"
+    );
+    anyhow::ensure!(
+        before_depth.width == after_depth.width && before_depth.height == after_depth.height,
+        "sky-object depth capture dimensions changed during A/B"
+    );
+    anyhow::ensure!(
+        before_color.width == before_depth.width && before_color.height == before_depth.height,
+        "sky-object color and depth captures have different dimensions"
+    );
+
+    let before_color_bytes = fs::read(before_directory.join(&before_color.file))
+        .context("failed to read pre-sky shading capture")?;
+    let after_color_bytes = fs::read(after_directory.join(&after_color.file))
+        .context("failed to read post-sky shading capture")?;
+    let before_depth_bytes = fs::read(before_directory.join(&before_depth.file))
+        .context("failed to read pre-sky depth capture")?;
+    let after_depth_bytes = fs::read(after_directory.join(&after_depth.file))
+        .context("failed to read post-sky depth capture")?;
+    let color_format = provenance_format(&before_color.resource_format)?;
+    let depth_format = provenance_format(&before_depth.resource_format)?;
+    anyhow::ensure!(
+        color_format == provenance_format(&after_color.resource_format)?,
+        "sky-object color capture format changed during A/B"
+    );
+    anyhow::ensure!(
+        depth_format == provenance_format(&after_depth.resource_format)?,
+        "sky-object depth capture format changed during A/B"
+    );
+
+    let color_bpp = bytes_per_pixel(color_format)?;
+    let depth_bpp = bytes_per_pixel(depth_format)?;
+    let pixel_count = before_color.width as usize * before_color.height as usize;
+    anyhow::ensure!(
+        before_color_bytes.len() == pixel_count * color_bpp
+            && after_color_bytes.len() == pixel_count * color_bpp
+            && before_depth_bytes.len() == pixel_count * depth_bpp
+            && after_depth_bytes.len() == pixel_count * depth_bpp,
+        "sky-object A/B capture byte count does not match its dimensions"
+    );
+
+    let clear_depth = if depth_pixel_count(depth_format, &before_depth_bytes, 0.0)?
+        >= depth_pixel_count(depth_format, &before_depth_bytes, 1.0)?
+    {
+        0.0
+    } else {
+        1.0
+    };
+    let mut delta = SkyObjectDomainDelta {
+        gbuffer_depth_byte_identical: before_depth_bytes == after_depth_bytes,
+        ..Default::default()
+    };
+    let mut clear_squared = [0.0; 3];
+    let mut geometry_squared = [0.0; 3];
+    let mut clear_abs = [0.0; 3];
+    let mut geometry_abs = [0.0; 3];
+    for index in 0..pixel_count {
+        let depth = decode_pixel(
+            depth_format,
+            &before_depth_bytes[index * depth_bpp..(index + 1) * depth_bpp],
+        )?[0];
+        let clear = (depth - clear_depth).abs() <= f32::EPSILON;
+        let before_pixel = decode_pixel(
+            color_format,
+            &before_color_bytes[index * color_bpp..(index + 1) * color_bpp],
+        )?;
+        let after_pixel = decode_pixel(
+            color_format,
+            &after_color_bytes[index * color_bpp..(index + 1) * color_bpp],
+        )?;
+        let mut changed = false;
+        for channel in 0..3 {
+            let value = f64::from(after_pixel[channel] - before_pixel[channel]).abs();
+            changed |= value != 0.0;
+            if clear {
+                clear_squared[channel] += value * value;
+                clear_abs[channel] += value;
+            } else {
+                geometry_squared[channel] += value * value;
+                geometry_abs[channel] += value;
+            }
+        }
+        if clear {
+            delta.clear_depth_pixels += 1;
+            delta.changed_clear_depth_pixels += usize::from(changed);
+        } else {
+            delta.geometry_pixels += 1;
+            delta.changed_geometry_pixels += usize::from(changed);
+        }
+    }
+    for channel in 0..3 {
+        if delta.clear_depth_pixels != 0 {
+            let count = delta.clear_depth_pixels as f64;
+            delta.clear_depth_rmse_rgb[channel] = (clear_squared[channel] / count).sqrt();
+            delta.clear_depth_mean_abs_delta_rgb[channel] = clear_abs[channel] / count;
+        }
+        if delta.geometry_pixels != 0 {
+            let count = delta.geometry_pixels as f64;
+            delta.geometry_rmse_rgb[channel] = (geometry_squared[channel] / count).sqrt();
+            delta.geometry_mean_abs_delta_rgb[channel] = geometry_abs[channel] / count;
+        }
+    }
+    Ok(delta)
+}
+
+fn depth_pixel_count(format: dxgi::Format, bytes: &[u8], value: f32) -> anyhow::Result<usize> {
+    let bytes_per_pixel = bytes_per_pixel(format)?;
+    bytes
+        .chunks_exact(bytes_per_pixel)
+        .map(|pixel| decode_pixel(format, pixel).map(|decoded| decoded[0]))
+        .collect::<anyhow::Result<Vec<_>>>()
+        .map(|pixels| {
+            pixels
+                .into_iter()
+                .filter(|pixel| (*pixel - value).abs() <= f32::EPSILON)
+                .count()
+        })
+}
+
+fn provenance_format(name: &str) -> anyhow::Result<dxgi::Format> {
+    match name {
+        "R8g8Typeless" => Ok(dxgi::Format::R8g8Typeless),
+        "R8g8Unorm" => Ok(dxgi::Format::R8g8Unorm),
+        "R8g8b8a8Typeless" => Ok(dxgi::Format::R8g8b8a8Typeless),
+        "R8g8b8a8Unorm" => Ok(dxgi::Format::R8g8b8a8Unorm),
+        "R8g8b8a8UnormSrgb" => Ok(dxgi::Format::R8g8b8a8UnormSrgb),
+        "R10g10b10a2Typeless" => Ok(dxgi::Format::R10g10b10a2Typeless),
+        "R10g10b10a2Unorm" => Ok(dxgi::Format::R10g10b10a2Unorm),
+        "R11g11b10Float" => Ok(dxgi::Format::R11g11b10Float),
+        "R16g16b16a16Typeless" => Ok(dxgi::Format::R16g16b16a16Typeless),
+        "R16g16b16a16Float" => Ok(dxgi::Format::R16g16b16a16Float),
+        "R32Typeless" => Ok(dxgi::Format::R32Typeless),
+        "R32g8x24Typeless" => Ok(dxgi::Format::R32g8x24Typeless),
+        _ => bail!("unsupported sky-object A/B provenance format {name}"),
     }
 }
 

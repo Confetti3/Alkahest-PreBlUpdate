@@ -1,5 +1,6 @@
 use std::{sync::Arc, time::Duration};
 
+use alkahest_core::ConVars;
 use alkahest_core::job::{
     SCHEDULER,
     potassium::{JobHandle, WaitResult},
@@ -59,9 +60,16 @@ impl Renderer {
         })
     }
 
-    /// Transparent sky geometry must be submitted far-to-near so authored
-    /// alpha layers composite in the same order as the preserved renderer.
-    pub(super) fn submit_stage_back_to_front(
+    /// Submit legacy SkyTransparent objects in package-authored order.
+    ///
+    /// The distance order is retained only for an explicitly armed
+    /// diagnostics A/B capture; production never derives sky blending order
+    /// from camera-relative frame-node distances.
+
+    /// Mesh and part ordering remains owned by each model submission. Frame
+    /// insertion order is retained only as a deterministic fallback for a
+    /// malformed object that lacks its loader-provided source key.
+    pub(super) fn submit_stage_authored_order(
         &self,
         cmd: &mut CommandList,
         view_index: usize,
@@ -75,21 +83,32 @@ impl Renderer {
 
         let packet = self.frame_packet.read();
         let objects = self.objects.read();
-        let mut sorted = packet
+        let mut ordered = packet
             .frame_nodes
             .iter()
-            .filter_map(|node| {
+            .enumerate()
+            .filter_map(|(frame_node_index, node)| {
                 objects
                     .get(node.render_object_handle.into())
                     .filter(|object| {
                         object.stages.is_subscribed(stage)
                             && features.is_subscribed(object.feature_type)
                     })
-                    .map(|object| (node.distance, object))
+                    .map(|object| (node.sky_order, frame_node_index, object))
             })
             .collect::<Vec<_>>();
-        sorted.sort_unstable_by(|(a, _), (b, _)| b.total_cmp(a));
-        for (_, object) in sorted {
+        if ConVars::get_flag("render.shadowkeep_sky_objects_distance_sort") {
+            ordered.sort_unstable_by(|(_, left_index, _), (_, right_index, _)| {
+                let left_distance = packet.frame_nodes[*left_index].distance;
+                let right_distance = packet.frame_nodes[*right_index].distance;
+                right_distance
+                    .total_cmp(&left_distance)
+                    .then_with(|| left_index.cmp(right_index))
+            });
+        } else {
+            ordered.sort_by_key(|(sky_order, frame_node_index, _)| (*sky_order, *frame_node_index));
+        }
+        for (_, _, object) in ordered {
             object.submit(cmd, view_index, stage);
         }
     }

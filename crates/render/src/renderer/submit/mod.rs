@@ -28,6 +28,7 @@ use super::{
         GlobalLightingExternValue, ProvenanceManifest, ShadowkeepLightingProvenance,
         SkyObjectsAbManifest, SurfaceProvenance, begin_shadowkeep_sky_objects_capture,
         capture_surface, capture_surface_named, finish_shadowkeep_sky_objects_capture,
+        sky_object_domain_delta,
     },
     surface::SurfaceHandle,
 };
@@ -1017,16 +1018,23 @@ impl Renderer {
             "shadowkeep/final_shading",
         );
         if capture_sky_objects_ab {
-            let after = self.capture_shadowkeep_sky_object_surfaces(
-                cmd,
-                view,
-                Path::new(&sky_objects_ab_directory).join("after"),
-            );
+            let before_directory = Path::new(&sky_objects_ab_directory).join("before");
+            let after_directory = Path::new(&sky_objects_ab_directory).join("after");
+            let after = self.capture_shadowkeep_sky_object_surfaces(cmd, view, &after_directory);
+            let before = std::mem::take(&mut sky_objects_ab_before);
+            let domain_delta =
+                sky_object_domain_delta(&before_directory, &before, &after_directory, &after)
+                    .map_err(|error| {
+                        error!(error = ?error, "Failed to calculate Shadowkeep sky-object A/B depth domains");
+                        error
+                    })
+                    .ok();
             let manifest = SkyObjectsAbManifest {
-                schema: "alkahest-shadowkeep-sky-objects-isolated/v1",
+                schema: "alkahest-shadowkeep-sky-objects-isolated/v2",
                 requested_collection: format!("0x{requested_sky_collection:08X}"),
                 stats: sky_objects_ab_stats.take().unwrap_or_default(),
-                before_sky_objects: std::mem::take(&mut sky_objects_ab_before),
+                domain_delta,
+                before_sky_objects: before,
                 after_sky_objects: after,
             };
             if let Err(error) = manifest.write(Path::new(&sky_objects_ab_directory)) {

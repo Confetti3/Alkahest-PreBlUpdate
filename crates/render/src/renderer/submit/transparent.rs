@@ -164,7 +164,7 @@ impl Renderer {
         // this preserves pass ordering and makes the zero-draw stage explicit.
         cmd.state = PipelineState::new(Some(8), Some(15), Some(2), Some(1));
         cmd.flush_states();
-        self.submit_stage_back_to_front(cmd, View::MAIN, RenderStage::DecalsAdditive, sky_feature);
+        self.submit_stage_authored_order(cmd, View::MAIN, RenderStage::DecalsAdditive, sky_feature);
         crate::renderer::provenance::record_shadowkeep_sky_objects_submission(
             RenderStage::DecalsAdditive,
         );
@@ -182,7 +182,7 @@ impl Renderer {
         cmd.state = PipelineState::new(Some(8), Some(15), Some(2), Some(1));
         cmd.flush_states();
         if has_transparents {
-            self.submit_stage_back_to_front(
+            self.submit_stage_authored_order(
                 cmd,
                 View::MAIN,
                 RenderStage::Transparents,

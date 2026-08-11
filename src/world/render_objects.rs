@@ -1,15 +1,14 @@
+use crate::world::{
+    object::{DynamicModelParts, ObjectChannels, PermutationConfig},
+    transform::Transform,
+};
 use alkahest_data::tfx::features::ao::SStaticAmbientOcclusion;
 use alkahest_render::{
     Renderer,
     asset::{Handle, vertex_buffer::VertexBuffer},
     feature::rigid_model::DynamicModel,
     object::RenderObjectHandle,
-    tfx::packet::FramePacket,
-};
-
-use crate::world::{
-    object::{DynamicModelParts, ObjectChannels, PermutationConfig},
-    transform::Transform,
+    tfx::packet::{FramePacket, ShadowkeepSkyOrder},
 };
 
 pub struct StaticRenderObject {
@@ -77,15 +76,17 @@ pub fn s_extract_render_objects(world: &hecs::World, frame_packet: &mut FramePac
         frame_packet.push_static_render_object(static_render_object.handle);
     }
 
-    for (_entity, (transform, render_object, permutations, object_channels, parts)) in world
-        .query::<(
-            Option<&Transform>,
-            &DynamicRenderObject,
-            Option<&PermutationConfig>,
-            Option<&ObjectChannels>,
-            Option<&DynamicModelParts>,
-        )>()
-        .iter()
+    for (_entity, (transform, render_object, permutations, object_channels, parts, sky_order)) in
+        world
+            .query::<(
+                Option<&Transform>,
+                &DynamicRenderObject,
+                Option<&PermutationConfig>,
+                Option<&ObjectChannels>,
+                Option<&DynamicModelParts>,
+                Option<&ShadowkeepSkyOrder>,
+            )>()
+            .iter()
     {
         let transform = transform.copied().unwrap_or_default();
         let permutation = if let Some(permutation) = permutations {
@@ -110,10 +111,11 @@ pub fn s_extract_render_objects(world: &hecs::World, frame_packet: &mut FramePac
             }
         }
 
-        frame_packet.push_dynamic_render_object(
+        frame_packet.push_dynamic_render_object_ordered(
             render_object.handle,
             transform.local_to_world().into(),
             permutation,
+            sky_order.copied(),
         );
     }
 }

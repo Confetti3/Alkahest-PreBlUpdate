@@ -49,6 +49,7 @@ use alkahest_render::{
     },
     object::RenderObject,
     renderer::submit::atmosphere::AtmosphereData,
+    tfx::packet::ShadowkeepSkyOrder,
 };
 
 const STATIC_PLACEMENT: u32 = 0x8080_71B3;
@@ -241,140 +242,199 @@ struct SkyObjectCollectionEvidence {
     object_count: usize,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct SkyObjectSelection {
-    selected: Vec<TagHash>,
-    deferred: Vec<TagHash>,
-    diagnostic: Option<String>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShadowkeepEnvironmentSelectionReason {
+    ExplicitSkyOverride,
+    SharedSourceTable,
+    SharedWorldId,
+    DestinationPackage,
+    SoleCandidates,
+    RequestedCollectionMissing,
+    RequestedCollectionEmpty,
+    Ambiguous,
 }
 
-fn select_sky_object_collections(
+impl ShadowkeepEnvironmentSelectionReason {
+    fn diagnostic(self) -> Option<&'static str> {
+        match self {
+            Self::ExplicitSkyOverride
+            | Self::SharedSourceTable
+            | Self::SharedWorldId
+            | Self::DestinationPackage
+            | Self::SoleCandidates => None,
+            Self::RequestedCollectionMissing => {
+                Some("requested sky-object collection was not discovered")
+            }
+            Self::RequestedCollectionEmpty => {
+                Some("requested sky-object collection is empty and cannot define an environment")
+            }
+            Self::Ambiguous => {
+                Some("could not prove one Shadowkeep sky/atmosphere environment pair")
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ShadowkeepEnvironmentSelection {
+    sky_collection: Option<TagHash>,
+    atmosphere_index: Option<usize>,
+    reason: ShadowkeepEnvironmentSelectionReason,
+    deferred_sky_collections: Vec<TagHash>,
+    deferred_atmospheres: Vec<usize>,
+}
+
+fn select_shadowkeep_environment(
     candidates: &BTreeMap<TagHash, SkyObjectCollectionEvidence>,
+    atmospheres: &[AtmospherePlacementCandidate],
     selector: u32,
     map_package_name: Option<&str>,
     collection_package_names: &BTreeMap<TagHash, String>,
-) -> SkyObjectSelection {
-    if selector != 0 {
-        let selected = TagHash(selector);
-        if candidates.contains_key(&selected) {
-            return SkyObjectSelection {
-                selected: vec![selected],
-                deferred: candidates
-                    .keys()
-                    .copied()
-                    .filter(|candidate| *candidate != selected)
-                    .collect(),
-                diagnostic: None,
-            };
-        }
-        return SkyObjectSelection {
-            selected: Vec::new(),
-            deferred: candidates.keys().copied().collect(),
-            diagnostic: Some(format!(
-                "requested sky-object collection {selected} was not discovered"
-            )),
-        };
-    }
-
+) -> ShadowkeepEnvironmentSelection {
     let non_empty = candidates
         .iter()
         .filter(|(_, candidate)| candidate.object_count != 0)
-        .map(|(tag, candidate)| (*tag, candidate))
+        .map(|(collection, _)| *collection)
         .collect::<Vec<_>>();
-    let package_matches = map_package_name
-        .map(|map_package_name| {
-            non_empty
-                .iter()
-                .filter(|(tag, _)| {
-                    collection_package_names
-                        .get(tag)
-                        .is_some_and(|package| package == map_package_name)
-                })
-                .map(|(tag, _)| *tag)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    let selected = if package_matches.len() == 1 {
-        vec![package_matches[0]]
-    } else if package_matches.is_empty() && non_empty.len() == 1 {
-        vec![non_empty[0].0]
-    } else {
-        Vec::new()
+    let all_deferred_sky = candidates.keys().copied().collect::<Vec<_>>();
+    let all_deferred_atmospheres = (0..atmospheres.len()).collect::<Vec<_>>();
+    let selected = |sky_collection, atmosphere_index, reason| ShadowkeepEnvironmentSelection {
+        sky_collection: Some(sky_collection),
+        atmosphere_index: Some(atmosphere_index),
+        reason,
+        deferred_sky_collections: candidates
+            .keys()
+            .copied()
+            .filter(|candidate| *candidate != sky_collection)
+            .collect(),
+        deferred_atmospheres: (0..atmospheres.len())
+            .filter(|candidate| *candidate != atmosphere_index)
+            .collect(),
     };
-    let deferred = candidates
-        .keys()
-        .copied()
-        .filter(|candidate| !selected.contains(candidate))
-        .collect();
-    let diagnostic = if package_matches.len() > 1 {
-        Some(format!(
-            "multiple non-empty sky-object collections match map package {} ({}); \
-             select an exact collection",
-            map_package_name.unwrap_or("<unknown>"),
-            package_matches
-                .iter()
-                .map(ToString::to_string)
-                .collect::<Vec<_>>()
-                .join(", ")
-        ))
-    } else if package_matches.is_empty() && non_empty.len() > 1 {
-        Some(format!(
-            "multiple unresolved non-empty sky-object collections ({}); \
-             select an exact collection",
-            non_empty
-                .iter()
-                .map(|(tag, _)| tag.to_string())
-                .collect::<Vec<_>>()
-                .join(", ")
-        ))
-    } else {
-        None
+    let unresolved = |reason| ShadowkeepEnvironmentSelection {
+        sky_collection: None,
+        atmosphere_index: None,
+        reason,
+        deferred_sky_collections: all_deferred_sky.clone(),
+        deferred_atmospheres: all_deferred_atmospheres.clone(),
+    };
+    let unique_pair = |pairs: Vec<(TagHash, usize)>| {
+        let pairs = pairs.into_iter().collect::<BTreeSet<_>>();
+        (pairs.len() == 1).then(|| *pairs.first().expect("checked pair count"))
+    };
+    let pairs_for_sky = |sky_collection: TagHash,
+                         predicate: &dyn Fn(
+        &SkyObjectPlacementCandidate,
+        &AtmospherePlacementCandidate,
+    ) -> bool| {
+        let mut pairs = Vec::new();
+        for placement in &candidates[&sky_collection].placements {
+            for (index, atmosphere) in atmospheres.iter().enumerate() {
+                if predicate(placement, atmosphere) {
+                    pairs.push((sky_collection, index));
+                }
+            }
+        }
+        unique_pair(pairs).map(|(_, atmosphere)| atmosphere)
+    };
+    let same_table = |placement: &SkyObjectPlacementCandidate,
+                      atmosphere: &AtmospherePlacementCandidate| {
+        placement.table == atmosphere.table
+    };
+    let same_meaningful_world =
+        |placement: &SkyObjectPlacementCandidate, atmosphere: &AtmospherePlacementCandidate| {
+            placement.world_id != 0
+                && placement.world_id != u64::MAX
+                && placement.world_id == atmosphere.world_id
+        };
+    let same_source_set = |placement: &SkyObjectPlacementCandidate,
+                           atmosphere: &AtmospherePlacementCandidate| {
+        placement.sources == atmosphere.sources
     };
 
-    SkyObjectSelection {
-        selected,
-        deferred,
-        diagnostic,
-    }
-}
-fn select_atmosphere_candidate(
-    atmospheres: &[AtmospherePlacementCandidate],
-    sky_candidates: &BTreeMap<TagHash, SkyObjectCollectionEvidence>,
-    selected_sky: &[TagHash],
-) -> (Option<usize>, Option<String>) {
-    if atmospheres.len() <= 1 {
-        return (atmospheres.len().checked_sub(1), None);
+    if selector != 0 {
+        let requested = TagHash(selector);
+        if !candidates.contains_key(&requested) {
+            return unresolved(ShadowkeepEnvironmentSelectionReason::RequestedCollectionMissing);
+        }
+        if !non_empty.contains(&requested) {
+            return unresolved(ShadowkeepEnvironmentSelectionReason::RequestedCollectionEmpty);
+        }
+        let atmosphere = pairs_for_sky(requested, &same_table)
+            .or_else(|| pairs_for_sky(requested, &same_meaningful_world))
+            .or_else(|| pairs_for_sky(requested, &same_source_set))
+            .or_else(|| (atmospheres.len() == 1).then_some(0));
+        return atmosphere.map_or_else(
+            || unresolved(ShadowkeepEnvironmentSelectionReason::Ambiguous),
+            |atmosphere| {
+                selected(
+                    requested,
+                    atmosphere,
+                    ShadowkeepEnvironmentSelectionReason::ExplicitSkyOverride,
+                )
+            },
+        );
     }
 
-    let strong_matches = atmospheres
+    let pairs_with = |predicate: &dyn Fn(
+        &SkyObjectPlacementCandidate,
+        &AtmospherePlacementCandidate,
+    ) -> bool| {
+        let mut pairs = Vec::new();
+        for sky_collection in &non_empty {
+            for placement in &candidates[sky_collection].placements {
+                for (index, atmosphere) in atmospheres.iter().enumerate() {
+                    if predicate(placement, atmosphere) {
+                        pairs.push((*sky_collection, index));
+                    }
+                }
+            }
+        }
+        unique_pair(pairs)
+    };
+    if let Some((sky, atmosphere)) = pairs_with(&same_table) {
+        return selected(
+            sky,
+            atmosphere,
+            ShadowkeepEnvironmentSelectionReason::SharedSourceTable,
+        );
+    }
+    if let Some((sky, atmosphere)) = pairs_with(&same_meaningful_world) {
+        return selected(
+            sky,
+            atmosphere,
+            ShadowkeepEnvironmentSelectionReason::SharedWorldId,
+        );
+    }
+
+    let destination_collections = non_empty
         .iter()
-        .enumerate()
-        .filter(|(_, atmosphere)| {
-            selected_sky.iter().any(|collection| {
-                sky_candidates
+        .copied()
+        .filter(|collection| {
+            map_package_name.is_some_and(|map_package| {
+                collection_package_names
                     .get(collection)
-                    .into_iter()
-                    .flat_map(|candidate| &candidate.placements)
-                    .any(|placement| {
-                        placement.table == atmosphere.table
-                            || placement.world_id == atmosphere.world_id
-                    })
+                    .is_some_and(|package| package == map_package)
             })
         })
-        .map(|(index, _)| index)
         .collect::<Vec<_>>();
-    if strong_matches.len() == 1 {
-        return (Some(strong_matches[0]), None);
+    if let [sky] = destination_collections.as_slice() {
+        if let Some(atmosphere) = pairs_for_sky(*sky, &same_source_set) {
+            return selected(
+                *sky,
+                atmosphere,
+                ShadowkeepEnvironmentSelectionReason::DestinationPackage,
+            );
+        }
     }
-
-    (
-        None,
-        Some(format!(
-            "could not select one atmosphere from {} candidates using shared table/world evidence",
-            atmospheres.len()
-        )),
-    )
+    if let ([sky], [_]) = (non_empty.as_slice(), atmospheres) {
+        return selected(
+            *sky,
+            0,
+            ShadowkeepEnvironmentSelectionReason::SoleCandidates,
+        );
+    }
+    unresolved(ShadowkeepEnvironmentSelectionReason::Ambiguous)
 }
 
 #[derive(Debug, Clone)]
@@ -473,9 +533,11 @@ struct ShadowkeepEnvironmentCensusManifest {
     scenario: Option<String>,
     map_package_name: Option<String>,
     map_package_path: Option<String>,
-    selected_sky_collections: Vec<String>,
+    selection_reason: String,
+    selected_sky_collection: Option<String>,
     deferred_sky_collections: Vec<String>,
     selected_atmosphere_table: Option<String>,
+    deferred_atmosphere_tables: Vec<String>,
     sky_collections: Vec<SkyCollectionManifest>,
     atmosphere_candidates: Vec<AtmosphereCandidateManifest>,
     possible_pairings: Vec<EnvironmentPairingManifest>,
@@ -524,8 +586,7 @@ fn write_environment_census(
     candidates: &BTreeMap<TagHash, SkyObjectCollectionEvidence>,
     decoded_collections: &BTreeMap<TagHash, SShadowkeepSkyObjectCollection>,
     atmospheres: &[AtmospherePlacementCandidate],
-    selection: &SkyObjectSelection,
-    selected_atmosphere: Option<usize>,
+    selection: &ShadowkeepEnvironmentSelection,
 ) -> anyhow::Result<()> {
     if !ConVars::get_flag("render.shadowkeep_environment_census") {
         return Ok(());
@@ -703,16 +764,28 @@ fn write_environment_census(
         })
         .collect();
     let manifest = ShadowkeepEnvironmentCensusManifest {
-        schema: "alkahest-shadowkeep-environment-census/v1",
+        schema: "alkahest-shadowkeep-environment-census/v2",
         map: map.to_string(),
         scenario: scenario.map(|tag| tag.to_string()),
         map_package_name,
         map_package_path,
-        selected_sky_collections: selection.selected.iter().map(ToString::to_string).collect(),
-        deferred_sky_collections: selection.deferred.iter().map(ToString::to_string).collect(),
-        selected_atmosphere_table: selected_atmosphere
+        selection_reason: format!("{:?}", selection.reason),
+        selected_sky_collection: selection.sky_collection.map(|tag| tag.to_string()),
+        deferred_sky_collections: selection
+            .deferred_sky_collections
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
+        selected_atmosphere_table: selection
+            .atmosphere_index
             .and_then(|index| atmospheres.get(index))
             .map(|candidate| candidate.table.to_string()),
+        deferred_atmosphere_tables: selection
+            .deferred_atmospheres
+            .iter()
+            .filter_map(|index| atmospheres.get(*index))
+            .map(|candidate| candidate.table.to_string())
+            .collect(),
         sky_collections,
         atmosphere_candidates,
         possible_pairings,
@@ -1606,41 +1679,27 @@ pub fn load_shadowkeep_map_into_world(
                 .map(|package| (*collection, package))
         })
         .collect();
-    let selection = select_sky_object_collections(
+    let selection = select_shadowkeep_environment(
         &candidates_by_collection,
+        &atmosphere_candidates,
         selector,
         map_package_name.as_deref(),
         &collection_package_names,
     );
-    report.deferred_sky_object_collections = selection.deferred.clone();
-    if let Some(error) = &selection.diagnostic {
+    report.deferred_sky_object_collections = selection.deferred_sky_collections.clone();
+    if let Some(error) = selection.reason.diagnostic() {
         report.diagnostic(
             progress,
             MapLoadDiagnostic {
                 table: tag,
                 entry_offset: 0,
                 resource_class: SKY_OBJECT_PLACEMENT,
-                error: error.clone(),
+                error: error.to_owned(),
             },
         );
     }
-    report.sky_object_collection_tags = selection.selected.clone();
-    let (selected_atmosphere, atmosphere_diagnostic) = select_atmosphere_candidate(
-        &atmosphere_candidates,
-        &candidates_by_collection,
-        &selection.selected,
-    );
-    if let Some(error) = atmosphere_diagnostic {
-        report.diagnostic(
-            progress,
-            MapLoadDiagnostic {
-                table: tag,
-                entry_offset: 0,
-                resource_class: ATMOSPHERE_PLACEMENT,
-                error,
-            },
-        );
-    }
+    report.sky_object_collection_tags = selection.sky_collection.iter().copied().collect();
+    let selected_atmosphere = selection.atmosphere_index;
     if let Some(index) = selected_atmosphere {
         let candidate = &atmosphere_candidates[index];
         match load_shadowkeep_atmosphere(renderer, candidate) {
@@ -1674,12 +1733,12 @@ pub fn load_shadowkeep_map_into_world(
         &decoded_sky_collections,
         &atmosphere_candidates,
         &selection,
-        selected_atmosphere,
     ) {
         tracing::error!(error = ?error, "failed to write Shadowkeep environment census");
     }
 
-    for collection_tag in selection.selected.iter().copied() {
+    for (collection_order, collection_tag) in selection.sky_collection.into_iter().enumerate() {
+        let collection_order = collection_order as u16;
         if progress.is_cancelled() {
             report.cancelled = true;
             break;
@@ -1826,6 +1885,11 @@ pub fn load_shadowkeep_map_into_world(
                 let admitted_stage_mask = render_object.stages.bits();
                 world.spawn((
                     transform,
+                    ShadowkeepSkyOrder {
+                        collection_order,
+                        object_index: u16::try_from(index)
+                            .context("sky-object record index exceeds authored order range")?,
+                    },
                     DynamicRenderObject::new(renderer.add_object(render_object)),
                 ));
                 report.sky_object_render_objects += 1;
@@ -1928,13 +1992,13 @@ pub fn load_shadowkeep_map_into_world(
 mod tests {
     use std::collections::{BTreeMap, BTreeSet};
 
-    use glam::Vec3;
+    use glam::{Vec3, Vec4};
     use tiger_pkg::TagHash;
 
     use super::{
-        EntityResourceExample, MapLoadProgress, MapLoadReport, ShadowkeepTableSources,
-        SkyObjectCollectionEvidence, SkyObjectPlacementCandidate, bounded_offset,
-        select_sky_object_collections,
+        AtmospherePlacementCandidate, EntityResourceExample, MapLoadProgress, MapLoadReport,
+        ShadowkeepEnvironmentSelectionReason, ShadowkeepTableSources, SkyObjectCollectionEvidence,
+        SkyObjectPlacementCandidate, bounded_offset, select_shadowkeep_environment,
     };
 
     fn collection_candidate(
@@ -1961,6 +2025,24 @@ mod tests {
                 entry_translation: Vec3::ZERO,
             }],
             object_count,
+        }
+    }
+
+    fn atmosphere_candidate(
+        table: TagHash,
+        world_id: u64,
+        sources: ShadowkeepTableSources,
+    ) -> AtmospherePlacementCandidate {
+        AtmospherePlacementCandidate {
+            table,
+            entry_offset: 0x40,
+            sources,
+            world_id,
+            lookup_volume_0: TagHash::NONE,
+            lookup_volume_1: TagHash::NONE,
+            lookup_vertical: TagHash::NONE,
+            lookup_table: TagHash::NONE,
+            lookup_parameters: [Vec4::ZERO; 4],
         }
     }
 
@@ -2006,85 +2088,141 @@ mod tests {
         assert!(report.entity_resource_accounting_is_complete());
     }
     #[test]
-    fn exact_sky_selector_overrides_multiple_base_candidates() {
-        let first = TagHash(0x8080_2001);
+    fn explicit_sky_override_selects_one_complete_environment() {
         let selected = TagHash(0x8080_2002);
-        let candidates = BTreeMap::from([
-            (
-                first,
-                collection_candidate(first, 2, Some(TagHash(0x8080_3001)), false),
-            ),
-            (
-                selected,
-                collection_candidate(selected, 3, Some(TagHash(0x8080_3002)), false),
-            ),
-        ]);
-
-        let result = select_sky_object_collections(&candidates, selected.0, None, &BTreeMap::new());
-        assert_eq!(result.selected, vec![selected]);
-        assert_eq!(result.deferred, vec![first]);
-        assert_eq!(result.diagnostic, None);
-    }
-
-    #[test]
-    fn exact_sky_selector_can_select_scenario_candidate() {
-        let base = TagHash(0x8080_2001);
-        let scenario = TagHash(0x8080_2002);
-        let candidates = BTreeMap::from([
-            (
-                base,
-                collection_candidate(base, 2, Some(TagHash(0x8080_3001)), false),
-            ),
-            (scenario, collection_candidate(scenario, 3, None, true)),
-        ]);
-
-        let result = select_sky_object_collections(&candidates, scenario.0, None, &BTreeMap::new());
-        assert_eq!(result.selected, vec![scenario]);
-        assert_eq!(result.deferred, vec![base]);
-        assert_eq!(result.diagnostic, None);
-    }
-
-    #[test]
-    fn unknown_exact_sky_selector_selects_nothing_and_reports_diagnostic() {
-        let discovered = TagHash(0x8080_2001);
-        let requested = TagHash(0x8080_2002);
         let candidates = BTreeMap::from([(
-            discovered,
-            collection_candidate(discovered, 2, Some(TagHash(0x8080_3001)), false),
+            selected,
+            collection_candidate(selected, 3, Some(TagHash(0x8080_3002)), false),
         )]);
+        let atmospheres = vec![atmosphere_candidate(
+            TagHash(0x8080_1000),
+            7,
+            ShadowkeepTableSources {
+                base_containers: BTreeSet::from([TagHash(0x8080_3002)]),
+                referenced_by_freeroam_scenario: false,
+            },
+        )];
 
-        let result =
-            select_sky_object_collections(&candidates, requested.0, None, &BTreeMap::new());
-        assert!(result.selected.is_empty());
-        assert_eq!(result.deferred, vec![discovered]);
-        assert!(
-            result
-                .diagnostic
-                .as_deref()
-                .is_some_and(|message| message.contains("was not discovered"))
+        let result = select_shadowkeep_environment(
+            &candidates,
+            &atmospheres,
+            selected.0,
+            None,
+            &BTreeMap::new(),
+        );
+
+        assert_eq!(result.sky_collection, Some(selected));
+        assert_eq!(result.atmosphere_index, Some(0));
+        assert_eq!(
+            result.reason,
+            ShadowkeepEnvironmentSelectionReason::ExplicitSkyOverride
         );
     }
 
     #[test]
-    fn automatic_sky_selection_excludes_empty_collections() {
-        let empty = TagHash(0x8080_2001);
+    fn same_source_table_beats_destination_package() {
+        let shared_table = TagHash(0x8080_1000);
+        let matching = TagHash(0x8080_2001);
+        let destination = TagHash(0x8080_2002);
+        let mut destination_candidate =
+            collection_candidate(destination, 3, Some(TagHash(0x8080_3002)), false);
+        destination_candidate.placements[0].table = TagHash(0x8080_1001);
+        let candidates = BTreeMap::from([
+            (
+                matching,
+                collection_candidate(matching, 2, Some(TagHash(0x8080_3001)), false),
+            ),
+            (destination, destination_candidate),
+        ]);
+        let atmospheres = vec![atmosphere_candidate(
+            shared_table,
+            7,
+            ShadowkeepTableSources {
+                base_containers: BTreeSet::from([TagHash(0x8080_3001)]),
+                referenced_by_freeroam_scenario: false,
+            },
+        )];
+        let packages = BTreeMap::from([(destination, "edz".to_owned())]);
+
+        let result =
+            select_shadowkeep_environment(&candidates, &atmospheres, 0, Some("edz"), &packages);
+
+        assert_eq!(result.sky_collection, Some(matching));
+        assert_eq!(result.atmosphere_index, Some(0));
+        assert_eq!(
+            result.reason,
+            ShadowkeepEnvironmentSelectionReason::SharedSourceTable
+        );
+    }
+
+    #[test]
+    fn sentinel_empty_collection_never_makes_environment_ambiguous() {
+        let empty = TagHash(0x80C7_54AB);
         let non_empty = TagHash(0x8080_2002);
         let candidates = BTreeMap::from([
             (
                 empty,
                 collection_candidate(empty, 0, Some(TagHash(0x8080_3001)), false),
             ),
-            (non_empty, collection_candidate(non_empty, 3, None, true)),
+            (
+                non_empty,
+                collection_candidate(non_empty, 3, Some(TagHash(0x8080_3002)), false),
+            ),
         ]);
+        let atmospheres = vec![atmosphere_candidate(
+            TagHash(0x8080_1000),
+            7,
+            ShadowkeepTableSources {
+                base_containers: BTreeSet::from([TagHash(0x8080_3002)]),
+                referenced_by_freeroam_scenario: false,
+            },
+        )];
 
-        let result = select_sky_object_collections(&candidates, 0, None, &BTreeMap::new());
-        assert_eq!(result.selected, vec![non_empty]);
-        assert_eq!(result.deferred, vec![empty]);
-        assert_eq!(result.diagnostic, None);
+        let result =
+            select_shadowkeep_environment(&candidates, &atmospheres, 0, None, &BTreeMap::new());
+
+        assert_eq!(result.sky_collection, Some(non_empty));
+        assert_eq!(result.atmosphere_index, Some(0));
+        assert_eq!(result.deferred_sky_collections, vec![empty]);
     }
 
     #[test]
-    fn multiple_unresolved_sky_candidates_degrade_without_selection() {
+    fn destination_package_needs_exactly_one_compatible_atmosphere() {
+        let common = TagHash(0x8080_2001);
+        let destination = TagHash(0x8080_2002);
+        let source = ShadowkeepTableSources {
+            base_containers: BTreeSet::from([TagHash(0x8080_3002)]),
+            referenced_by_freeroam_scenario: false,
+        };
+        let candidates = BTreeMap::from([
+            (
+                common,
+                collection_candidate(common, 2, Some(TagHash(0x8080_3001)), true),
+            ),
+            (
+                destination,
+                collection_candidate(destination, 3, Some(TagHash(0x8080_3002)), false),
+            ),
+        ]);
+        let atmospheres = vec![
+            atmosphere_candidate(TagHash(0x8080_4001), 0, ShadowkeepTableSources::default()),
+            atmosphere_candidate(TagHash(0x8080_4002), 0, source),
+        ];
+        let packages = BTreeMap::from([(destination, "edz".to_owned())]);
+
+        let result =
+            select_shadowkeep_environment(&candidates, &atmospheres, 0, Some("edz"), &packages);
+
+        assert_eq!(result.sky_collection, Some(destination));
+        assert_eq!(result.atmosphere_index, Some(1));
+        assert_eq!(
+            result.reason,
+            ShadowkeepEnvironmentSelectionReason::DestinationPackage
+        );
+    }
+
+    #[test]
+    fn unresolved_environment_selects_neither_resource_family() {
         let first = TagHash(0x8080_2001);
         let second = TagHash(0x8080_2002);
         let candidates = BTreeMap::from([
@@ -2097,44 +2235,21 @@ mod tests {
                 collection_candidate(second, 3, Some(TagHash(0x8080_3002)), true),
             ),
         ]);
+        let atmospheres = vec![
+            atmosphere_candidate(TagHash(0x8080_4001), 0, ShadowkeepTableSources::default()),
+            atmosphere_candidate(TagHash(0x8080_4002), 0, ShadowkeepTableSources::default()),
+        ];
 
-        let result = select_sky_object_collections(&candidates, 0, None, &BTreeMap::new());
-        assert!(result.selected.is_empty());
-        assert_eq!(result.deferred, vec![first, second]);
-        assert!(
-            result
-                .diagnostic
-                .as_deref()
-                .is_some_and(|message| message.contains("multiple unresolved non-empty"))
+        let result =
+            select_shadowkeep_environment(&candidates, &atmospheres, 0, None, &BTreeMap::new());
+
+        assert_eq!(result.sky_collection, None);
+        assert_eq!(result.atmosphere_index, None);
+        assert_eq!(
+            result.reason,
+            ShadowkeepEnvironmentSelectionReason::Ambiguous
         );
-    }
-
-    #[test]
-    fn map_package_selects_matching_non_empty_collection() {
-        let common = TagHash(0x8080_2001);
-        let destination = TagHash(0x8080_2002);
-        let empty = TagHash(0x8080_2003);
-        let candidates = BTreeMap::from([
-            (common, collection_candidate(common, 2, None, true)),
-            (
-                destination,
-                collection_candidate(destination, 3, Some(TagHash(0x8080_3002)), false),
-            ),
-            (
-                empty,
-                collection_candidate(empty, 0, Some(TagHash(0x8080_3003)), false),
-            ),
-        ]);
-        let packages = BTreeMap::from([
-            (common, "activities".to_owned()),
-            (destination, "edz".to_owned()),
-            (empty, "edz".to_owned()),
-        ]);
-
-        let result = select_sky_object_collections(&candidates, 0, Some("edz"), &packages);
-
-        assert_eq!(result.selected, vec![destination]);
-        assert_eq!(result.deferred, vec![common, empty]);
-        assert_eq!(result.diagnostic, None);
+        assert_eq!(result.deferred_sky_collections, vec![first, second]);
+        assert_eq!(result.deferred_atmospheres, vec![0, 1]);
     }
 }
