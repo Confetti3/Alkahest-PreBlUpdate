@@ -953,6 +953,16 @@ struct ShadowkeepProductionFeatureMap {
     loaded_entity_resource_classes: BTreeMap<String, usize>,
     deferred_entity_resource_classes: BTreeMap<String, usize>,
     feature_renderers: BTreeMap<String, usize>,
+    #[serde(default)]
+    feature_families: BTreeMap<String, ShadowkeepFeatureFamilyMatrix>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ShadowkeepFeatureFamilyMatrix {
+    present_in_map: bool,
+    loader_implemented: bool,
+    render_pass_implemented: bool,
+    production_status: String,
 }
 
 fn class_counts(counts: &BTreeMap<u32, usize>) -> BTreeMap<String, usize> {
@@ -960,6 +970,31 @@ fn class_counts(counts: &BTreeMap<u32, usize>) -> BTreeMap<String, usize> {
         .iter()
         .map(|(class, count)| (format!("{class:08X}"), *count))
         .collect()
+}
+
+fn has_resource_class(report: &MapLoadReport, class: u32) -> bool {
+    report.resource_class_counts.contains_key(&class)
+        || report.entity_resource_class_counts.contains_key(&class)
+}
+
+fn feature_family(
+    present_in_map: bool,
+    loader_implemented: bool,
+    render_pass_implemented: bool,
+) -> ShadowkeepFeatureFamilyMatrix {
+    ShadowkeepFeatureFamilyMatrix {
+        present_in_map,
+        loader_implemented,
+        render_pass_implemented,
+        production_status: if !present_in_map {
+            "AbsentCorpus"
+        } else if loader_implemented && render_pass_implemented {
+            "Ready"
+        } else {
+            "Deferred"
+        }
+        .to_owned(),
+    }
 }
 
 fn write_shadowkeep_production_feature_matrix(report: &MapLoadReport) -> anyhow::Result<()> {
@@ -996,6 +1031,72 @@ fn write_shadowkeep_production_feature_matrix(report: &MapLoadReport) -> anyhow:
                     report.sky_object_render_objects,
                 ),
                 ("RigidObject".to_owned(), report.rigid_render_objects),
+            ]),
+            feature_families: BTreeMap::from([
+                (
+                    "static_geometry".to_owned(),
+                    feature_family(
+                        has_resource_class(report, STATIC_PLACEMENT),
+                        true,
+                        report.static_render_objects != 0,
+                    ),
+                ),
+                (
+                    "terrain".to_owned(),
+                    feature_family(
+                        has_resource_class(report, TERRAIN_PLACEMENT),
+                        true,
+                        report.terrain_render_objects != 0,
+                    ),
+                ),
+                (
+                    "local_lights".to_owned(),
+                    feature_family(
+                        has_resource_class(report, LIGHT_COLLECTION),
+                        true,
+                        report.light_render_objects != 0,
+                    ),
+                ),
+                (
+                    "shadowing_lights".to_owned(),
+                    feature_family(
+                        has_resource_class(report, SHADOWING_LIGHT),
+                        true,
+                        report.shadowing_lights != 0,
+                    ),
+                ),
+                (
+                    "cubemap_ibl".to_owned(),
+                    feature_family(
+                        has_resource_class(report, CUBEMAP_VOLUME),
+                        true,
+                        report.cubemap_render_objects != 0,
+                    ),
+                ),
+                (
+                    "atmosphere".to_owned(),
+                    feature_family(
+                        has_resource_class(report, ATMOSPHERE_PLACEMENT),
+                        true,
+                        report.atmosphere_placements != 0,
+                    ),
+                ),
+                (
+                    "sky_objects".to_owned(),
+                    feature_family(
+                        has_resource_class(report, SKY_OBJECT_PLACEMENT),
+                        true,
+                        report.sky_object_render_objects != 0,
+                    ),
+                ),
+                (
+                    "rigid_models".to_owned(),
+                    feature_family(
+                        has_resource_class(report, RIGID_MODEL_COMPONENT),
+                        true,
+                        report.rigid_render_objects != 0,
+                    ),
+                ),
             ]),
         },
     );
