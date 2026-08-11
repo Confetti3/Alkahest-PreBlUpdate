@@ -19,7 +19,8 @@ use alkahest_data::{
     tag::WideHash,
 };
 use alkahest_render::{
-    Gpu, Renderer, gpu::AdapterPreference as GpuAdapterPreference, gpu::command_list::CommandList,
+    Gpu, Renderer,
+    gpu::{AdapterPreference as GpuAdapterPreference, command_list::CommandList},
     util::fps_histogram::FrametimeHistogram,
 };
 use anyhow::Context;
@@ -85,21 +86,23 @@ impl RendererStatus {
     /// rather than treating a background renderer task as completed.
     pub fn scene_diagnostic(&self) -> String {
         match self {
-            Self::Initializing => {
-                "3D scene initialization is still in progress. Map metadata remains available; retry the rendered view after the renderer reports ready.".to_string()
-            }
-            Self::Ready => {
-                "The Shadowkeep renderer is ready. Maps may begin loading their decoded scene and GPU assets."
-                    .to_string()
-            }
-            Self::Disabled => {
-                "3D rendering was disabled with --no-3d. Map metadata remains available.".to_string()
-            }
+            Self::Initializing => "3D scene initialization is still in progress. Map metadata \
+                                   remains available; retry the rendered view after the renderer \
+                                   reports ready."
+                .to_string(),
+            Self::Ready => "The Shadowkeep renderer is ready. Maps may begin loading their \
+                            decoded scene and GPU assets."
+                .to_string(),
+            Self::Disabled => "3D rendering was disabled with --no-3d. Map metadata remains \
+                               available."
+                .to_string(),
             Self::Blocked(detail) => format!(
-                "Shadowkeep core geometry is blocked. Map metadata remains available. Exact diagnostic: {detail}"
+                "Shadowkeep core geometry is blocked. Map metadata remains available. Exact \
+                 diagnostic: {detail}"
             ),
             Self::Failed(detail) => format!(
-                "The Shadowkeep renderer is unavailable. Map metadata remains available. Exact initialization diagnostic: {detail}"
+                "The Shadowkeep renderer is unavailable. Map metadata remains available. Exact \
+                 initialization diagnostic: {detail}"
             ),
         }
     }
@@ -127,6 +130,10 @@ impl App {
         let shared_state: Arc<SharedState> = SharedState::new()
             .context("Failed to create shared state")?
             .into();
+        crate::world::shadowkeep_map::initialize_shadowkeep_bubble_catalog(|hash| {
+            shared_state.wordlist.get(&hash).cloned()
+        })
+        .context("Failed to initialize Shadowkeep bubble catalog")?;
         let mut gui = Gui::new(&gpu, sdl.clone(), window.clone())?;
         if let Some(tag_hash) = args.open_map.as_ref() {
             match TagHash::from_str(tag_hash) {

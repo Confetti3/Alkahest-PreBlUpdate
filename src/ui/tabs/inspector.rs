@@ -5,13 +5,17 @@ use tiger_pkg::TagHash;
 
 use crate::{
     inspection::{InspectionDocument, InspectionKind, format_hex_page},
+    task::Task,
     ui::tabs::TabResult,
 };
 
+/// Package reads run in a task so opening a tag inspector never stalls a map
+/// workspace frame.
 pub struct InspectorTab {
     pub tag: TagHash,
     kind: InspectionKind,
-    document: Result<InspectionDocument, String>,
+    document_task: Option<Task<anyhow::Result<InspectionDocument>>>,
+    document: Option<Result<InspectionDocument, String>>,
     hex_offset: usize,
     export_path: String,
     export_status: Option<String>,
@@ -19,157 +23,121 @@ pub struct InspectorTab {
 
 impl InspectorTab {
     pub fn new(tag: TagHash, kind: InspectionKind) -> Self {
-        let document = InspectionDocument::read(tag, kind).map_err(|error| format!("{error:#}"));
         Self {
             tag,
             kind,
-            document,
+            document_task: Some(Task::new(format!("inspection_{tag}"), move || {
+                InspectionDocument::read(tag, kind)
+            })),
+            document: None,
             hex_offset: 0,
             export_path: format!("exports/{tag}.json"),
             export_status: None,
         }
     }
 
+    fn poll_document(&mut self) {
+        let Some(task) = self.document_task.as_mut() else {
+            return;
+        };
+        let Some(result) = task.get() else { return };
+        self.document_task = None;
+        self.document = Some(
+            result
+                .map_err(|_| "Inspection task panicked".to_owned())
+                .and_then(|result| result.map_err(|error| format!("{error:#}"))),
+        );
+    }
+
+    fn retry(&mut self) {
+        let tag = self.tag;
+        let kind = self.kind;
+        self.document = None;
+        self.document_task = Some(Task::new(format!("inspection_{tag}"), move || {
+            InspectionDocument::read(tag, kind)
+        }));
+    }
+
     pub fn ui(&mut self, ui: &mut egui::Ui) -> TabResult {
+        self.poll_document();
+        let Some(document) = self.document.as_ref() else {
+            ui.heading(format!("Tag Inspector · {}", self.tag));
+            ui.add(egui::Spinner::new());
+            ui.weak("Loading package document asynchronously…");
+            return TabResult::Continue;
+        };
         let mut export_requested = false;
-        match &self.document {
+        match document {
             Ok(document) => {
                 ui.heading(match self.kind {
                     InspectionKind::Tag => format!("Tag Inspector · {}", self.tag),
                     InspectionKind::Activity => format!("Activity Inspector · {}", self.tag),
                 });
-                ui.label(
-                    RichText::new(
-                        "Known package metadata is shown below. The complete payload remains available as raw bytes until an era-specific schema proves a field layout.",
-                    )
-                    .weak(),
-                );
-                ui.add_space(8.0);
-
+                ui.weak("Known package metadata is shown below; raw bytes remain lossless.");
                 egui::Grid::new(format!("tag_metadata_{}", self.tag))
                     .num_columns(2)
                     .striped(true)
                     .show(ui, |ui| {
-                        metadata_row(
+                        row(
                             ui,
                             "Name",
                             document.record.tag.name.as_deref().unwrap_or("(unnamed)"),
                         );
-                        metadata_row(
+                        row(
                             ui,
                             "Package",
                             &format!("{:04X}", document.record.tag.package_id),
                         );
-                        metadata_row(
+                        row(
                             ui,
                             "Entry",
                             &format!("{:04X}", document.record.tag.entry_index),
                         );
-                        metadata_row(ui, "Class", &document.record.entry.reference);
-                        metadata_row(
+                        row(ui, "Class", &document.record.entry.reference);
+                        row(
                             ui,
-                            "Type",
-                            &format!(
-                                "{} / {}",
-                                document.record.entry.file_type, document.record.entry.file_subtype
-                            ),
+                            "Payload",
+                            &format!("{} bytes", document.record.raw_payload.byte_length),
                         );
-                        metadata_row(
-                            ui,
-                            "Bytes",
-                            &document.record.raw_payload.byte_length.to_string(),
-                        );
-                        metadata_row(ui, "SHA-256", &document.record.raw_payload.sha256);
                     });
-
-                if !document.record.diagnostics.is_empty() {
-                    ui.add_space(8.0);
-                    for diagnostic in &document.record.diagnostics {
-                        ui.colored_label(Color32::YELLOW, diagnostic);
-                    }
-                }
-
-                ui.add_space(12.0);
-                ui.collapsing("Structural fields", |ui| {
-                    for node in &document.record.fields {
-                        inspect_node_ui(ui, node);
-                    }
-                });
-                ui.add_space(12.0);
-                ui.horizontal(|ui| {
-                    ui.label("JSON export");
-                    ui.text_edit_singleline(&mut self.export_path);
-                    export_requested = ui.button("Export").clicked();
-                });
-                if let Some(status) = &self.export_status {
-                    ui.label(status);
-                }
-
-                ui.add_space(12.0);
                 ui.separator();
                 ui.horizontal(|ui| {
-                    ui.heading("Raw payload");
-                    ui.label(format!("{} bytes", document.bytes().len()));
-                    ui.add_space(8.0);
-                    ui.label("Offset");
-                    let maximum_offset = document.bytes().len().saturating_sub(1);
-                    ui.add(
-                        egui::DragValue::new(&mut self.hex_offset)
-                            .range(0..=maximum_offset)
-                            .speed(16),
-                    );
+                    ui.label("Export path:");
+                    ui.text_edit_singleline(&mut self.export_path);
+                    export_requested = ui.button("Export JSON").clicked();
                 });
-                let page = format_hex_page(document.bytes(), self.hex_offset, 4096);
-                egui::ScrollArea::both()
-                    .auto_shrink([false, false])
-                    .max_height(560.0)
-                    .show(ui, |ui| {
-                        ui.add(egui::Label::new(RichText::new(page).monospace()).selectable(true));
-                    });
+                if let Some(status) = &self.export_status {
+                    ui.weak(status);
+                }
+                ui.collapsing("Raw payload", |ui| {
+                    ui.monospace(format_hex_page(document.bytes(), self.hex_offset, 512));
+                    if ui.button("Next page").clicked() {
+                        self.hex_offset += 512;
+                    }
+                });
             }
             Err(error) => {
-                ui.heading(format!("Inspector · {}", self.tag));
-                ui.colored_label(Color32::RED, error);
+                ui.colored_label(Color32::DARK_RED, "Tag document could not be loaded");
+                ui.label(error);
+                if ui.button("Retry").clicked() {
+                    self.retry();
+                }
             }
         }
-
         if export_requested {
-            self.export_status = match &self.document {
-                Ok(document) => match document.write_json(Path::new(&self.export_path)) {
-                    Ok(()) => Some(format!("Exported {}", self.export_path)),
-                    Err(error) => Some(format!("Export failed: {error:#}")),
-                },
-                Err(_) => Some("Export unavailable because the tag could not be read".to_owned()),
-            };
+            if let Some(Ok(document)) = self.document.as_ref() {
+                match document.write_json(Path::new(&self.export_path)) {
+                    Ok(()) => self.export_status = Some(format!("Exported {}", self.export_path)),
+                    Err(error) => self.export_status = Some(format!("Export failed: {error:#}")),
+                }
+            }
         }
-
         TabResult::Continue
     }
 }
 
-fn metadata_row(ui: &mut egui::Ui, label: &str, value: &str) {
-    ui.strong(label);
+fn row(ui: &mut egui::Ui, name: &str, value: &str) {
+    ui.label(RichText::new(name).strong());
     ui.monospace(value);
     ui.end_row();
-}
-
-fn inspect_node_ui(ui: &mut egui::Ui, node: &crate::inspection::InspectNode) {
-    let label = format!(
-        "{}: {} @ 0x{:X} (0x{:X} bytes, {:?})",
-        node.name, node.type_name, node.source_offset, node.encoded_size, node.status
-    );
-    if node.children.is_empty() {
-        ui.monospace(label);
-    } else {
-        ui.collapsing(label, |ui| {
-            for child in &node.children {
-                inspect_node_ui(ui, child);
-            }
-        });
-    }
-    if let Some(value) = &node.value {
-        ui.indent(format!("{}-value", node.name), |ui| {
-            ui.monospace(value.to_string());
-        });
-    }
 }

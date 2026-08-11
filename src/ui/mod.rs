@@ -11,6 +11,7 @@ use crate::{app::SharedState, task::Task, ui::util::DButton, updater::AvailableU
 
 pub mod colors;
 pub mod icons;
+pub mod map_workspace;
 mod scene;
 mod style;
 pub mod tabs;

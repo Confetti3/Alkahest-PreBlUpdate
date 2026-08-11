@@ -57,7 +57,9 @@ use crate::{
         },
         s_update_object_channels,
         sequencer::{s_evaluate_global_channel_expressions, s_get_all_global_channel_ids},
+        shadowkeep_inspection::{MapEntityVisibility, MapInspectionNode},
         shadowmap::{s_extract_all_shadowmaps, s_submit_all_shadowmaps},
+        transform::Transform,
     },
 };
 
@@ -73,9 +75,11 @@ pub struct Scene {
     time_of_day: f32,
     animate_time_of_day: bool,
     time_scale: f32,
-    sun_light_angle: f32,
     diagnostic_freeze: bool,
+    /// Allows map navigation without advancing the frozen diagnostic timeline.
+    camera_input_while_frozen: bool,
     frozen_render_time: f32,
+    sun_light_angle: f32,
     pub render_mode: RenderMode,
     keep_settings_open: bool,
     lock_resolution: bool,
@@ -127,8 +131,9 @@ fn shadowkeep_sun_state(time_of_day: f32, heading_degrees: f32) -> (Vec4, f32) {
 
 #[cfg(test)]
 mod tests {
-    use super::shadowkeep_sun_state;
     use glam::Vec3;
+
+    use super::shadowkeep_sun_state;
 
     #[test]
     fn shadowkeep_sun_state_tracks_scene_clock() {
@@ -180,6 +185,7 @@ impl Scene {
             time_scale: 1.0,
             animate_time_of_day: true,
             diagnostic_freeze: true,
+            camera_input_while_frozen: false,
             frozen_render_time: 0.0,
             sun_light_angle: 60f32,
             render_mode: if is_shadowkeep {
@@ -256,18 +262,23 @@ impl Scene {
         std::mem::take(&mut self.world)
     }
 
+    pub fn enable_camera_input_while_frozen(&mut self) {
+        self.camera_input_while_frozen = true;
+    }
+
     pub fn clear(&mut self) {
         self.world.clear();
     }
 
-    pub fn show_with_overlay<F>(
+    pub fn show_with_overlay<R, F>(
         &mut self,
         ui: &mut Ui,
         size: Vec2,
         egui_d3d11: &mut egui_d3d11::D3D11Renderer,
         overlay: F,
-    ) where
-        F: FnOnce(&Ui, Rect, &Camera),
+    ) -> Option<R>
+    where
+        F: FnOnce(&mut Ui, Rect, &Camera, &Response) -> R,
     {
         let mut overlay = Some(overlay);
         let now = Instant::now();
@@ -298,135 +309,137 @@ impl Scene {
             });
         }
 
-        egui::CentralPanel::default().show(ui, |ui| {
-            let panel_rect = ui.available_rect_before_wrap();
+        let overlay_result = egui::CentralPanel::default()
+            .show(ui, |ui| {
+                let panel_rect = ui.available_rect_before_wrap();
 
-            let r = ui
-                .image(SizedTexture {
-                    id: egui_d3d11.textures_mut().allocate_dx_temporary(
-                        self.surface_srv.clone(),
-                        None,
-                        false,
-                    ),
-                    size,
-                })
-                .interact(Sense::CLICK | Sense::DRAG | Sense::HOVER);
+                let r = ui
+                    .image(SizedTexture {
+                        id: egui_d3d11.textures_mut().allocate_dx_temporary(
+                            self.surface_srv.clone(),
+                            None,
+                            false,
+                        ),
+                        size,
+                    })
+                    .interact(Sense::CLICK | Sense::DRAG | Sense::HOVER);
 
-            if !ui.is_rect_visible(r.rect) {
-                return;
-            }
-
-            let mut bar_rect = r.rect;
-            bar_rect.set_height(32.0);
-            ui.painter().rect_filled(
-                bar_rect,
-                0.0,
-                egui::Color32::from_black_alpha(if ui.rect_contains_pointer(bar_rect) {
-                    160
-                } else {
-                    64
-                }),
-            );
-            ui.scope_builder(UiBuilder::new().max_rect(bar_rect), |ui| {
-                egui::MenuBar::new().ui(ui, |ui| {
-                    self.show_toolbar(ui);
-                })
-            });
-
-            let fps_rect = ui.painter_at(panel_rect).text(
-                panel_rect.right_top() + Vec2::new(0.0, 3.0) + Vec2::splat(1.0),
-                egui::Align2::RIGHT_TOP,
-                format!("{} ", (1. / delta_time_average).round()),
-                egui::FontId::monospace(16.0),
-                egui::Color32::BLACK,
-            );
-
-            ui.painter_at(panel_rect).text(
-                panel_rect.right_top() + Vec2::new(0.0, 3.0),
-                egui::Align2::RIGHT_TOP,
-                format!("{} ", (1. / delta_time_average).round()),
-                egui::FontId::monospace(16.0),
-                egui::Color32::GREEN,
-            );
-
-            ui.scope_builder(
-                egui::UiBuilder::new().max_rect(panel_rect.shrink2(vec2(12.0, 4.0))),
-                |ui| {
-                    ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
-                        if let Some(last_speed_change) = ui.memory(|m| {
-                            m.data.get_temp::<Instant>("scene_last_speed_change".into())
-                        }) && last_speed_change.elapsed().as_secs_f32() <= 2.0
-                        {
-                            ui.label(format!(
-                                "{} Camera Speed: {:.1}m/s",
-                                GoogleMaterialSymbols::Speed,
-                                self.controller.speed()
-                            ));
-                        }
-
-                        if self.world.is_empty() {
-                            ui.label(
-                                RichText::new(format!(
-                                    "{} Scene is empty",
-                                    GoogleMaterialSymbols::Warning
-                                ))
-                                .size(16.0),
-                            );
-                        }
-
-                        if self.renderer.asset_manager.count_loading() > 0 {
-                            ui.label(
-                                RichText::new(format!(
-                                    "{} Loading assets... ({} in progress)",
-                                    GoogleMaterialSymbols::HardDrive,
-                                    self.renderer.asset_manager.count_loading()
-                                ))
-                                .size(16.0),
-                            );
-                        }
-                    });
-                },
-            );
-
-            ui.style_mut().spacing.tooltip_width = 4096.0;
-            Renderer::instance().profiler.set_enabled(false);
-            ui.interact(
-                fps_rect,
-                "frame_counter_profiler_tooltip".into(),
-                Sense::hover(),
-            )
-            .on_hover_ui(|ui| {
-                Renderer::instance().profiler.set_enabled(true);
-                if let Some(profiler_results) = &self.profiler_results {
-                    ui.add(
-                        egui::Label::new(RichText::new(profiler_results.clone()).monospace())
-                            .extend(),
-                    );
-                } else {
-                    ui.weak("Profiler data not available yet.");
+                if !ui.is_rect_visible(r.rect) {
+                    return None;
                 }
-            });
 
-            let size_pixels = size * ui.ctx().pixels_per_point();
-            let resolution = (size_pixels.x as u32, size_pixels.y as u32);
+                let mut bar_rect = r.rect;
+                bar_rect.set_height(32.0);
+                ui.painter().rect_filled(
+                    bar_rect,
+                    0.0,
+                    egui::Color32::from_black_alpha(if ui.rect_contains_pointer(bar_rect) {
+                        160
+                    } else {
+                        64
+                    }),
+                );
+                ui.scope_builder(UiBuilder::new().max_rect(bar_rect), |ui| {
+                    egui::MenuBar::new().ui(ui, |ui| {
+                        self.show_toolbar(ui);
+                    })
+                });
 
-            if !self.diagnostic_freeze {
-                self.controller.update(&mut self.camera, ui, &r, delta_time);
+                let fps_rect = ui.painter_at(panel_rect).text(
+                    panel_rect.right_top() + Vec2::new(0.0, 3.0) + Vec2::splat(1.0),
+                    egui::Align2::RIGHT_TOP,
+                    format!("{} ", (1. / delta_time_average).round()),
+                    egui::FontId::monospace(16.0),
+                    egui::Color32::BLACK,
+                );
 
-                if r.dragged_by(egui::PointerButton::Middle) {
-                    let delta_adjusted = r.drag_delta() / 4.0;
-                    self.sun_light_angle += delta_adjusted.x;
-                    self.sun_light_angle = self.sun_light_angle.rem_euclid(360.0);
+                ui.painter_at(panel_rect).text(
+                    panel_rect.right_top() + Vec2::new(0.0, 3.0),
+                    egui::Align2::RIGHT_TOP,
+                    format!("{} ", (1. / delta_time_average).round()),
+                    egui::FontId::monospace(16.0),
+                    egui::Color32::GREEN,
+                );
+
+                ui.scope_builder(
+                    egui::UiBuilder::new().max_rect(panel_rect.shrink2(vec2(12.0, 4.0))),
+                    |ui| {
+                        ui.with_layout(egui::Layout::bottom_up(egui::Align::Min), |ui| {
+                            if let Some(last_speed_change) = ui.memory(|m| {
+                                m.data.get_temp::<Instant>("scene_last_speed_change".into())
+                            }) && last_speed_change.elapsed().as_secs_f32() <= 2.0
+                            {
+                                ui.label(format!(
+                                    "{} Camera Speed: {:.1}m/s",
+                                    GoogleMaterialSymbols::Speed,
+                                    self.controller.speed()
+                                ));
+                            }
+
+                            if self.world.is_empty() {
+                                ui.label(
+                                    RichText::new(format!(
+                                        "{} Scene is empty",
+                                        GoogleMaterialSymbols::Warning
+                                    ))
+                                    .size(16.0),
+                                );
+                            }
+
+                            if self.renderer.asset_manager.count_loading() > 0 {
+                                ui.label(
+                                    RichText::new(format!(
+                                        "{} Loading assets... ({} in progress)",
+                                        GoogleMaterialSymbols::HardDrive,
+                                        self.renderer.asset_manager.count_loading()
+                                    ))
+                                    .size(16.0),
+                                );
+                            }
+                        });
+                    },
+                );
+
+                ui.style_mut().spacing.tooltip_width = 4096.0;
+                Renderer::instance().profiler.set_enabled(false);
+                ui.interact(
+                    fps_rect,
+                    "frame_counter_profiler_tooltip".into(),
+                    Sense::hover(),
+                )
+                .on_hover_ui(|ui| {
+                    Renderer::instance().profiler.set_enabled(true);
+                    if let Some(profiler_results) = &self.profiler_results {
+                        ui.add(
+                            egui::Label::new(RichText::new(profiler_results.clone()).monospace())
+                                .extend(),
+                        );
+                    } else {
+                        ui.weak("Profiler data not available yet.");
+                    }
+                });
+
+                let size_pixels = size * ui.ctx().pixels_per_point();
+                let resolution = (size_pixels.x as u32, size_pixels.y as u32);
+
+                if !self.diagnostic_freeze || self.camera_input_while_frozen {
+                    self.controller.update(&mut self.camera, ui, &r, delta_time);
+
+                    if r.dragged_by(egui::PointerButton::Middle) {
+                        let delta_adjusted = r.drag_delta() / 4.0;
+                        self.sun_light_angle += delta_adjusted.x;
+                        self.sun_light_angle = self.sun_light_angle.rem_euclid(360.0);
+                    }
                 }
-            }
 
-            subsecond::call(|| {
-                self.render(delta_time, resolution);
-            });
-            if let Some(overlay) = overlay.take() {
-                overlay(ui, r.rect, &self.camera);
-            }
-        });
+                subsecond::call(|| {
+                    self.render(delta_time, resolution);
+                });
+                overlay
+                    .take()
+                    .map(|overlay| overlay(ui, r.rect, &self.camera, &r))
+            })
+            .inner;
 
         #[cfg(feature = "wwise")]
         {
@@ -460,10 +473,11 @@ impl Scene {
 
             s_update_audio_sources(&self.world, self.camera.position);
         }
+        overlay_result
     }
 
     pub fn show(&mut self, ui: &mut Ui, size: Vec2, egui_d3d11: &mut egui_d3d11::D3D11Renderer) {
-        self.show_with_overlay(ui, size, egui_d3d11, |_, _, _| {});
+        let _ = self.show_with_overlay(ui, size, egui_d3d11, |_, _, _, _| ());
     }
 
     fn show_toolbar(&mut self, ui: &mut Ui) {
@@ -578,7 +592,8 @@ impl Scene {
         let freeze_changed = ui
             .checkbox(&mut self.diagnostic_freeze, "Diagnostic Freeze")
             .on_hover_text(
-                "Freezes camera input, exposure, game/render time, time of day, and sequencer automation.",
+                "Freezes camera input, exposure, game/render time, time of day, and sequencer \
+                 automation.",
             )
             .changed();
         if freeze_changed && self.diagnostic_freeze {
@@ -729,7 +744,8 @@ impl Scene {
             if ui
                 .checkbox(&mut sky_diagnostics, "Capture Sky Diagnostics")
                 .on_hover_text(
-                    "One-shot SkyTransparent stage and DrawIndexed capture. It disables itself after completion.",
+                    "One-shot SkyTransparent stage and DrawIndexed capture. It disables itself \
+                     after completion.",
                 )
                 .changed()
             {
@@ -739,7 +755,10 @@ impl Scene {
             let mut feature_matrix = ConVars::get_flag("render.shadowkeep_feature_matrix");
             if ui
                 .checkbox(&mut feature_matrix, "Collect Feature Matrix")
-                .on_hover_text("Diagnostic only: records normalized map resource counts to a small JSON manifest.")
+                .on_hover_text(
+                    "Diagnostic only: records normalized map resource counts to a small JSON \
+                     manifest.",
+                )
                 .changed()
             {
                 let _ = ConVars::set("render.shadowkeep_feature_matrix", feature_matrix.into());
@@ -790,8 +809,8 @@ impl Scene {
                 ui.checkbox(&mut view_settings.multithreading, "Multi-threaded Submit")
                     .setting_description_tooltip(
                         "Enables multi-threaded submission of commands to the GPU. May improve \
-                         performance on systems with many CPU cores, but can introduce stuttering on \
-                         older systems",
+                         performance on systems with many CPU cores, but can introduce stuttering \
+                         on older systems",
                         PerformanceImpact::High,
                     );
 
@@ -808,8 +827,8 @@ impl Scene {
             .on_hover_text("Cascaded directional shadows for the Shadowkeep sun.");
         if is_shadowkeep {
             ui.weak(
-                "Bloom, volumetrics, anti-aliasing, threaded submit, and HZB are not connected \
-                 to the Shadowkeep pass graph.",
+                "Bloom, volumetrics, anti-aliasing, threaded submit, and HZB are not connected to \
+                 the Shadowkeep pass graph.",
             );
         }
     }
@@ -848,7 +867,7 @@ impl Scene {
         }
 
         self.camera.aspect_ratio = resolution.0 as f32 / resolution.1 as f32;
-        if !self.diagnostic_freeze {
+        if !self.diagnostic_freeze || self.camera_input_while_frozen {
             self.controller.update_rotation(&mut self.camera);
         }
         self.camera.update();
@@ -882,7 +901,14 @@ impl Scene {
         };
 
         {
-            if let Some((_, atmos)) = self.world.query::<&AtmosphereData>().iter().next() {
+            if let Some((_, (atmos, visibility))) = self
+                .world
+                .query::<(&AtmosphereData, Option<&MapEntityVisibility>)>()
+                .iter()
+                .find(|(_, (_, visibility))| {
+                    !visibility.is_some_and(|visibility| !visibility.visible)
+                })
+            {
                 packet_misc.atmosphere = atmos.clone();
             } else {
                 packet_misc.atmosphere = Default::default();
@@ -1312,6 +1338,43 @@ impl Scene {
             }
             CameraController::FirstPerson { .. } => {}
         }
+    }
+
+    pub fn focus_inspection_node(&mut self, node: &MapInspectionNode) {
+        if let Some(bounds) = node.bounds {
+            self.focus_bounds(&bounds);
+        } else if let Some(transform) = node.transform {
+            self.focus_point(transform.translation, transform.scale.length().max(1.0));
+        }
+    }
+
+    pub fn focus_bounds(&mut self, bounds: &AxisAlignedBBox) {
+        let center = bounds.center();
+        let distance = (bounds.radius().max(1.0) * 2.4).clamp(2.0, 50_000.0);
+        let forward = self.camera.forward();
+        self.focus_on(center);
+        if matches!(self.controller, CameraController::FirstPerson { .. }) {
+            self.camera.position = center - forward * distance;
+        }
+    }
+
+    pub fn focus_point(&mut self, point: Vec3, scale: f32) {
+        let distance = (scale.abs() * 2.0).clamp(2.0, 5.0);
+        let forward = self.camera.forward();
+        self.focus_on(point);
+        if matches!(self.controller, CameraController::FirstPerson { .. }) {
+            self.camera.position = point - forward * distance;
+        }
+    }
+
+    pub fn teleport_to_transform(&mut self, transform: Transform) {
+        self.camera.position = transform.translation;
+        self.camera.rotation = transform.rotation;
+        let forward = self.camera.forward();
+        self.controller.set_yaw_pitch(glam::Vec2::new(
+            forward.y.atan2(forward.x).to_degrees(),
+            (-forward.z).atan2(forward.x.hypot(forward.y)).to_degrees(),
+        ));
     }
 
     fn show_global_channel_editor(&mut self, ui: &mut Ui) {

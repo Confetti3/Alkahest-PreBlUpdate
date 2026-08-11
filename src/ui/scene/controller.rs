@@ -126,36 +126,37 @@ impl CameraController {
                 }
 
                 let mut movement = Vec3::ZERO;
-                ui.input(|i| {
-                    if i.key_down(egui::Key::W) {
-                        movement += camera.forward();
-                    }
-                    if i.key_down(egui::Key::S) {
-                        movement -= camera.forward();
-                    }
-                    if i.key_down(egui::Key::A) {
-                        movement -= camera.right();
-                    }
-                    if i.key_down(egui::Key::D) {
-                        movement += camera.right();
-                    }
-                    if i.key_down(egui::Key::Q) {
-                        movement -= camera.up();
-                    }
-                    if i.key_down(egui::Key::E) {
-                        movement += camera.up();
-                    }
-                    movement = movement.normalize_or(Vec3::ZERO);
-                    if i.modifiers.ctrl {
-                        movement /= 5.0;
-                    }
-                    if i.modifiers.shift {
-                        movement *= 5.0;
-                    }
-                    if i.key_down(egui::Key::Space) {
-                        movement *= 5.0;
-                    }
-                });
+                let keyboard_controls = (response.hovered() || response.has_focus())
+                    && !ui.ctx().egui_wants_keyboard_input();
+                if keyboard_controls {
+                    ui.input(|i| {
+                        if i.key_down(egui::Key::W) {
+                            movement += camera.forward();
+                        }
+                        if i.key_down(egui::Key::S) {
+                            movement -= camera.forward();
+                        }
+                        if i.key_down(egui::Key::A) {
+                            movement -= camera.right();
+                        }
+                        if i.key_down(egui::Key::D) {
+                            movement += camera.right();
+                        }
+                        if i.key_down(egui::Key::Q) {
+                            movement -= camera.up();
+                        }
+                        if i.key_down(egui::Key::E) {
+                            movement += camera.up();
+                        }
+                        movement = movement.normalize_or(Vec3::ZERO);
+                        if i.modifiers.ctrl {
+                            movement /= 5.0;
+                        }
+                        if i.modifiers.shift || i.key_down(egui::Key::Space) {
+                            movement *= 5.0;
+                        }
+                    });
+                }
 
                 if response.dragged_by(egui::PointerButton::Primary)
                     || response.dragged_by(egui::PointerButton::Secondary)

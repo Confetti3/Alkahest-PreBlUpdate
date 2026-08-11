@@ -9,7 +9,7 @@ use alkahest_render::{
 };
 use glam::Mat4;
 
-use crate::world::transform::Transform;
+use crate::world::{shadowkeep_inspection::MapEntityVisibility, transform::Transform};
 
 pub struct ShadowMap {
     pub last_update: u64,
@@ -80,8 +80,14 @@ pub fn s_extract_all_shadowmaps(
 
     profiling::scope!("extract_shadowmaps");
     let mut candidates = Vec::new();
-    for (entity, shadowmap) in world.query::<&mut ShadowMap>().iter() {
+    for (entity, (shadowmap, visibility)) in world
+        .query::<(&mut ShadowMap, Option<&MapEntityVisibility>)>()
+        .iter()
+    {
         shadowmap.selected_for_update = false;
+        if visibility.is_some_and(|visibility| !visibility.visible) {
+            continue;
+        }
         candidates.push((entity, shadowmap.last_update));
     }
     candidates.sort_by_key(|(_, last_update)| *last_update);
@@ -125,7 +131,14 @@ pub fn s_submit_all_shadowmaps(
     profiling::scope!("render_shadowmaps");
     let _gpuspan = renderer.profiler.scope(cmd, "render_shadowmaps");
 
-    for (_entity, (shadowmap, view)) in world.query::<(&mut ShadowMap, &View)>().iter() {
+    for (_entity, (shadowmap, view, visibility)) in world
+        .query::<(&mut ShadowMap, &View, Option<&MapEntityVisibility>)>()
+        .iter()
+    {
+        if visibility.is_some_and(|visibility| !visibility.visible) {
+            shadowmap.selected_for_update = false;
+            continue;
+        }
         if !shadowmap.selected_for_update {
             continue;
         }

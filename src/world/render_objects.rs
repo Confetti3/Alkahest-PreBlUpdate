@@ -1,7 +1,3 @@
-use crate::world::{
-    object::{DynamicModelParts, ObjectChannels, PermutationConfig},
-    transform::Transform,
-};
 use alkahest_data::tfx::features::ao::SStaticAmbientOcclusion;
 use alkahest_render::{
     Renderer,
@@ -9,6 +5,12 @@ use alkahest_render::{
     feature::rigid_model::DynamicModel,
     object::RenderObjectHandle,
     tfx::packet::{FramePacket, ShadowkeepSkyOrder},
+};
+
+use crate::world::{
+    object::{DynamicModelParts, ObjectChannels, PermutationConfig},
+    shadowkeep_inspection::MapEntityVisibility,
+    transform::Transform,
 };
 
 pub struct StaticRenderObject {
@@ -20,6 +22,10 @@ impl StaticRenderObject {
         Self {
             handle: render_object,
         }
+    }
+
+    pub fn handle(&self) -> RenderObjectHandle {
+        self.handle
     }
 }
 
@@ -40,6 +46,10 @@ impl DynamicRenderObject {
             handle: render_object,
             permutation: 0,
         }
+    }
+
+    pub fn handle(&self) -> RenderObjectHandle {
+        self.handle
     }
 }
 
@@ -72,22 +82,34 @@ pub fn s_extract_ambient_occlusion(world: &hecs::World) {
 pub fn s_extract_render_objects(world: &hecs::World, frame_packet: &mut FramePacket) {
     let mut render_objects = Renderer::instance().objects.write();
 
-    for (_entity, static_render_object) in world.query::<&StaticRenderObject>().iter() {
+    for (_entity, (static_render_object, visibility)) in world
+        .query::<(&StaticRenderObject, Option<&MapEntityVisibility>)>()
+        .iter()
+    {
+        if visibility.is_some_and(|visibility| !visibility.visible) {
+            continue;
+        }
         frame_packet.push_static_render_object(static_render_object.handle);
     }
 
-    for (_entity, (transform, render_object, permutations, object_channels, parts, sky_order)) in
-        world
-            .query::<(
-                Option<&Transform>,
-                &DynamicRenderObject,
-                Option<&PermutationConfig>,
-                Option<&ObjectChannels>,
-                Option<&DynamicModelParts>,
-                Option<&ShadowkeepSkyOrder>,
-            )>()
-            .iter()
+    for (
+        _entity,
+        (transform, render_object, permutations, object_channels, parts, sky_order, visibility),
+    ) in world
+        .query::<(
+            Option<&Transform>,
+            &DynamicRenderObject,
+            Option<&PermutationConfig>,
+            Option<&ObjectChannels>,
+            Option<&DynamicModelParts>,
+            Option<&ShadowkeepSkyOrder>,
+            Option<&MapEntityVisibility>,
+        )>()
+        .iter()
     {
+        if visibility.is_some_and(|visibility| !visibility.visible) {
+            continue;
+        }
         let transform = transform.copied().unwrap_or_default();
         let permutation = if let Some(permutation) = permutations {
             permutation
