@@ -248,8 +248,8 @@
         "shadowing_lights": {
           "present_in_map": true,
           "loader_implemented": true,
-          "render_pass_implemented": true,
-          "production_status": "Ready"
+          "render_pass_implemented": false,
+          "production_status": "Deferred"
         },
         "sky_objects": {
           "present_in_map": true,
@@ -520,8 +520,8 @@
         "shadowing_lights": {
           "present_in_map": true,
           "loader_implemented": true,
-          "render_pass_implemented": true,
-          "production_status": "Ready"
+          "render_pass_implemented": false,
+          "production_status": "Deferred"
         },
         "sky_objects": {
           "present_in_map": true,
