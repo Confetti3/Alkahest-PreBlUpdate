@@ -48,6 +48,63 @@ use crate::{
     },
 };
 
+/// The admitted Shadowkeep production passes for one main-view submission.
+///
+/// This plan is intentionally capability-gated before any legacy pipeline is
+/// invoked; unavailable work remains absent rather than falling through to a
+/// current-era technique.
+#[derive(Clone, Debug, Default)]
+struct ShadowkeepPassPlan {
+    opaque: bool,
+    decals: bool,
+    local_lighting: bool,
+    cubemap_ibl: bool,
+    global_lighting: bool,
+    sun_shadows: bool,
+    atmosphere: bool,
+    sky_objects: bool,
+    transparents: bool,
+    distortion: bool,
+    water: bool,
+    particles: bool,
+    light_shafts: bool,
+    lens_flares: bool,
+    volumetrics: bool,
+    bloom: bool,
+    autoexposure: bool,
+    final_combine: bool,
+    anti_aliasing: bool,
+}
+
+impl ShadowkeepPassPlan {
+    fn requested_count(&self) -> usize {
+        [
+            self.opaque,
+            self.decals,
+            self.local_lighting,
+            self.cubemap_ibl,
+            self.global_lighting,
+            self.sun_shadows,
+            self.atmosphere,
+            self.sky_objects,
+            self.transparents,
+            self.distortion,
+            self.water,
+            self.particles,
+            self.light_shafts,
+            self.lens_flares,
+            self.volumetrics,
+            self.bloom,
+            self.autoexposure,
+            self.final_combine,
+            self.anti_aliasing,
+        ]
+        .into_iter()
+        .filter(|requested| *requested)
+        .count()
+    }
+}
+
 impl Renderer {
     pub fn submit_view(
         self: &Arc<Self>,
@@ -463,6 +520,37 @@ impl Renderer {
         // );
     }
 
+    fn shadowkeep_pass_plan(&self, debug_pipeline: Option<DebugPipeline>) -> ShadowkeepPassPlan {
+        let pipelines = &self.globals.pipelines;
+        let settings = self.settings();
+        let sky = ConVars::get_flag("render.sky")
+            && debug_pipeline.is_none_or(|pipeline| pipeline.has_atmosphere());
+        ShadowkeepPassPlan {
+            opaque: true,
+            decals: false,
+            local_lighting: true,
+            cubemap_ibl: true,
+            global_lighting: ConVars::get_flag("render.global_lighting")
+                && debug_pipeline.is_none_or(|pipeline| pipeline.has_sun()),
+            sun_shadows: settings.sun_shadows && settings.shadows,
+            atmosphere: sky
+                && pipelines.deferred_shading.is_available()
+                && pipelines.sky.is_available(),
+            sky_objects: sky && ConVars::get_flag("render.shadowkeep_sky_objects"),
+            transparents: false,
+            distortion: false,
+            water: false,
+            particles: false,
+            light_shafts: false,
+            lens_flares: false,
+            volumetrics: false,
+            bloom: false,
+            autoexposure: false,
+            final_combine: false,
+            anti_aliasing: settings.anti_aliasing,
+        }
+    }
+
     fn submit_shadowkeep_shaded(
         &self,
         cmd: &mut CommandList,
@@ -528,8 +616,15 @@ impl Renderer {
         // Arrivals renderer always ran opaque -> lighting -> deferred
         // shading before its final presentation.  Keep the preview only as
         // the explicit fallback when a required legacy producer is absent.
-        let wants_global_lighting = ConVars::get_flag("render.global_lighting")
-            && debug_pipeline.is_none_or(|pipeline| pipeline.has_sun());
+        let pass_plan = self.shadowkeep_pass_plan(debug_pipeline);
+        if ConVars::get_flag("render.shadowkeep_sky_diagnostics") {
+            tracing::trace!(
+                requested_passes = pass_plan.requested_count(),
+                ?pass_plan,
+                "Shadowkeep production pass plan"
+            );
+        }
+        let wants_global_lighting = pass_plan.global_lighting;
         let pipelines = &self.globals.pipelines;
         if !pipelines.deferred_shading_no_atm.is_available()
             || (wants_global_lighting && !pipelines.global_lighting.is_available())
