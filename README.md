@@ -1,5 +1,26 @@
 # Alkahest
 
+## Build and production controls
+
+The normal Windows build avoids proprietary audio SDKs:
+
+```powershell
+cargo +nightly build --release -p alkahest --bin alkahest-prebl --no-default-features
+```
+
+Wwise support is opt-in (`--features wwise`) and requires its locally installed
+SDK; `crates/rrise` is intentionally excluded from workspace-wide checks.
+
+Shadowkeep diagnostics are off by default. In particular, environment census,
+sky diagnostics, sky-object A/B capture, buffer provenance, and global-lighting
+dependency manifests run only after their corresponding `render.shadowkeep_*`
+diagnostic convar is explicitly enabled. Normal launches do not write captures,
+hash surfaces, or disassemble package resources.
+
+The `prebl-modern` Windows CI workflow verifies formatting, checks the
+workspace without Wwise, builds the release application without Wwise, and runs
+the deterministic Shadowkeep environment-selector tests.
+
 ## Resources
 
 - [Translating Art into Technology: Physically Inspired Shading in 'Destiny 2'](https://gdcvault.com/play/1025290/Translating-Art-into-Technology-Physically) -
