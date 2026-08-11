@@ -707,9 +707,6 @@ impl Renderer {
         if capture_directional_light_ab {
             let _ = ConVars::set("render.shadowkeep_directional_light_ab", false.into());
         }
-        if capture_sky_objects_ab {
-            let _ = ConVars::set("render.shadowkeep_sky_objects_ab", false.into());
-        }
         let global_lighting_ab_directory = Path::new("artifacts/shadowkeep-global-lighting-ab");
         let mut global_lighting_ab_before = Vec::new();
         let mut global_lighting_ab_after = Vec::new();
@@ -1183,6 +1180,9 @@ impl Renderer {
                     "Wrote Shadowkeep sky-object A/B manifest"
                 );
             }
+        }
+        if capture_sky_objects_ab {
+            let _ = ConVars::set("render.shadowkeep_sky_objects_ab", false.into());
         }
         if capture_global_lighting_ab {
             let global_lighting_ab_after_final = self.capture_shadowkeep_global_lighting_surfaces(

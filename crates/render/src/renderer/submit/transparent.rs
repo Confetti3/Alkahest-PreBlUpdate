@@ -1,3 +1,4 @@
+use alkahest_core::convar::ConVars;
 use std::sync::Arc;
 
 use alkahest_data::tfx::{
@@ -113,6 +114,8 @@ impl Renderer {
         cmd_event_span!(cmd, "shadowkeep/sky_objects");
         let _gpu_span = self.profiler.scope(cmd, "shadowkeep/sky_objects");
         let sky_feature = FeatureRendererSubscription::SKY_TRANSPARENT;
+        let capture_sky_submission = ConVars::get_flag("render.shadowkeep_sky_diagnostics")
+            || ConVars::get_flag("render.shadowkeep_sky_objects_ab");
         let has_decals_additive = self.has_stage_objects(RenderStage::DecalsAdditive, sky_feature);
         let has_transparents = self.has_stage_objects(RenderStage::Transparents, sky_feature);
         if !has_decals_additive && !has_transparents {
@@ -165,10 +168,12 @@ impl Renderer {
         cmd.state = PipelineState::new(Some(8), Some(15), Some(2), Some(1));
         cmd.flush_states();
         self.submit_stage_authored_order(cmd, View::MAIN, RenderStage::DecalsAdditive, sky_feature);
-        crate::renderer::provenance::record_shadowkeep_sky_objects_submission(
-            RenderStage::DecalsAdditive,
-        );
-        tracing::trace!("Shadowkeep sky objects reached DecalsAdditive submission");
+        if capture_sky_submission {
+            crate::renderer::provenance::record_shadowkeep_sky_objects_submission(
+                RenderStage::DecalsAdditive,
+            );
+            tracing::trace!("Shadowkeep sky objects reached DecalsAdditive submission");
+        }
 
         view.shading_result_read
             .lock()
@@ -188,10 +193,12 @@ impl Renderer {
                 RenderStage::Transparents,
                 sky_feature,
             );
-            crate::renderer::provenance::record_shadowkeep_sky_objects_submission(
-                RenderStage::Transparents,
-            );
-            tracing::trace!("Shadowkeep sky objects reached Transparents submission");
+            if capture_sky_submission {
+                crate::renderer::provenance::record_shadowkeep_sky_objects_submission(
+                    RenderStage::Transparents,
+                );
+                tracing::trace!("Shadowkeep sky objects reached Transparents submission");
+            }
         }
     }
 }

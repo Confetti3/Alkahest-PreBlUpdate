@@ -1,6 +1,7 @@
 use std::{any::Any, sync::Arc};
 
 use ahash::AHashMap;
+use alkahest_core::convar::ConVars;
 use alkahest_core::job::{SCHEDULER, potassium::JobHandle};
 use alkahest_data::shadowkeep::{
     SShadowkeepDynamicMaterialVariant, SShadowkeepDynamicModel, lod_category_from_legacy,
@@ -420,7 +421,9 @@ impl DynamicModel {
                     technique
                         .bind_with_channels(cmd, Some(&self.channels))
                         .expect("Failed to bind technique");
-                    if let Some((map, collection)) = self.sky_owner {
+                    if ConVars::get_flag("render.shadowkeep_sky_diagnostics")
+                        && let Some((map, collection)) = self.sky_owner
+                    {
                         record_shadowkeep_sky_technique_dependency(
                             map,
                             collection,
@@ -436,7 +439,9 @@ impl DynamicModel {
                     technique.get_ref(|tech| {
                         tech.bind_with_channels(cmd, Some(&self.channels))
                             .expect("Failed to bind variant technique");
-                        if let Some((map, collection)) = self.sky_owner {
+                        if ConVars::get_flag("render.shadowkeep_sky_diagnostics")
+                            && let Some((map, collection)) = self.sky_owner
+                        {
                             record_shadowkeep_sky_technique_dependency(
                                 map,
                                 collection,
@@ -520,7 +525,9 @@ impl FeatureRenderer for DynamicModel {
             stage,
             self.identifier_mask,
             |model, cmd, _, (_, part)| {
-                if let Some((map, collection)) = model.sky_owner {
+                if ConVars::get_flag("render.shadowkeep_sky_objects_ab")
+                    && let Some((map, collection)) = model.sky_owner
+                {
                     record_shadowkeep_sky_object_draw(stage, map, collection, model.hash);
                 }
                 cmd.draw_indexed(part.index_count, part.index_start, 0);
@@ -547,7 +554,9 @@ impl FeatureRenderer for DynamicModel {
                 stage,
                 identifier_maswk,
                 |model, cmd, (_mesh_index, _mesh), (_part_index, part)| {
-                    if let Some((map, collection)) = model.sky_owner {
+                    if ConVars::get_flag("render.shadowkeep_sky_objects_ab")
+                        && let Some((map, collection)) = model.sky_owner
+                    {
                         record_shadowkeep_sky_object_draw(stage, map, collection, model.hash);
                     }
                     cmd.draw_indexed(part.index_count, part.index_start, 0);
