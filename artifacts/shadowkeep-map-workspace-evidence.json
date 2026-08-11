@@ -1,30 +1,64 @@
 {
-  "commit": "c824f50",
+  "schema": "alkahest-shadowkeep-map-workspace-evidence/v1",
+  "verified_commit": "a3141eb91dd4a87866cff5583bb14bcab7b172b7",
   "package_corpus": "//192.168.42.1/AppSandboxSSD/DestinyResearch/builds/arrivals-pristine/packages",
-  "maps": [
-    {
-      "name": "EDZ",
-      "tag": "80ED6027",
-      "result": "Shadowkeep map normalization completed",
-      "screenshot": null,
-      "screenshot_limitation": "Computer window screenshot timed out while the D3D application was active."
+  "maps": {
+    "EDZ": {
+      "bubble": "80ED6027",
+      "tables": 440,
+      "entries": 2234,
+      "inspection_nodes": 24614,
+      "deferred_resources": 9582,
+      "skipped_resources": 686,
+      "hardware_checks": [
+        "World outliner is the default workspace mode.",
+        "Search for RigidModel returned selectable rendering rows.",
+        "Selected RigidModel 80FC46B9 displayed node, tag, class, offset, and visibility in the inspector.",
+        "Diagnostics remained closed until explicitly opened."
+      ]
     },
-    {
-      "name": "Europa",
-      "tag": "81547A30",
-      "result": "Shadowkeep map normalization completed",
-      "screenshot": null,
-      "screenshot_limitation": "Not captured after the EDZ Computer timeout."
+    "Europa": {
+      "bubble": "81547A30",
+      "tables": 362,
+      "entries": 1934,
+      "inspection_nodes": 22647,
+      "deferred_resources": 9039,
+      "skipped_resources": 658,
+      "hardware_checks": [
+        "Selected RigidModel 815ABD3D displayed provenance and visibility.",
+        "Hide Selected changed the selected entity to hidden; Show Selected restored visible.",
+        "Source mode retained selection and displayed base-container provenance.",
+        "The shared bubble browser opened with package, table, scenario, status, and tag columns."
+      ]
     }
-  ],
-  "tests": {
-    "map_inspection": "10 passed",
-    "map_workspace": "2 passed",
-    "bubble_browser": "1 passed",
-    "cargo_check": "passed"
   },
-  "limitations": [
-    "No trustworthy hardware screenshots or on-screen counts were captured.",
-    "Spawn-bearing corpus census and real-spawn interaction validation were not run."
+  "tests": {
+    "cargo +nightly fmt --check": "passed",
+    "cargo +nightly check": "passed with pre-existing warnings",
+    "cargo +nightly test --bin alkahest-prebl map_inspection": "13 passed",
+    "cargo +nightly test --bin alkahest-prebl map_workspace": "3 passed",
+    "cargo +nightly test --bin alkahest-prebl bubble_browser": "1 passed",
+    "cargo +nightly test --bin alkahest-prebl respawn": "1 passed",
+    "cargo +nightly test --bin alkahest-prebl -- --skip shadowkeep_sun_state_tracks_scene_clock": "31 passed, 1 skipped",
+    "cargo +nightly test --bin alkahest-prebl shadowkeep_sun_state_tracks_scene_clock": "known baseline failure: src/ui/scene/mod.rs:143 legacy noon-direction assertion"
+  },
+  "respawn_census": {
+    "command": "cargo +nightly run --example shadowkeep_respawn_census -- --packages <corpus> --output artifacts/shadowkeep-respawn-census.json",
+    "scanned_bubbles": 428,
+    "decoded_bubbles": 428,
+    "bubbles_with_respawns": 0,
+    "total_direct_points": 0,
+    "total_map_node_points": 0,
+    "fallback": "No decoded authored respawns were available in the complete corpus. The Spawns outliner shows the explicit empty fallback; deterministic synthetic reducer and projection tests cover spawn behavior."
+  },
+  "screenshots": [
+    "artifacts/map-workspace-edz.png",
+    "artifacts/map-workspace-europa.png",
+    "artifacts/map-workspace-bubble-browser.png",
+    "artifacts/map-workspace-spawn-fallback.png"
+  ],
+  "remaining_limitations": [
+    "The available corpus contains no decoded authored respawn points, so real marker click, double-click focus, teleport, and copy-hash behavior could not be exercised against package data.",
+    "The pre-existing sun-clock compatibility assertion remains failing and was excluded only from the full suite gate."
   ]
 }

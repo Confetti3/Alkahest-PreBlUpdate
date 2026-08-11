@@ -46,6 +46,7 @@ struct Census {
     bubbles_with_respawns: usize,
     total_direct_points: usize,
     total_map_node_points: usize,
+    error_count: usize,
     errors: Vec<String>,
     bubbles: Vec<BubbleRecord>,
 }
@@ -204,6 +205,13 @@ fn map_node_points(resource: TagHash, offset: u64) -> Result<usize> {
         .sum())
 }
 
+fn record_error(census: &mut Census, error: String) {
+    census.error_count += 1;
+    if census.errors.len() < 32 {
+        census.errors.push(error);
+    }
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
     alkahest_core::initialize_package_manager(
@@ -225,16 +233,16 @@ fn main() -> Result<()> {
         bubbles_with_respawns: 0,
         total_direct_points: 0,
         total_map_node_points: 0,
+        error_count: 0,
         errors: Vec::new(),
         bubbles: Vec::new(),
     };
+
     for bubble in bubble_tags {
         let (scenario, tables) = match table_sources(bubble) {
             Ok(value) => value,
             Err(error) => {
-                census
-                    .errors
-                    .push(format!("{bubble}: table discovery: {error:#}"));
+                record_error(&mut census, format!("{bubble}: table discovery: {error:#}"));
                 continue;
             }
         };
@@ -251,9 +259,10 @@ fn main() -> Result<()> {
             {
                 Ok(table) => table,
                 Err(error) => {
-                    census
-                        .errors
-                        .push(format!("{bubble}/{table_tag}: table decode: {error:#}"));
+                    record_error(
+                        &mut census,
+                        format!("{bubble}/{table_tag}: table decode: {error:#}"),
+                    );
                     continue;
                 }
             };
@@ -265,10 +274,13 @@ fn main() -> Result<()> {
                     match package_manager().read_tag_struct(entry.entity) {
                         Ok(entity) => entity,
                         Err(error) => {
-                            census.errors.push(format!(
-                                "{bubble}/{table_tag}/{}: entity decode: {error:#}",
-                                entry.entity
-                            ));
+                            record_error(
+                                &mut census,
+                                format!(
+                                    "{bubble}/{table_tag}/{}: entity decode: {error:#}",
+                                    entry.entity
+                                ),
+                            );
                             continue;
                         }
                     };
@@ -294,9 +306,13 @@ fn main() -> Result<()> {
                     let points = match points {
                         Ok(points) => points,
                         Err(error) => {
-                            census.errors.push(format!(
-                                "{bubble}/{table_tag}/{resource_tag}: respawn decode: {error:#}"
-                            ));
+                            record_error(
+                                &mut census,
+                                format!(
+                                    "{bubble}/{table_tag}/{resource_tag}: respawn decode: \
+                                     {error:#}"
+                                ),
+                            );
                             continue;
                         }
                     };
