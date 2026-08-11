@@ -1059,11 +1059,10 @@ fn write_shadowkeep_production_feature_matrix(report: &MapLoadReport) -> anyhow:
                 ),
                 (
                     "shadowing_lights".to_owned(),
-                    feature_family(
-                        has_resource_class(report, SHADOWING_LIGHT),
-                        true,
-                        report.shadowing_lights != 0,
-                    ),
+                    // The preserved light record provides shading techniques,
+                    // but no decoded shadow-map producer attaches `shadow_view`.
+                    // Do not report an unshadowed fallback as restored shadows.
+                    feature_family(has_resource_class(report, SHADOWING_LIGHT), true, false),
                 ),
                 (
                     "cubemap_ibl".to_owned(),
