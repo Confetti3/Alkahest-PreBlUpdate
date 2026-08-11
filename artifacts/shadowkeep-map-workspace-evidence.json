@@ -49,7 +49,9 @@
     "bubbles_with_respawns": 0,
     "total_direct_points": 0,
     "total_map_node_points": 0,
-    "fallback": "No decoded authored respawns were available in the complete corpus. The Spawns outliner shows the explicit empty fallback; deterministic synthetic reducer and projection tests cover spawn behavior."
+    "error_count": 135077,
+    "coverage": "incomplete: candidate resource reads repeatedly failed because package id fc00 has no path in the supplied corpus",
+    "fallback": "The Spawns outliner shows the explicit empty fallback. Zero decoded points is not a corpus-wide absence claim while candidate resource decode errors remain; deterministic synthetic reducer and projection tests cover spawn behavior."
   },
   "screenshots": [
     "artifacts/map-workspace-edz.png",
@@ -58,7 +60,7 @@
     "artifacts/map-workspace-spawn-fallback.png"
   ],
   "remaining_limitations": [
-    "The available corpus contains no decoded authored respawn points, so real marker click, double-click focus, teleport, and copy-hash behavior could not be exercised against package data.",
+    "Respawn census coverage is incomplete: 135077 candidate resource decodes failed because package id fc00 is absent from the supplied corpus. Therefore real marker click, double-click focus, teleport, and copy-hash behavior could not be exercised or ruled out against package data.",
     "The pre-existing sun-clock compatibility assertion remains failing and was excluded only from the full suite gate."
   ]
 }

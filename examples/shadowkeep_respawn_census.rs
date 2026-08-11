@@ -180,7 +180,7 @@ fn direct_points(resource: TagHash, offset: u64) -> Result<usize> {
     Ok(component.tag.as_ref().map_or(0, |points| points.unk8.len()))
 }
 
-fn map_node_points(resource: TagHash, offset: u64) -> Result<usize> {
+fn map_node_points(resource: TagHash, offset: u64) -> Result<Option<usize>> {
     let bytes = package_manager().read_tag(resource)?;
     let offset = checked_offset(
         bytes.len(),
@@ -191,18 +191,22 @@ fn map_node_points(resource: TagHash, offset: u64) -> Result<usize> {
     )?;
     let mut cursor = Cursor::new(&bytes[offset..]);
     let node_table_tag = TagHash::read_ds(&mut cursor)?;
-    anyhow::ensure!(node_table_tag.is_some(), "map-node table tag is absent");
+    if node_table_tag.is_none() {
+        return Ok(None);
+    }
     let table: SMapNodeTable = package_manager().read_tag_struct(node_table_tag)?;
-    Ok(table
-        .nodes
-        .iter()
-        .flat_map(|node| node.component_data.iter())
-        .filter_map(|component| match component {
-            ComponentData::SRespawnPointsComponent(component) => component.tag.as_ref(),
-            _ => None,
-        })
-        .map(|points| points.unk8.len())
-        .sum())
+    Ok(Some(
+        table
+            .nodes
+            .iter()
+            .flat_map(|node| node.component_data.iter())
+            .filter_map(|component| match component {
+                ComponentData::SRespawnPointsComponent(component) => component.tag.as_ref(),
+                _ => None,
+            })
+            .map(|points| points.unk8.len())
+            .sum(),
+    ))
 }
 
 fn record_error(census: &mut Census, error: String) {
@@ -296,7 +300,7 @@ fn main() -> Result<()> {
                     let resource_tag = resource_ref.resource.taghash();
                     let points = match class {
                         RESPAWN_POINTS_COMPONENT => {
-                            direct_points(resource_tag, resource.definition.offset)
+                            direct_points(resource_tag, resource.definition.offset).map(Some)
                         }
                         MAP_NODE_TABLE_COMPONENT => {
                             map_node_points(resource_tag, resource.definition.offset)
@@ -304,7 +308,8 @@ fn main() -> Result<()> {
                         _ => unreachable!(),
                     };
                     let points = match points {
-                        Ok(points) => points,
+                        Ok(Some(points)) => points,
+                        Ok(None) => continue,
                         Err(error) => {
                             record_error(
                                 &mut census,
