@@ -15,8 +15,8 @@ members = [
     "crates/render",
     "crates/egui-d3d11",
     "crates/egui-sdl3-platform",
-    "crates/rrise",
 ]
+exclude = ["crates/rrise"]
 
 [workspace.dependencies]
 anyhow = "1"
