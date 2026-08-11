@@ -96,6 +96,7 @@ pub struct Scene {
     sun_shadow_views: [View; Renderer::NUM_CASCADES],
 
     scene_id: String,
+    frame_index: u64,
     shadowkeep_sky_channels_logged: bool,
 }
 
@@ -199,6 +200,7 @@ impl Scene {
             frametimes: Vec::new(),
             sun_shadow_views,
             scene_id: scene_id.into(),
+            frame_index: 1,
             shadowkeep_sky_channels_logged: false,
             automate_channels: true,
         })
@@ -707,6 +709,17 @@ impl Scene {
                 let _ = ConVars::set("render.shadowkeep_sky_objects", sky_objects.into());
             }
 
+            let mut sky_diagnostics = ConVars::get_flag("render.shadowkeep_sky_objects_ab");
+            if ui
+                .checkbox(&mut sky_diagnostics, "Capture Sky Diagnostics")
+                .on_hover_text(
+                    "One-shot SkyTransparent stage and DrawIndexed capture. It disables itself after completion.",
+                )
+                .changed()
+            {
+                let _ = ConVars::set("render.shadowkeep_sky_objects_ab", sky_diagnostics.into());
+            }
+
             let mut feature_matrix = ConVars::get_flag("render.shadowkeep_feature_matrix");
             if ui
                 .checkbox(&mut feature_matrix, "Collect Feature Matrix")
@@ -736,20 +749,28 @@ impl Scene {
                     "Enables volumetric lighting effects, such as light shafts and fog.",
                     PerformanceImpact::Medium,
                 );
-            ui.checkbox(&mut view_settings.shadows, "Local Shadows")
-                .setting_description_tooltip(
-                    "Enables (static) shadows for local lights.",
-                    PerformanceImpact::Medium,
-                );
-
 
             ui.checkbox(&mut view_settings.anti_aliasing, "Anti-Aliasing")
                 .setting_description_tooltip(
                     "Enables FXAA anti-aliasing to smooth out jagged edges.",
                     PerformanceImpact::Low,
                 );
+        });
 
-            ui.collapsing("Advanced", |ui| {
+        ui.checkbox(&mut view_settings.shadows, "Local Shadows")
+            .on_hover_text(
+                "Authored Shadowkeep spotlight shadows. Local shadow maps update incrementally \
+                 using the configured per-frame budget.",
+            );
+        if view_settings.shadows {
+            ui.add(
+                egui::Slider::new(&mut view_settings.local_shadow_updates_per_frame, 1..=8)
+                    .text("Local Shadow Updates / Frame"),
+            );
+        }
+
+        ui.collapsing("Advanced", |ui| {
+            ui.add_enabled_ui(!is_shadowkeep, |ui| {
                 ui.checkbox(&mut view_settings.multithreading, "Multi-threaded Submit")
                     .setting_description_tooltip(
                         "Enables multi-threaded submission of commands to the GPU. May improve \
@@ -771,7 +792,8 @@ impl Scene {
             .on_hover_text("Cascaded directional shadows for the Shadowkeep sun.");
         if is_shadowkeep {
             ui.weak(
-                "Bloom, volumetrics, local shadows, anti-aliasing, threaded submit, and HZB are not connected to the Shadowkeep pass graph.",
+                "Bloom, volumetrics, anti-aliasing, threaded submit, and HZB are not connected \
+                 to the Shadowkeep pass graph.",
             );
         }
     }
@@ -1017,8 +1039,17 @@ impl Scene {
             profiling::scope!("render_shadows");
             let _gpuspan = self.renderer.profiler.scope(&cmd, "render_shadows");
             if can_draw_static_shadowmaps {
-                s_extract_all_shadowmaps(&self.world, &self.renderer);
-                s_submit_all_shadowmaps(&self.world, &mut cmd, &self.renderer);
+                s_extract_all_shadowmaps(
+                    &mut self.world,
+                    &self.renderer,
+                    self.view.settings().local_shadow_updates_per_frame,
+                );
+                s_submit_all_shadowmaps(
+                    &mut self.world,
+                    &mut cmd,
+                    &self.renderer,
+                    self.frame_index,
+                );
             }
 
             let debug_pipeline: Option<DebugPipeline> = self.render_mode.into();
@@ -1125,6 +1156,7 @@ impl Scene {
 
         drop(_gpuspan);
         self.renderer.profiler.end_frame();
+        self.frame_index = self.frame_index.wrapping_add(1).max(1);
 
         static FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
         if FRAME_COUNT

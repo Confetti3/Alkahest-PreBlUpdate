@@ -12,7 +12,8 @@ use glam::Mat4;
 use crate::world::transform::Transform;
 
 pub struct ShadowMap {
-    pub finished_rendering: bool,
+    pub last_update: u64,
+    pub selected_for_update: bool,
     pub world_to_camera: Mat4,
     pub camera_to_projective: Mat4,
 }
@@ -23,9 +24,8 @@ impl ShadowMap {
         let projection = CameraProjection::Perspective.matrix(1.0, fov, near, far);
 
         ShadowMap {
-            // view: Arc::new(Mutex::new(view)),
-            finished_rendering: false,
-            // surface: Arc::new(Mutex::new(None)),
+            last_update: 0,
+            selected_for_update: false,
             world_to_camera,
             camera_to_projective: projection,
         }
@@ -69,49 +69,54 @@ impl ShadowMap {
     // }
 }
 
-pub fn s_extract_all_shadowmaps(world: &hecs::World, renderer: &Arc<Renderer>) {
+pub fn s_extract_all_shadowmaps(
+    world: &mut hecs::World,
+    renderer: &Arc<Renderer>,
+    update_budget: usize,
+) {
     if !renderer.asset_manager.is_idle() {
         return;
     }
 
     profiling::scope!("extract_shadowmaps");
+    let mut candidates = Vec::new();
+    for (entity, shadowmap) in world.query::<&mut ShadowMap>().iter() {
+        shadowmap.selected_for_update = false;
+        candidates.push((entity, shadowmap.last_update));
+    }
+    candidates.sort_by_key(|(_, last_update)| *last_update);
 
-    let mut i = 0;
-    for (_entity, (shadowmap, view)) in world.query::<(&mut ShadowMap, &mut View)>().iter() {
-        if shadowmap.finished_rendering {
+    for (index, (entity, _)) in candidates
+        .into_iter()
+        .take(update_budget.min(View::MAX_VIEWS - View::FIRST_SHADOW))
+        .enumerate()
+    {
+        let Ok((shadowmap, view)) = world.query_one_mut::<(&mut ShadowMap, &mut View)>(entity)
+        else {
             continue;
-        }
-
-        if View::FIRST_SHADOW + i >= View::MAX_VIEWS {
-            if let ViewKind::Shadow(v) = &mut view.kind {
-                v.index = usize::MAX;
-            };
-
-            continue;
-        }
-
+        };
+        let shadow_index = View::FIRST_SHADOW + index;
+        let resolution = view.resolution();
         view.update(
             shadowmap.world_to_camera,
             shadowmap.camera_to_projective,
-            view.resolution(),
+            resolution,
         );
-
-        let ViewKind::Shadow(v) = &mut view.kind else {
+        let ViewKind::Shadow(shadow_view) = &mut view.kind else {
             continue;
         };
 
-        v.index = View::FIRST_SHADOW + i;
-        debug_assert!(v.index >= View::FIRST_SHADOW);
-        i += 1;
-
-        renderer.cull_view(v.index, view);
+        shadowmap.selected_for_update = true;
+        shadow_view.index = shadow_index;
+        renderer.cull_view(shadow_index, view);
     }
 }
 
 pub fn s_submit_all_shadowmaps(
-    world: &hecs::World,
+    world: &mut hecs::World,
     cmd: &mut CommandList,
     renderer: &Arc<Renderer>,
+    frame_index: u64,
 ) {
     if !renderer.asset_manager.is_idle() {
         return;
@@ -121,14 +126,13 @@ pub fn s_submit_all_shadowmaps(
     let _gpuspan = renderer.profiler.scope(cmd, "render_shadowmaps");
 
     for (_entity, (shadowmap, view)) in world.query::<(&mut ShadowMap, &View)>().iter() {
-        if shadowmap.finished_rendering {
+        if !shadowmap.selected_for_update {
             continue;
         }
 
         let ViewKind::Shadow(v) = &view.kind else {
             continue;
         };
-
         if v.index >= View::MAX_VIEWS {
             continue;
         }
@@ -153,8 +157,8 @@ pub fn s_submit_all_shadowmaps(
         }
 
         renderer.submit_view(cmd, view, None);
-
-        shadowmap.finished_rendering = true;
+        shadowmap.last_update = frame_index;
+        shadowmap.selected_for_update = false;
     }
 }
 

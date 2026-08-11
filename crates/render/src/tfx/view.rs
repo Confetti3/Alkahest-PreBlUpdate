@@ -6,7 +6,7 @@ use glam::{Mat4, Vec3, Vec4};
 use parking_lot::Mutex;
 
 use crate::{
-    Gpu, Renderer,
+    Gpu,
     renderer::{
         RendererEra,
         autoexposure::AutoExposureSystem,
@@ -72,7 +72,7 @@ impl View {
         resolution: (u32, u32),
     ) -> anyhow::Result<Self> {
         let kind = if is_shadow {
-            ViewKind::Shadow(Box::new(ShadowView::new()?))
+            ViewKind::Shadow(Box::new(ShadowView::new(gpu, resolution)?))
         } else {
             let surfaces = Arc::new(Surfaces::new(gpu.device.clone(), resolution));
             ViewKind::Main(Box::new(MainView::new(&surfaces, gpu, resolution)?))
@@ -318,20 +318,17 @@ pub struct ShadowView {
 }
 
 impl ShadowView {
-    pub const SHADOWMAP_RESOLUTION: u32 = 2048;
+    pub const LOCAL_SHADOWMAP_RESOLUTION: u32 = 1024;
+    pub const SUN_SHADOWMAP_RESOLUTION: u32 = 2048;
 
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(gpu: &Gpu, resolution: (u32, u32)) -> anyhow::Result<Self> {
         let surface_desc = SurfaceDesc::builder("shadowmap", SizeRelativity::Absolute)
             .format(dxgi::Format::R32Typeless)
             .depth_format(dxgi::Format::D32Float)
             .view_format(dxgi::Format::R32Float)
             .build();
 
-        let shadow_map = Surface::new(
-            &Renderer::instance().gpu,
-            (Self::SHADOWMAP_RESOLUTION, Self::SHADOWMAP_RESOLUTION),
-            surface_desc,
-        )?;
+        let shadow_map = Surface::new(gpu, resolution, surface_desc)?;
 
         Ok(Self {
             shadow_map,
@@ -349,6 +346,7 @@ pub struct RenderSettings {
     pub bloom: bool,
     pub volumetrics: bool,
     pub shadows: bool,
+    pub local_shadow_updates_per_frame: usize,
     pub autoexposure: bool,
     pub sun_shadows: bool,
     pub anti_aliasing: bool,
@@ -365,6 +363,7 @@ impl RenderSettings {
             settings.autoexposure = false;
             settings.bloom = false;
             settings.volumetrics = false;
+            settings.local_shadow_updates_per_frame = 2;
             settings.shadows = false;
             settings.sun_shadows = true;
             settings.anti_aliasing = false;
@@ -385,6 +384,7 @@ impl Default for RenderSettings {
             bloom: true,
             volumetrics: true,
             shadows: true,
+            local_shadow_updates_per_frame: View::MAX_VIEWS - View::FIRST_SHADOW,
             autoexposure: true,
             sun_shadows: true,
             anti_aliasing: true,

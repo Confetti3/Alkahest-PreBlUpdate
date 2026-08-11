@@ -248,8 +248,9 @@
         "shadowing_lights": {
           "present_in_map": true,
           "loader_implemented": true,
-          "render_pass_implemented": false,
-          "production_status": "Deferred"
+          "render_pass_implemented": true,
+          "production_status": "Degraded",
+          "reason": "Shadow producers and consumers are wired; non-clear depth and visible attenuation require one-shot provenance capture."
         },
         "sky_objects": {
           "present_in_map": true,

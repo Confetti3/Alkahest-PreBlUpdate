@@ -407,7 +407,14 @@ impl FeatureRenderer for LightRenderer {
         _view_index: usize,
         stage: RenderStage,
     ) {
-        if stage == RenderStage::LightProbeApply {
+        // Local-light volumes are consumers of a generated shadow map, never
+        // casters. Submitting their lighting technique during ShadowGenerate
+        // both draws the volume into its own map and requires DeferredLight
+        // inputs that the caster pass correctly does not populate.
+        if matches!(
+            stage,
+            RenderStage::LightProbeApply | RenderStage::ShadowGenerate
+        ) {
             return;
         }
         if stage == RenderStage::LightingApply

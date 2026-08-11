@@ -336,8 +336,8 @@ pub fn spawn_pattern_from_header(
                     format!("shadow_{}", data.light.taghash()),
                     &Renderer::instance().gpu,
                     (
-                        ShadowView::SHADOWMAP_RESOLUTION,
-                        ShadowView::SHADOWMAP_RESOLUTION,
+                        ShadowView::LOCAL_SHADOWMAP_RESOLUTION,
+                        ShadowView::LOCAL_SHADOWMAP_RESOLUTION,
                     ),
                 )
                 .expect("Failed to create shadowmap view");

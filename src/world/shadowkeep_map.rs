@@ -38,6 +38,7 @@ use tiger_pkg::{TagHash, package_manager};
 
 use crate::world::{
     render_objects::{DynamicRenderObject, StaticRenderObject},
+    shadowmap::ShadowMap,
     transform::Transform,
 };
 use alkahest_render::{
@@ -49,7 +50,10 @@ use alkahest_render::{
     },
     object::RenderObject,
     renderer::submit::atmosphere::AtmosphereData,
-    tfx::packet::ShadowkeepSkyOrder,
+    tfx::{
+        packet::ShadowkeepSkyOrder,
+        view::{View, ViewKind},
+    },
 };
 
 const STATIC_PLACEMENT: u32 = 0x8080_71B3;
@@ -419,7 +423,9 @@ fn select_shadowkeep_environment(
         })
         .collect::<Vec<_>>();
     if let [sky] = destination_collections.as_slice() {
-        if let Some(atmosphere) = pairs_for_sky(*sky, &same_source_set) {
+        if let Some(atmosphere) =
+            pairs_for_sky(*sky, &same_source_set).or_else(|| (atmospheres.len() == 1).then_some(0))
+        {
             return selected(
                 *sky,
                 atmosphere,
@@ -903,6 +909,8 @@ pub struct MapLoadReport {
     pub sky_object_collection_tags: Vec<TagHash>,
     pub sky_object_model_tags: Vec<TagHash>,
     pub deferred_sky_object_collections: Vec<TagHash>,
+    pub environment_selection_reason: Option<String>,
+    pub selected_atmosphere_table: Option<TagHash>,
     pub sky_object_stage_subscriptions: Vec<(TagHash, u32)>,
     /// Authored stages that contribute sky color in the dedicated pass.
     pub sky_object_color_stage_mask: u32,
@@ -963,6 +971,8 @@ struct ShadowkeepFeatureFamilyMatrix {
     loader_implemented: bool,
     render_pass_implemented: bool,
     production_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
 }
 
 fn class_counts(counts: &BTreeMap<u32, usize>) -> BTreeMap<String, usize> {
@@ -994,6 +1004,22 @@ fn feature_family(
             "Deferred"
         }
         .to_owned(),
+        reason: None,
+    }
+}
+
+fn degraded_feature_family(
+    present_in_map: bool,
+    loader_implemented: bool,
+    render_pass_implemented: bool,
+    reason: &'static str,
+) -> ShadowkeepFeatureFamilyMatrix {
+    ShadowkeepFeatureFamilyMatrix {
+        present_in_map,
+        loader_implemented,
+        render_pass_implemented,
+        production_status: "Degraded".to_owned(),
+        reason: Some(reason.to_owned()),
     }
 }
 
@@ -1059,10 +1085,12 @@ fn write_shadowkeep_production_feature_matrix(report: &MapLoadReport) -> anyhow:
                 ),
                 (
                     "shadowing_lights".to_owned(),
-                    // The preserved light record provides shading techniques,
-                    // but no decoded shadow-map producer attaches `shadow_view`.
-                    // Do not report an unshadowed fallback as restored shadows.
-                    feature_family(has_resource_class(report, SHADOWING_LIGHT), true, false),
+                    degraded_feature_family(
+                        has_resource_class(report, SHADOWING_LIGHT),
+                        true,
+                        true,
+                        "Shadow producers and consumers are wired; non-clear depth and visible attenuation require one-shot provenance capture.",
+                    ),
                 ),
                 (
                     "cubemap_ibl".to_owned(),
@@ -1658,25 +1686,56 @@ pub fn load_shadowkeep_map_into_world(
                         anyhow::ensure!(light_tag.is_some(), "shadowing light tag is absent");
                         let light: SShadowkeepShadowingLight =
                             package_manager().read_tag_struct(light_tag)?;
-                        let renderer_object = LightRenderer::new_shadowkeep_shadowing(
+                        let light_transform = Transform::new(
+                            entry.translation.xyz(),
+                            entry.rotation,
+                            Vec3::splat(entry.translation.w),
+                        );
+                        let fov_degrees = (light.half_fov * 2.0).to_degrees();
+                        anyhow::ensure!(
+                            fov_degrees.is_finite() && fov_degrees > 0.0 && fov_degrees < 180.0,
+                            "invalid local shadow FOV {fov_degrees}"
+                        );
+                        anyhow::ensure!(
+                            light.far_plane.is_finite() && light.far_plane > 0.5,
+                            "invalid local shadow far plane {}",
+                            light.far_plane
+                        );
+                        let shadowmap =
+                            ShadowMap::create(light_transform, fov_degrees, 0.5, light.far_plane);
+                        let mut shadow_view = View::new_shadow(
+                            format!("shadow_{light_tag}"),
+                            &renderer.gpu,
+                            (1024, 1024),
+                        )?;
+                        shadow_view.disable_culling = true;
+                        let ViewKind::Shadow(shadow_view_data) = &shadow_view.kind else {
+                            anyhow::bail!("local shadow view has unexpected kind");
+                        };
+                        let shadow_texture = shadow_view_data.shadow_map.texture.clone();
+                        let shadow_srv = shadow_view_data
+                            .shadow_map
+                            .srv(0)
+                            .context("local shadow map has no shader resource view")?
+                            .clone();
+                        let mut renderer_object = LightRenderer::new_shadowkeep_shadowing(
                             renderer,
                             light.technique_shading,
                             light.technique_shading_shadowing,
                             light.technique_volumetrics,
                             light.technique_volumetrics_shadowing,
                             light.light_to_world,
-                            glam::Mat4::IDENTITY,
+                            shadowmap.camera_to_projective,
                         )?;
+                        renderer_object.shadow_view = Some((shadow_texture, shadow_srv));
                         world.spawn((
-                            Transform::new(
-                                entry.translation.xyz(),
-                                entry.rotation,
-                                Vec3::splat(entry.translation.w),
-                            ),
+                            light_transform,
                             DynamicRenderObject::new(renderer.add_object(RenderObject::new(
                                 TfxFeatureRenderer::DeferredLights,
                                 renderer_object,
                             ))),
+                            shadowmap,
+                            shadow_view,
                         ));
                         Ok(())
                     })();
@@ -1855,6 +1914,10 @@ pub fn load_shadowkeep_map_into_world(
         &collection_package_names,
     );
     report.deferred_sky_object_collections = selection.deferred_sky_collections.clone();
+    report.environment_selection_reason = Some(format!("{:?}", selection.reason));
+    report.selected_atmosphere_table = selection
+        .atmosphere_index
+        .map(|index| atmosphere_candidates[index].table);
     if let Some(error) = selection.reason.diagnostic() {
         report.diagnostic(
             progress,
@@ -2104,6 +2167,14 @@ pub fn load_shadowkeep_map_into_world(
             }
         }
     }
+    tracing::info!(
+        map = %tag,
+        reason = ?report.environment_selection_reason,
+        selected_sky_collection = ?report.sky_object_collection_tags,
+        selected_atmosphere_table = ?report.selected_atmosphere_table,
+        sky_object_render_objects = report.sky_object_render_objects,
+        "completed Shadowkeep environment selection"
+    );
     report.placement_bounds =
         (!bound_points.is_empty()).then(|| AxisAlignedBBox::from_points(&bound_points));
     report.entity_placement_bounds = (!entity_bound_points.is_empty())
@@ -2141,6 +2212,9 @@ pub fn load_shadowkeep_map_into_world(
         sky_object_skipped_kind_5 = report.sky_object_skipped_kind_5,
         sky_object_collection_tags = ?report.sky_object_collection_tags,
         deferred_sky_object_collections = ?report.deferred_sky_object_collections,
+        environment_selection_reason = ?report.environment_selection_reason,
+        selected_atmosphere_table = ?report.selected_atmosphere_table,
+        sky_collection_package_names = ?collection_package_names,
         table_sources = ?report.table_sources,
         cubemap_render_objects = report.cubemap_render_objects,
         shadowing_lights = report.shadowing_lights,
@@ -2386,6 +2460,38 @@ mod tests {
 
         assert_eq!(result.sky_collection, Some(destination));
         assert_eq!(result.atmosphere_index, Some(1));
+        assert_eq!(
+            result.reason,
+            ShadowkeepEnvironmentSelectionReason::DestinationPackage
+        );
+    }
+
+    #[test]
+    fn destination_package_uses_the_only_atmosphere_when_sources_do_not_overlap() {
+        let common = TagHash(0x8080_2001);
+        let destination = TagHash(0x8080_2002);
+        let candidates = BTreeMap::from([
+            (
+                common,
+                collection_candidate(common, 2, Some(TagHash(0x8080_3001)), false),
+            ),
+            (
+                destination,
+                collection_candidate(destination, 3, Some(TagHash(0x8080_3002)), false),
+            ),
+        ]);
+        let atmospheres = vec![atmosphere_candidate(
+            TagHash(0x8080_4001),
+            0,
+            ShadowkeepTableSources::default(),
+        )];
+        let packages = BTreeMap::from([(destination, "edz".to_owned())]);
+
+        let result =
+            select_shadowkeep_environment(&candidates, &atmospheres, 0, Some("edz"), &packages);
+
+        assert_eq!(result.sky_collection, Some(destination));
+        assert_eq!(result.atmosphere_index, Some(0));
         assert_eq!(
             result.reason,
             ShadowkeepEnvironmentSelectionReason::DestinationPackage

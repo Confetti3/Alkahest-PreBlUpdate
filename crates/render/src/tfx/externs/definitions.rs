@@ -173,6 +173,11 @@ extern_struct! {
         0x80 => unk40: Mat4,
         0xc0 => unk80: Mat4,
         0x100 => unk100: f32 > default(1.0),
+        // Shadowing-light techniques in the Arrivals corpus read this scalar
+        // immediately after the preserved 0x100 field. Its package semantics
+        // remain unresolved, so retain the ABI's zero-initialized value rather
+        // than aborting the authored technique expression.
+        0x104 => unk104: f32,
         0x110 => unk110: f32,
         0x120 => unk120: f32 > default(1.0),
     }
