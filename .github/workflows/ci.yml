@@ -17,9 +17,7 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
+      - uses: dtolnay/rust-toolchain@nightly
       - name: Check formatting
         run: cargo fmt --check
       - name: Check workspace without proprietary audio SDK
