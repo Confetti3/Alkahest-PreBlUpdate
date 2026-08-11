@@ -697,7 +697,7 @@ impl Renderer {
 
         ShadowkeepPassPlan {
             opaque: ShadowkeepPassAvailability::Ready,
-            decals: ShadowkeepPassAvailability::NoProducer,
+            decals: ShadowkeepPassAvailability::Ready,
             local_lighting: ShadowkeepPassAvailability::Ready,
             cubemap_ibl: ShadowkeepPassAvailability::Ready,
             global_lighting: if !global_lighting_requested {

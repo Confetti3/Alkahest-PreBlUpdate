@@ -86,6 +86,19 @@ impl Renderer {
                 );
             }
 
+            // Arrivals owns investment decals in the same legacy G-buffer
+            // domain. Submit them immediately: their scopes are not safe for
+            // the current-era parallel command-list path, and the existing
+            // read-only depth/state binding above preserves opaque depth.
+            if matches!(self.era(), crate::renderer::RendererEra::Shadowkeep) {
+                self.submit_stage(
+                    cmd,
+                    View::MAIN,
+                    RenderStage::InvestmentDecals,
+                    FeatureRendererSubscription::all(),
+                );
+            }
+
             self.submit_stage_parallel_linear(
                 cmd,
                 View::MAIN,
