@@ -48,6 +48,27 @@ use crate::{
     },
 };
 
+/// Whether a Shadowkeep pass is admissible for the current frame.
+///
+/// `Ready` means the caller may execute the pass; every other value is an
+/// explicit reason that the producer is absent from the production graph.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum ShadowkeepPassAvailability {
+    Ready,
+    DisabledByUser,
+    MissingPipeline,
+    MissingExtern,
+    MissingScope,
+    #[default]
+    NoProducer,
+}
+
+impl ShadowkeepPassAvailability {
+    fn is_ready(self) -> bool {
+        self == Self::Ready
+    }
+}
+
 /// The admitted Shadowkeep production passes for one main-view submission.
 ///
 /// This plan is intentionally capability-gated before any legacy pipeline is
@@ -55,25 +76,25 @@ use crate::{
 /// current-era technique.
 #[derive(Clone, Debug, Default)]
 struct ShadowkeepPassPlan {
-    opaque: bool,
-    decals: bool,
-    local_lighting: bool,
-    cubemap_ibl: bool,
-    global_lighting: bool,
-    sun_shadows: bool,
-    atmosphere: bool,
-    sky_objects: bool,
-    transparents: bool,
-    distortion: bool,
-    water: bool,
-    particles: bool,
-    light_shafts: bool,
-    lens_flares: bool,
-    volumetrics: bool,
-    bloom: bool,
-    autoexposure: bool,
-    final_combine: bool,
-    anti_aliasing: bool,
+    opaque: ShadowkeepPassAvailability,
+    decals: ShadowkeepPassAvailability,
+    local_lighting: ShadowkeepPassAvailability,
+    cubemap_ibl: ShadowkeepPassAvailability,
+    global_lighting: ShadowkeepPassAvailability,
+    sun_shadows: ShadowkeepPassAvailability,
+    atmosphere: ShadowkeepPassAvailability,
+    sky_objects: ShadowkeepPassAvailability,
+    transparents: ShadowkeepPassAvailability,
+    distortion: ShadowkeepPassAvailability,
+    water: ShadowkeepPassAvailability,
+    particles: ShadowkeepPassAvailability,
+    light_shafts: ShadowkeepPassAvailability,
+    lens_flares: ShadowkeepPassAvailability,
+    volumetrics: ShadowkeepPassAvailability,
+    bloom: ShadowkeepPassAvailability,
+    autoexposure: ShadowkeepPassAvailability,
+    final_combine: ShadowkeepPassAvailability,
+    anti_aliasing: ShadowkeepPassAvailability,
 }
 
 impl ShadowkeepPassPlan {
@@ -100,7 +121,7 @@ impl ShadowkeepPassPlan {
             self.anti_aliasing,
         ]
         .into_iter()
-        .filter(|requested| *requested)
+        .filter(|availability| availability.is_ready())
         .count()
     }
 }
@@ -662,31 +683,60 @@ impl Renderer {
     fn shadowkeep_pass_plan(&self, debug_pipeline: Option<DebugPipeline>) -> ShadowkeepPassPlan {
         let pipelines = &self.globals.pipelines;
         let settings = self.settings();
-        let sky = ConVars::get_flag("render.sky")
+        let sky_requested = ConVars::get_flag("render.sky")
             && debug_pipeline.is_none_or(|pipeline| pipeline.has_atmosphere());
+        let global_lighting_requested = ConVars::get_flag("render.global_lighting")
+            && debug_pipeline.is_none_or(|pipeline| pipeline.has_sun());
+        let atmosphere = if !sky_requested {
+            ShadowkeepPassAvailability::DisabledByUser
+        } else if !pipelines.deferred_shading.is_available() || !pipelines.sky.is_available() {
+            ShadowkeepPassAvailability::MissingPipeline
+        } else {
+            ShadowkeepPassAvailability::Ready
+        };
+
         ShadowkeepPassPlan {
-            opaque: true,
-            decals: false,
-            local_lighting: true,
-            cubemap_ibl: true,
-            global_lighting: ConVars::get_flag("render.global_lighting")
-                && debug_pipeline.is_none_or(|pipeline| pipeline.has_sun()),
-            sun_shadows: settings.sun_shadows && settings.shadows,
-            atmosphere: sky
-                && pipelines.deferred_shading.is_available()
-                && pipelines.sky.is_available(),
-            sky_objects: sky && ConVars::get_flag("render.shadowkeep_sky_objects"),
-            transparents: false,
-            distortion: false,
-            water: false,
-            particles: false,
-            light_shafts: false,
-            lens_flares: false,
-            volumetrics: false,
-            bloom: false,
-            autoexposure: false,
-            final_combine: false,
-            anti_aliasing: settings.anti_aliasing,
+            opaque: ShadowkeepPassAvailability::Ready,
+            decals: ShadowkeepPassAvailability::NoProducer,
+            local_lighting: ShadowkeepPassAvailability::Ready,
+            cubemap_ibl: ShadowkeepPassAvailability::Ready,
+            global_lighting: if !global_lighting_requested {
+                ShadowkeepPassAvailability::DisabledByUser
+            } else if !pipelines.global_lighting.is_available() {
+                ShadowkeepPassAvailability::MissingPipeline
+            } else {
+                ShadowkeepPassAvailability::Ready
+            },
+            sun_shadows: if settings.sun_shadows && settings.shadows {
+                ShadowkeepPassAvailability::Ready
+            } else {
+                ShadowkeepPassAvailability::DisabledByUser
+            },
+            atmosphere,
+            sky_objects: if atmosphere.is_ready()
+                && ConVars::get_flag("render.shadowkeep_sky_objects")
+            {
+                ShadowkeepPassAvailability::Ready
+            } else if !ConVars::get_flag("render.shadowkeep_sky_objects") {
+                ShadowkeepPassAvailability::DisabledByUser
+            } else {
+                atmosphere
+            },
+            transparents: ShadowkeepPassAvailability::NoProducer,
+            distortion: ShadowkeepPassAvailability::NoProducer,
+            water: ShadowkeepPassAvailability::NoProducer,
+            particles: ShadowkeepPassAvailability::NoProducer,
+            light_shafts: ShadowkeepPassAvailability::NoProducer,
+            lens_flares: ShadowkeepPassAvailability::NoProducer,
+            volumetrics: ShadowkeepPassAvailability::NoProducer,
+            bloom: ShadowkeepPassAvailability::NoProducer,
+            autoexposure: ShadowkeepPassAvailability::NoProducer,
+            final_combine: ShadowkeepPassAvailability::NoProducer,
+            anti_aliasing: if settings.anti_aliasing {
+                ShadowkeepPassAvailability::Ready
+            } else {
+                ShadowkeepPassAvailability::DisabledByUser
+            },
         }
     }
 
@@ -763,7 +813,7 @@ impl Renderer {
                 "Shadowkeep production pass plan"
             );
         }
-        let wants_global_lighting = pass_plan.global_lighting;
+        let wants_global_lighting = pass_plan.global_lighting.is_ready();
         let pipelines = &self.globals.pipelines;
         if !pipelines.deferred_shading_no_atm.is_available()
             || (wants_global_lighting && !pipelines.global_lighting.is_available())
@@ -1348,15 +1398,15 @@ impl Renderer {
 
         let pipelines = &self.globals.pipelines;
         let reports = [
-            ShadowkeepPassReport::executed("opaque_gbuffer", plan.opaque, None),
+            ShadowkeepPassReport::executed("opaque_gbuffer", plan.opaque.is_ready(), None),
             ShadowkeepPassReport::unavailable(
                 "decals",
-                plan.decals,
+                plan.decals.is_ready(),
                 "no admitted Shadowkeep decal producer",
             ),
             ShadowkeepPassReport {
                 name: "local_lighting",
-                requested: plan.local_lighting,
+                requested: plan.local_lighting.is_ready(),
                 available: true,
                 executed: lighting_apply_stage_submitted,
                 draw_count: None,
@@ -1364,10 +1414,10 @@ impl Renderer {
                     .then_some("LightingApply stage was not submitted"),
                 fallback_used: false,
             },
-            ShadowkeepPassReport::executed("cubemap_ibl", plan.cubemap_ibl, None),
+            ShadowkeepPassReport::executed("cubemap_ibl", plan.cubemap_ibl.is_ready(), None),
             ShadowkeepPassReport {
                 name: "global_lighting",
-                requested: plan.global_lighting,
+                requested: plan.global_lighting.is_ready(),
                 available: pipelines.global_lighting.is_available(),
                 executed: global_lighting_draw_6_reached,
                 draw_count: global_lighting_draw_6_reached.then_some(1),
@@ -1377,7 +1427,7 @@ impl Renderer {
             },
             ShadowkeepPassReport::executed(
                 "atmosphere_lookup",
-                plan.atmosphere,
+                plan.atmosphere.is_ready(),
                 atmosphere_lookup_generated.then_some(1),
             ),
             ShadowkeepPassReport {
@@ -1392,27 +1442,29 @@ impl Renderer {
             },
             ShadowkeepPassReport::unavailable(
                 "sky_objects",
-                plan.sky_objects,
+                plan.sky_objects.is_ready(),
                 "draw count is owned by SkyTransparent submission diagnostics",
             ),
             ShadowkeepPassReport::unavailable(
                 "transparents",
-                plan.transparents,
+                plan.transparents.is_ready(),
                 "no admitted Shadowkeep transparent producer",
             ),
             ShadowkeepPassReport::unavailable(
                 "water",
-                plan.water,
+                plan.water.is_ready(),
                 "no admitted Shadowkeep water producer",
             ),
             ShadowkeepPassReport::unavailable(
                 "volumetrics",
-                plan.volumetrics,
+                plan.volumetrics.is_ready(),
                 "no admitted Shadowkeep volumetric producer",
             ),
             ShadowkeepPassReport::unavailable(
                 "postprocess",
-                plan.bloom || plan.autoexposure || plan.final_combine,
+                plan.bloom.is_ready()
+                    || plan.autoexposure.is_ready()
+                    || plan.final_combine.is_ready(),
                 "no validated Shadowkeep postprocess chain",
             ),
         ];
