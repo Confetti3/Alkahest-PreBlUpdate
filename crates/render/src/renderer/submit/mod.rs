@@ -563,6 +563,15 @@ impl Renderer {
         self.submit_gbuffer_generation(cmd, view, None);
     }
 
+    /// Clears the legacy light targets and schedules the authored shadow
+    /// producers before any lighting consumer binds them.
+    fn shadowkeep_begin_frame(&self, cmd: &mut CommandList, view: &MainView, wants_sun: bool) {
+        self.clear_surface(cmd, view.lighting.light_diffuse, [0.001, 0.001, 0.001, 0.0]);
+        self.clear_surface(cmd, view.lighting.light_specular, [0.0; 4]);
+        self.clear_surface(cmd, view.lighting.light_specular_ibl, [0.0; 4]);
+        self.compute_shadow_map(cmd, view, wants_sun);
+    }
+
     fn shadowkeep_pass_plan(&self, debug_pipeline: Option<DebugPipeline>) -> ShadowkeepPassPlan {
         let pipelines = &self.globals.pipelines;
         let settings = self.settings();
@@ -719,10 +728,7 @@ impl Renderer {
 
         // The preserved renderer starts these buffers at a small non-zero
         // diffuse floor before applying its global-lighting fullscreen pass.
-        self.clear_surface(cmd, view.lighting.light_diffuse, [0.001, 0.001, 0.001, 0.0]);
-        self.clear_surface(cmd, view.lighting.light_specular, [0.0; 4]);
-        self.clear_surface(cmd, view.lighting.light_specular_ibl, [0.0; 4]);
-        self.compute_shadow_map(cmd, view, wants_global_lighting);
+        self.shadowkeep_begin_frame(cmd, view, wants_global_lighting);
 
         // Arrivals fills the diffuse/specular targets with local/deferred
         // lights before the optional fullscreen global-lighting technique.
