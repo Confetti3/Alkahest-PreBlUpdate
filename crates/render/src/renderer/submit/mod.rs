@@ -722,7 +722,7 @@ impl Renderer {
             } else {
                 atmosphere
             },
-            transparents: ShadowkeepPassAvailability::NoProducer,
+            transparents: ShadowkeepPassAvailability::Ready,
             distortion: ShadowkeepPassAvailability::NoProducer,
             water: ShadowkeepPassAvailability::NoProducer,
             particles: ShadowkeepPassAvailability::NoProducer,
@@ -1240,6 +1240,7 @@ impl Renderer {
         if capture_sky_objects_ab {
             sky_objects_ab_stats = Some(finish_shadowkeep_sky_objects_capture());
         }
+        self.submit_shadowkeep_transparents(cmd, view);
         self.capture_shadowkeep_final_combine_no_film_curve(cmd, view);
 
         self.blit_surface(
