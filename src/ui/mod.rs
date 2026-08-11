@@ -9,6 +9,7 @@ use tabs::{DockStateExt, Tab, TabViewer};
 
 use crate::{app::SharedState, task::Task, ui::util::DButton, updater::AvailableUpdate};
 
+pub mod bubble_browser;
 pub mod colors;
 pub mod icons;
 pub mod map_workspace;

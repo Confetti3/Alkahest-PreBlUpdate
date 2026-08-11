@@ -6,18 +6,19 @@ use tiger_pkg::TagHash;
 use super::{Tab, TabResult, map::MapTab};
 use crate::{
     app::SharedState,
-    world::shadowkeep_map::{shadowkeep_bubble_catalog, shadowkeep_bubble_catalog_matches},
+    ui::bubble_browser::{BubbleBrowserState, show},
+    world::shadowkeep_map::shadowkeep_bubble_catalog,
 };
 
 pub struct MapListTab {
-    search: String,
+    browser: BubbleBrowserState,
     state: Arc<SharedState>,
 }
 
 impl MapListTab {
     pub fn new(state: &Arc<SharedState>) -> Self {
         Self {
-            search: String::new(),
+            browser: BubbleBrowserState::default(),
             state: state.clone(),
         }
     }
@@ -28,32 +29,15 @@ impl MapListTab {
             .outer_margin(Margin::same(16))
             .show(ui, |ui| {
                 ui.heading("Shadowkeep Bubbles");
-                ui.text_edit_singleline(&mut self.search);
-                let query = self.search.trim().to_ascii_lowercase();
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    for bubble in shadowkeep_bubble_catalog()
+                if let Some(tag) = show(ui, &mut self.browser, None) {
+                    let name = shadowkeep_bubble_catalog()
                         .entries
                         .iter()
-                        .filter(|entry| shadowkeep_bubble_catalog_matches(entry, &query))
-                    {
-                        let label = format!(
-                            "{} · {} · {} tables",
-                            bubble.display_name, bubble.tag, bubble.table_count
-                        );
-                        let response = ui.selectable_label(false, label);
-                        if response.double_clicked() {
-                            open = Some((bubble.tag, bubble.display_name.clone()));
-                        }
-                        response.on_hover_text(if bubble.readable {
-                            bubble.package_path.clone()
-                        } else {
-                            bubble
-                                .error
-                                .clone()
-                                .unwrap_or_else(|| "unreadable".to_owned())
-                        });
-                    }
-                });
+                        .find(|entry| entry.tag == tag)
+                        .map(|entry| entry.display_name.clone())
+                        .unwrap_or_else(|| format!("Bubble {tag}"));
+                    open = Some((tag, name));
+                }
             });
         match open {
             Some((tag, name)) => match MapTab::new(tag, name, &self.state) {

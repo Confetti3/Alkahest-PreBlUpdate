@@ -5,15 +5,16 @@ use tiger_pkg::TagHash;
 
 use crate::{
     app::SharedState,
-    ui::scene::Scene,
+    ui::{
+        bubble_browser::{BubbleBrowserState, show as show_bubble_browser},
+        scene::Scene,
+    },
     world::{
         shadowkeep_inspection::{
             MapEntityVisibility, MapInspectionFilter, MapInspectionNodeId, MapInspectionNodeKind,
             ShadowkeepMapInspection, set_node_visibility,
         },
-        shadowkeep_map::{
-            MapLoadReport, shadowkeep_bubble_catalog, shadowkeep_bubble_catalog_matches,
-        },
+        shadowkeep_map::MapLoadReport,
     },
 };
 
@@ -31,12 +32,6 @@ pub enum MapHiddenFilter {
     All,
     HiddenOnly,
     VisibleOnly,
-}
-
-#[derive(Default)]
-pub struct BubbleBrowserState {
-    pub search: String,
-    pub selected: Option<TagHash>,
 }
 
 #[derive(Default)]
@@ -309,26 +304,11 @@ pub fn show(
         egui::Window::new("Bubbles")
             .default_width(520.0)
             .show(ui.ctx(), |ui| {
-                ui.text_edit_singleline(&mut state.bubble_browser.search);
-                let query = state.bubble_browser.search.trim().to_ascii_lowercase();
-                ScrollArea::vertical().show(ui, |ui| {
-                    for entry in shadowkeep_bubble_catalog()
-                        .entries
-                        .iter()
-                        .filter(|entry| shadowkeep_bubble_catalog_matches(entry, &query))
-                    {
-                        let response = ui.selectable_label(
-                            entry.tag == inspection.bubble,
-                            format!(
-                                "{} · {} · {} tables",
-                                entry.display_name, entry.tag, entry.table_count
-                            ),
-                        );
-                        if response.double_clicked() {
-                            workspace_action = MapWorkspaceAction::OpenBubble(entry.tag);
-                        }
-                    }
-                });
+                if let Some(tag) =
+                    show_bubble_browser(ui, &mut state.bubble_browser, Some(inspection.bubble))
+                {
+                    workspace_action = MapWorkspaceAction::OpenBubble(tag);
+                }
             });
     }
 
