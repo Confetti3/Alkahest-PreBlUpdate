@@ -105,6 +105,47 @@ impl ShadowkeepPassPlan {
     }
 }
 
+/// Diagnostic-only accounting for one admitted Shadowkeep pass.
+///
+/// `draw_count` remains `None` where a stage owns its own model submissions;
+/// a missing count is deliberately not represented as zero.
+#[derive(Clone, Debug)]
+struct ShadowkeepPassReport {
+    name: &'static str,
+    requested: bool,
+    available: bool,
+    executed: bool,
+    draw_count: Option<usize>,
+    failure_reason: Option<&'static str>,
+    fallback_used: bool,
+}
+
+impl ShadowkeepPassReport {
+    fn unavailable(name: &'static str, requested: bool, reason: &'static str) -> Self {
+        Self {
+            name,
+            requested,
+            available: false,
+            executed: false,
+            draw_count: None,
+            failure_reason: Some(reason),
+            fallback_used: false,
+        }
+    }
+
+    fn executed(name: &'static str, requested: bool, draw_count: Option<usize>) -> Self {
+        Self {
+            name,
+            requested,
+            available: true,
+            executed: true,
+            draw_count,
+            failure_reason: None,
+            fallback_used: false,
+        }
+    }
+}
+
 impl Renderer {
     pub fn submit_view(
         self: &Arc<Self>,
@@ -213,28 +254,24 @@ impl Renderer {
         view: &MainView,
         debug_pipeline: Option<DebugPipeline>,
     ) {
-        // The preserved Arrivals renderer submits geometry directly on its
-        // immediate context. Its scopes and techniques mutate shared binding
-        // state, so routing that work through the post-BL deferred-command
-        // path can produce an empty G-buffer even when every asset is ready.
-        let geo = if self.era() == crate::renderer::RendererEra::Current
-            && view.settings.multithreading
-        {
+        // Shadowkeep owns a different deferred/light/postprocess graph. The
+        // modern post-BL sequence below references several explicitly-null
+        // legacy pipelines. Its opaque stage must remain immediate as well.
+        if self.era() == crate::renderer::RendererEra::Shadowkeep {
+            self.shadowkeep_submit_gbuffer(cmd, view);
+            self.submit_shadowkeep_shaded(cmd, view, debug_pipeline);
+            return;
+        }
+
+        // The current renderer may prepare opaque geometry on deferred
+        // command lists. Shadowkeep deliberately never takes that path.
+        let geo = if view.settings.multithreading {
             Some(self.submit_geometry_command_lists(cmd, view))
         } else {
             None
         };
 
         self.submit_gbuffer_generation(cmd, view, geo.as_ref());
-
-        // Shadowkeep owns a different deferred/light/postprocess graph. The
-        // modern post-BL sequence below references several explicitly-null
-        // legacy pipelines. Run the admitted preserved opaque/light/shading
-        // slice without entering the later-era atmosphere/transparent graph.
-        if self.era() == crate::renderer::RendererEra::Shadowkeep {
-            self.submit_shadowkeep_shaded(cmd, view, debug_pipeline);
-            return;
-        }
 
         if matches!(
             debug_pipeline,
@@ -518,6 +555,12 @@ impl Renderer {
         //     true,
         //     "final_blit",
         // );
+    }
+
+    /// Opaque Shadowkeep geometry is always submitted directly; its legacy
+    /// technique scopes are not safe to record through current-era workers.
+    fn shadowkeep_submit_gbuffer(self: &Arc<Self>, cmd: &mut CommandList, view: &MainView) {
+        self.submit_gbuffer_generation(cmd, view, None);
     }
 
     fn shadowkeep_pass_plan(&self, debug_pipeline: Option<DebugPipeline>) -> ShadowkeepPassPlan {
@@ -1233,6 +1276,115 @@ impl Renderer {
                 );
             }
         }
+        self.emit_shadowkeep_pass_report(
+            &pass_plan,
+            lighting_apply_stage_submitted,
+            global_lighting_draw_6_reached,
+            atmosphere_lookup_generated,
+            deferred_draw_reached,
+        );
+    }
+
+    /// Emits the exact admitted work only while an explicit diagnostic is
+    /// armed. Normal frames neither allocate nor serialize pass reports.
+    fn emit_shadowkeep_pass_report(
+        &self,
+        plan: &ShadowkeepPassPlan,
+        lighting_apply_stage_submitted: bool,
+        global_lighting_draw_6_reached: bool,
+        atmosphere_lookup_generated: bool,
+        deferred_draw_reached: bool,
+    ) {
+        if !ConVars::get_flag("render.shadowkeep_sky_diagnostics") {
+            return;
+        }
+
+        let pipelines = &self.globals.pipelines;
+        let reports = [
+            ShadowkeepPassReport::executed("opaque_gbuffer", plan.opaque, None),
+            ShadowkeepPassReport::unavailable(
+                "decals",
+                plan.decals,
+                "no admitted Shadowkeep decal producer",
+            ),
+            ShadowkeepPassReport {
+                name: "local_lighting",
+                requested: plan.local_lighting,
+                available: true,
+                executed: lighting_apply_stage_submitted,
+                draw_count: None,
+                failure_reason: (!lighting_apply_stage_submitted)
+                    .then_some("LightingApply stage was not submitted"),
+                fallback_used: false,
+            },
+            ShadowkeepPassReport::executed("cubemap_ibl", plan.cubemap_ibl, None),
+            ShadowkeepPassReport {
+                name: "global_lighting",
+                requested: plan.global_lighting,
+                available: pipelines.global_lighting.is_available(),
+                executed: global_lighting_draw_6_reached,
+                draw_count: global_lighting_draw_6_reached.then_some(1),
+                failure_reason: (!global_lighting_draw_6_reached)
+                    .then_some("legacy fullscreen draw was not reached"),
+                fallback_used: false,
+            },
+            ShadowkeepPassReport::executed(
+                "atmosphere_lookup",
+                plan.atmosphere,
+                atmosphere_lookup_generated.then_some(1),
+            ),
+            ShadowkeepPassReport {
+                name: "deferred_shading",
+                requested: true,
+                available: pipelines.deferred_shading_no_atm.is_available(),
+                executed: deferred_draw_reached,
+                draw_count: deferred_draw_reached.then_some(1),
+                failure_reason: (!deferred_draw_reached)
+                    .then_some("legacy fullscreen draw was not reached"),
+                fallback_used: !atmosphere_lookup_generated,
+            },
+            ShadowkeepPassReport::unavailable(
+                "sky_objects",
+                plan.sky_objects,
+                "draw count is owned by SkyTransparent submission diagnostics",
+            ),
+            ShadowkeepPassReport::unavailable(
+                "transparents",
+                plan.transparents,
+                "no admitted Shadowkeep transparent producer",
+            ),
+            ShadowkeepPassReport::unavailable(
+                "water",
+                plan.water,
+                "no admitted Shadowkeep water producer",
+            ),
+            ShadowkeepPassReport::unavailable(
+                "volumetrics",
+                plan.volumetrics,
+                "no admitted Shadowkeep volumetric producer",
+            ),
+            ShadowkeepPassReport::unavailable(
+                "postprocess",
+                plan.bloom || plan.autoexposure || plan.final_combine,
+                "no validated Shadowkeep postprocess chain",
+            ),
+        ];
+        let reports = reports
+            .iter()
+            .map(|report| {
+                format!(
+                    "{} requested={} available={} executed={} draws={:?} fallback={} reason={:?}",
+                    report.name,
+                    report.requested,
+                    report.available,
+                    report.executed,
+                    report.draw_count,
+                    report.fallback_used,
+                    report.failure_reason,
+                )
+            })
+            .collect::<Vec<_>>();
+        tracing::trace!(?reports, "Shadowkeep production pass report");
     }
     fn capture_shadowkeep_directional_light_ab(
         &self,
