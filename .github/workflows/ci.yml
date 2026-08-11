@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [prebl-modern]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          components: rustfmt
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+      - name: Check formatting
+        run: cargo fmt --check
+      - name: Check workspace without proprietary audio SDK
+        run: cargo +nightly check --workspace
+      - name: Build production application without proprietary audio SDK
+        run: cargo +nightly build --release -p alkahest --bin alkahest-prebl --no-default-features
+      - name: Run Shadowkeep selector tests
+        run: cargo +nightly test -p alkahest --bin alkahest-prebl world::shadowkeep_map::tests
