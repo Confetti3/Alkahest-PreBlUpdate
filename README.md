@@ -3,6 +3,8 @@
 </p>
 
 # Project Sunrise — Alkahest Pre-BL
+> **This repository is a fork of [Alkahest](https://github.com/cohaereo/alkahest), created by [cohaereo](https://github.com/cohaereo/cohaereo). Project Sunrise would not exist without cohaereo's original architecture, renderer, tooling, and years of work. This fork builds on that foundation for preserved Shadowkeep / Season of Arrivals package support.**
+
 
 Alkahest Pre-BL is a Windows desktop map viewer and research renderer for
 user-supplied Destiny 2 Shadowkeep / Season of Arrivals package files. It lets
@@ -95,8 +97,10 @@ GitHub artifact provenance before a draft release is created.
 - **Promotional identity and artwork:** Solus —
   [YouTube](https://youtube.com/@solus-yt) ·
   [X / Twitter](https://x.com/solus_yt).
-- **Renderer foundation:** [Alkahest](https://github.com/cohaereo/alkahest)
-  and its contributors.
+- **Upstream author and renderer foundation:** [cohaereo](https://github.com/cohaereo/cohaereo),
+  creator of [Alkahest](https://github.com/cohaereo/alkahest). Project Sunrise
+  is a fork and would not exist without his work. Additional credit belongs to
+  Alkahest's contributors.
 
 ## Data and affiliation
 
