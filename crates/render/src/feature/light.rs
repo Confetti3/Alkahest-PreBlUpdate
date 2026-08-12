@@ -245,7 +245,7 @@ impl LightRenderer {
     }
     fn submit_shadowkeep_lighting(&self, cmd: &mut crate::gpu::command_list::CommandList) {
         let renderer = Renderer::instance();
-        let global_externs = renderer.externs.get();
+        let global_externs = renderer.externs.read();
         let view_position = global_externs.view.position();
         let volume = self.local_to_world * self.light_space_transform;
 
@@ -432,13 +432,13 @@ impl FeatureRenderer for LightRenderer {
         let forward = transform_rot * Vec3::X;
         let up = transform_rot * Vec3::Z;
         let transform_translation =
-            transform_translation - Renderer::instance().externs.view.position();
+            transform_translation - Renderer::instance().externs.read().view.position();
         let transform_relative =
             Mat4::look_at_rh(transform_translation, transform_translation + forward, up);
 
         {
             let local_to_world_scaled = self.local_to_world * self.light_space_transform;
-            let global_externs = Renderer::instance().externs.get();
+            let global_externs = Renderer::instance().externs.read();
             let is_camera_in_volume = self
                 .bounds
                 .as_ref()
@@ -623,7 +623,7 @@ impl FeatureRenderer for LightRenderer {
 
         let forward = transform_rot * Vec3::X;
         let up = transform_rot * Vec3::Z;
-        let transform_translation = transform_translation - renderer.externs.view.position();
+        let transform_translation = transform_translation - renderer.externs.read().view.position();
         let transform_relative =
             Mat4::look_at_rh(transform_translation, transform_translation + forward, up);
 
@@ -633,9 +633,9 @@ impl FeatureRenderer for LightRenderer {
             .job_builder("light_render")
             .priority(Priority::Medium)
             .spawn(move || {
-                let cmd = pool_clone.get_command_list(set);
+                let mut cmd = pool_clone.get_command_list(set);
                 {
-                    let externs = Renderer::instance().externs.get();
+                    let externs = Renderer::instance().externs.read();
 
                     let is_camera_in_volume = bounds
                         .as_ref()
@@ -687,10 +687,11 @@ impl FeatureRenderer for LightRenderer {
                     && let Some((shadowmap, shadowmap_srv)) = shadow_view
                 {
                     // TODO(cohae): Unknown what this texture is supposed to be. VS loads the first pixel and uses it as multiplier for the shadowmap UVs
-                    Renderer::instance()
-                        .common
-                        .shadowmap_vs_t2
-                        .bind(cmd, 2, ShaderStage::Vertex);
+                    Renderer::instance().common.shadowmap_vs_t2.bind(
+                        &mut cmd,
+                        2,
+                        ShaderStage::Vertex,
+                    );
                     let existing_shadowmap = cmd
                         .externs
                         .deferred_shadow
@@ -719,7 +720,7 @@ impl FeatureRenderer for LightRenderer {
                             .as_ref()
                             .or(data.technique_volumetrics.as_ref())
                         {
-                            technique.bind(cmd).unwrap();
+                            technique.bind(&mut cmd).unwrap();
                         } else {
                             return;
                         }
@@ -727,21 +728,21 @@ impl FeatureRenderer for LightRenderer {
                         data.technique_lighting_apply_shadowing
                             .as_ref()
                             .unwrap_or(&data.technique_lighting_apply)
-                            .bind(cmd)
+                            .bind(&mut cmd)
                             .unwrap();
                     }
                 } else if stage == RenderStage::Volumetrics {
                     if let Some(ref technique) = data.technique_volumetrics {
-                        technique.bind(cmd).unwrap();
+                        technique.bind(&mut cmd).unwrap();
                     } else {
                         return;
                     }
                 } else {
-                    data.technique_lighting_apply.bind(cmd).unwrap();
+                    data.technique_lighting_apply.bind(&mut cmd).unwrap();
                 }
 
                 cmd.set_input_topology(PrimitiveType::Triangles);
-                if let Err(error) = Renderer::instance().set_input_layout(cmd, 1) {
+                if let Err(error) = Renderer::instance().set_input_layout(&mut cmd, 1) {
                     tracing::error!(error = %error, "Failed to bind light input layout");
                     return;
                 }

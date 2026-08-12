@@ -239,7 +239,7 @@ impl ActivityListTab {
         egui::Panel::left(format!("activity_node_depth{depth}")).show(ui, |ui| {
             ui.style_mut().text_styles.insert(
                 TextStyle::Body,
-                FontId::new(24.0, egui::FontFamily::Name("Medium".into())),
+                FontId::new(24.0, egui::FontFamily::Proportional),
             );
             if depth == 0 {
                 ui.add(

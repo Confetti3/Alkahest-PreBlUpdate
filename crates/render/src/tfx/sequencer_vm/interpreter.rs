@@ -434,7 +434,8 @@ impl<'a> InterpreterState<'a> {
                 }
                 Opcode::Unknown0x4A => {
                     let channel = ptr[1];
-                    let val = Renderer::instance().externs.unk_sequencer_values[channel as usize];
+                    let val =
+                        Renderer::instance().externs.read().unk_sequencer_values[channel as usize];
                     cached_top = self.push(val)?;
                 }
                 Opcode::PopOutput => {

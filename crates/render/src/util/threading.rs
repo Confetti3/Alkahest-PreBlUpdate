@@ -1,67 +1,22 @@
-use std::{
-    cell::UnsafeCell,
-    ops::Deref,
-    sync::{Arc, atomic::AtomicUsize},
+use std::sync::{
+    Arc,
+    atomic::{AtomicU8, AtomicUsize, Ordering},
 };
 
 use ahash::HashSet;
 use alkahest_core::job::SCHEDULER;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 
 use crate::{
     Gpu,
     gpu::{command_list::CommandList, state::GpuState},
 };
 
-// cohae: This is a kinda stinky way to prevent stuff being mutated on jobs that didn't create the value (ie. the renderer may only be mutated on the main thread).
-// It should technically be unsafe, since you can get multiple mutable references to the same value, and the value can be mutated while it's being read, so its only slightly safer than an UnsafeCell
-// But I trust myself :) (i think...)
-pub struct ThreadMutCell<T> {
-    inner: UnsafeCell<T>,
-    /// The ID of the thread that created this cell. This thread is the only one that can mutate the inner value.
-    thread: std::thread::ThreadId,
-}
-
-impl<T> ThreadMutCell<T> {
-    pub fn new(inner: T) -> Self {
-        Self {
-            inner: UnsafeCell::new(inner),
-            thread: std::thread::current().id(),
-        }
-    }
-
-    pub fn get(&self) -> &T {
-        unsafe { &*self.inner.get() }
-    }
-
-    #[allow(clippy::mut_from_ref)]
-    pub fn get_mut(&self) -> &mut T {
-        if std::thread::current().id() != self.thread {
-            panic!(
-                "Attempted to get mutable reference to ThreadMutCell from a different thread than \
-                 the one that created it"
-            );
-        }
-        unsafe { &mut *self.inner.get() }
-    }
-}
-
-unsafe impl<T: Send> Send for ThreadMutCell<T> {}
-unsafe impl<T: Sync> Sync for ThreadMutCell<T> {}
-
-impl<T> Deref for ThreadMutCell<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        self.get()
-    }
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct CommandListSetId(usize);
 
 struct CommandListSet {
-    command_lists: Vec<UnsafeCell<CommandList>>,
+    command_lists: Vec<Mutex<CommandList>>,
 }
 
 pub struct CommandListPool {
@@ -70,21 +25,45 @@ pub struct CommandListPool {
     sets_in_use: Mutex<HashSet<usize>>,
 }
 
-unsafe impl Send for CommandListPool {}
-unsafe impl Sync for CommandListPool {}
+pub struct CommandListLease {
+    pool: Arc<CommandListPool>,
+    id: CommandListSetId,
+    state: AtomicU8,
+}
+
+impl CommandListLease {
+    pub fn id(&self) -> CommandListSetId {
+        self.id
+    }
+
+    pub fn finish(&self, cmd: &mut CommandList) {
+        self.state
+            .compare_exchange(0, 1, Ordering::AcqRel, Ordering::Acquire)
+            .expect("command-list lease finished more than once");
+        self.pool.execute_set(cmd, self.id);
+        self.pool.release_set(self.id);
+        self.state.store(2, Ordering::Release);
+    }
+}
+
+impl Drop for CommandListLease {
+    fn drop(&mut self) {
+        if *self.state.get_mut() != 2 {
+            self.pool.release_set(self.id);
+        }
+    }
+}
 
 impl CommandListPool {
     const NUM_SETS: usize = 12;
 
     pub fn new(gpu: &Arc<Gpu>) -> Self {
-        // let command_lists = (0..SCHEDULER.num_workers())
-        //     .map(|_| UnsafeCell::new(gpu.create_command_list()))
-        //     .collect::<Vec<_>>();
+        let worker_count = SCHEDULER.num_workers().max(1);
 
         let mut sets = Vec::with_capacity(Self::NUM_SETS);
         for _ in 0..Self::NUM_SETS {
-            let command_lists = (0..SCHEDULER.num_workers())
-                .map(|_| UnsafeCell::new(gpu.create_command_list()))
+            let command_lists = (0..worker_count)
+                .map(|_| Mutex::new(gpu.create_command_list()))
                 .collect::<Vec<_>>();
             sets.push(CommandListSet { command_lists });
         }
@@ -106,113 +85,81 @@ impl CommandListPool {
     }
 
     #[profiling::function]
-    #[allow(clippy::mut_from_ref)]
     pub fn get_command_list_manual(
         &self,
         set: CommandListSetId,
         index: usize,
-    ) -> Option<&mut CommandList> {
-        let set = &self.sets[set.0 % self.sets.len()];
-        let cell = &set.command_lists.get(index)?;
-        Some(unsafe { &mut *cell.get() })
+    ) -> Option<MutexGuard<'_, CommandList>> {
+        self.sets
+            .get(set.0)?
+            .command_lists
+            .get(index)
+            .map(Mutex::lock)
     }
 
     #[profiling::function]
-    #[allow(clippy::mut_from_ref)]
-    pub fn get_command_list(&self, set: CommandListSetId) -> &mut CommandList {
-        let set = &self.sets[set.0 % self.sets.len()];
+    pub fn get_command_list(&self, set: CommandListSetId) -> MutexGuard<'_, CommandList> {
+        let set = &self.sets[set.0];
         let idx = Self::thread_idx() % set.command_lists.len();
-        let cell = &set.command_lists[idx];
-        unsafe { &mut *cell.get() }
+        set.command_lists[idx].lock()
     }
 
     fn acquire_set(&self) -> CommandListSetId {
-        let set_idx = self
-            .next_set
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-        let set = CommandListSetId(set_idx % self.sets.len());
-        if self.sets_in_use.lock().contains(&set_idx) {
-            panic!(
-                "All command list sets are in use! Increase NUM_SETS in CommandListPool \
-                 (currently {}).",
-                Self::NUM_SETS
-            );
+        let mut sets_in_use = self.sets_in_use.lock();
+        for _ in 0..self.sets.len() {
+            let set_idx = self.next_set.fetch_add(1, Ordering::Relaxed) % self.sets.len();
+            if sets_in_use.insert(set_idx) {
+                return CommandListSetId(set_idx);
+            }
         }
 
-        set
+        panic!(
+            "All command list sets are in use! Increase NUM_SETS in CommandListPool (currently \
+             {}).",
+            Self::NUM_SETS
+        );
     }
 
     fn release_set(&self, set: CommandListSetId) {
-        self.sets_in_use.lock().remove(&set.0);
+        assert!(
+            self.sets_in_use.lock().remove(&set.0),
+            "command-list set {} released more than once",
+            set.0
+        );
     }
 
-    // pub fn finalize_set(&self, set: CommandListSetId) {
-    //     if self.sets_in_use.lock().contains(&set.0) {
-    //         panic!("Command list set {:?} is not in use!", set);
-    //     }
-
-    //     let set = &self.sets[set.0 % self.sets.len()];
-    //     let combined_cmd = self.gpu.create_command_list();
-    //     for cell in set.command_lists.iter() {
-    //         let worker_cmd = unsafe { &mut *cell.get() };
-    //         combined_cmd.execute_command_list(
-    //             &worker_cmd
-    //                 .finish_command_list(false)
-    //                 .expect("Failed to finalize command list"),
-    //             true,
-    //         );
-    //     }
-    //     let finished_cmd = combined_cmd
-    //         .finish_command_list(false)
-    //         .expect("Failed to finalize combined command list");
-    //     *set.finished_command_list.lock() = Some(finished_cmd);
-    // }
-
-    /// Copy the given command list's state to all command lists in the pool and begin recording on them.
-    /// # Safety
-    /// - The caller must ensure that none of the command lists in the pool are being used while this function is called.
+    /// Copies the initial state into an exclusively leased command-list set.
     #[profiling::function]
-    pub unsafe fn begin(&self, cmd: &mut CommandList) -> CommandListSetId {
+    pub fn begin(self: &Arc<Self>, cmd: &mut CommandList) -> CommandListLease {
         let initial_state = GpuState::backup(cmd);
-        let set_id = self.acquire_set();
+        let lease = CommandListLease {
+            pool: Arc::clone(self),
+            id: self.acquire_set(),
+            state: AtomicU8::new(0),
+        };
 
-        let set = &self.sets[set_id.0 % self.sets.len()];
-        for cell in set.command_lists.iter() {
-            let worker_cmd = unsafe { &mut *cell.get() };
-            initial_state.restore(worker_cmd);
+        let set = &self.sets[lease.id.0];
+        for cell in &set.command_lists {
+            let mut worker_cmd = cell.lock();
+            initial_state.restore(&mut worker_cmd);
             worker_cmd.flush_states();
         }
 
-        set_id
+        lease
     }
-
-    // #[profiling::function]
-    // pub fn get_finalized_command_list(&self, id: CommandListSetId) -> Option<d3d11::CommandList> {
-    //     let set = &self.sets[id.0 % self.sets.len()];
-    //     let cmd = set.finished_command_list.lock().take();
-    //     if cmd.is_some() {
-    //         self.release_set(id);
-    //     }
-
-    //     cmd
-    // }
 
     /// Execute the finalized command lists onto the given command list.
     #[profiling::function]
-    pub fn finish(&self, cmd: &mut CommandList, set: CommandListSetId) {
-        {
-            let set = &self.sets[set.0 % self.sets.len()];
-            for cell in set.command_lists.iter() {
-                let worker_cmd = unsafe { &mut *cell.get() };
-                let finished_cmd = worker_cmd
-                    .finish_command_list(false)
-                    .expect("Failed to finalize command list");
+    fn execute_set(&self, cmd: &mut CommandList, set_id: CommandListSetId) {
+        let set = &self.sets[set_id.0];
+        for cell in &set.command_lists {
+            let worker_cmd = cell.lock();
+            let finished_cmd = worker_cmd
+                .finish_command_list(false)
+                .expect("Failed to finalize command list");
 
-                cmd.execute_command_list(&finished_cmd, true);
-            }
+            cmd.execute_command_list(&finished_cmd, true);
         }
-        self.release_set(set);
     }
 }
 

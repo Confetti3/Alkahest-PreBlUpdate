@@ -146,7 +146,7 @@ impl FeatureRenderer for DecalCollectionRenderer {
             .job_builder("decals_render")
             .spawn(move || {
                 let self_ref = unsafe { &*(self_p as *const Self) };
-                let cmd = pool.get_command_list(set);
+                let mut cmd = pool.get_command_list(set);
 
                 cmd.state_override = PipelineState::new(None, None, Some(1), None);
                 cmd.set_depth_mode(DepthMode::Forward);
@@ -155,7 +155,7 @@ impl FeatureRenderer for DecalCollectionRenderer {
                     return;
                 };
 
-                renderer.globals.scopes.decal.bind(cmd).unwrap();
+                renderer.globals.scopes.decal.bind(&mut cmd).unwrap();
 
                 cmd.input_assembler_set_vertex_buffers(
                     0,
@@ -170,7 +170,7 @@ impl FeatureRenderer for DecalCollectionRenderer {
                     let Some(t) = set.technique.get() else {
                         continue;
                     };
-                    t.bind(cmd).unwrap();
+                    t.bind(&mut cmd).unwrap();
                     cmd.draw_instanced(36_u32, set.count as u32, 0, set.start as u32);
                 }
 

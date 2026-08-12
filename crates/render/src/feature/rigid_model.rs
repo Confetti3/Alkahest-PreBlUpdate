@@ -91,9 +91,9 @@ impl DynamicModel {
                     m.color_buffer,
                     m.index_buffer,
                 )
-                .expect("Failed to load model buffers for dynamic model")
+                .context("Failed to load model buffers for dynamic model")
             })
-            .collect_vec();
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         let mesh_stages = model
             .meshes
@@ -114,10 +114,9 @@ impl DynamicModel {
 
         let permutation_count = technique_map
             .iter()
-            .filter(|m| m.unk8 == 0)
-            .map(|m| m.technique_count as usize)
-            .next()
-            .unwrap_or(1);
+            .find(|m| m.unk8 == 0)
+            .map_or(1, |m| m.technique_count as usize)
+            .max(1);
 
         let identifier_count = model
             .meshes
@@ -349,14 +348,15 @@ impl DynamicModel {
         if index == u16::MAX {
             None
         } else {
-            self.technique_map
-                .get(index as usize)
-                .as_ref()
-                .map(|permutation_range| {
-                    self.techniques[permutation_range.technique_start as usize
-                        + (permutation_count % permutation_range.technique_count as usize)]
-                        .clone()
-                })
+            let permutation_range = self.technique_map.get(index as usize)?;
+            let technique_count = permutation_range.technique_count as usize;
+            if technique_count == 0 {
+                return None;
+            }
+            let offset = permutation_count % technique_count;
+            let technique_index =
+                (permutation_range.technique_start as usize).checked_add(offset)?;
+            self.techniques.get(technique_index).cloned()
         }
     }
 
@@ -415,7 +415,15 @@ impl DynamicModel {
             }
             mesh_buffers.bind(cmd);
             for part_index in mesh.get_range_for_stage(stage) {
-                let part = &mesh.parts[part_index];
+                let Some(part) = mesh.parts.get(part_index) else {
+                    tracing::warn!(
+                        model = %self.hash,
+                        mesh_index,
+                        part_index,
+                        "Skipping invalid dynamic-model part range"
+                    );
+                    continue;
+                };
                 if identifier_mask & 1u128.unbounded_shl(part.external_identifier as u32) == 0 {
                     continue;
                 }
@@ -427,11 +435,41 @@ impl DynamicModel {
                 let variant_material =
                     self.get_permutation_technique(part.variant_shader_index, self.permutation);
 
-                let mut all_scopes = TfxScopeBits::empty();
-                mesh_techniques[part_index].get_ref(|technique| {
-                    technique
-                        .bind_with_channels(cmd, Some(&self.channels))
-                        .expect("Failed to bind technique");
+                let Some(technique) = mesh_techniques.get(part_index).and_then(Handle::get) else {
+                    continue;
+                };
+                if let Err(error) = technique.bind_with_channels(cmd, Some(&self.channels)) {
+                    tracing::warn!(
+                        model = %self.hash,
+                        technique = %technique.hash,
+                        %error,
+                        "Skipping dynamic-model part with an invalid technique"
+                    );
+                    continue;
+                }
+                if ConVars::get_flag("render.shadowkeep_sky_diagnostics")
+                    && let Some((map, collection)) = self.sky_owner
+                {
+                    record_shadowkeep_sky_technique_dependency(
+                        map,
+                        collection,
+                        self.hash,
+                        &technique,
+                        &self.channels,
+                    );
+                }
+                let mut all_scopes = technique.used_scopes;
+
+                if let Some(variant) = variant_material.as_ref().and_then(Handle::get) {
+                    if let Err(error) = variant.bind_with_channels(cmd, Some(&self.channels)) {
+                        tracing::warn!(
+                            model = %self.hash,
+                            technique = %variant.hash,
+                            %error,
+                            "Skipping dynamic-model part with an invalid variant technique"
+                        );
+                        continue;
+                    }
                     if ConVars::get_flag("render.shadowkeep_sky_diagnostics")
                         && let Some((map, collection)) = self.sky_owner
                     {
@@ -439,30 +477,11 @@ impl DynamicModel {
                             map,
                             collection,
                             self.hash,
-                            technique,
+                            &variant,
                             &self.channels,
                         );
                     }
-                    all_scopes |= technique.used_scopes;
-                });
-
-                if let Some(technique) = &variant_material {
-                    technique.get_ref(|tech| {
-                        tech.bind_with_channels(cmd, Some(&self.channels))
-                            .expect("Failed to bind variant technique");
-                        if ConVars::get_flag("render.shadowkeep_sky_diagnostics")
-                            && let Some((map, collection)) = self.sky_owner
-                        {
-                            record_shadowkeep_sky_technique_dependency(
-                                map,
-                                collection,
-                                self.hash,
-                                tech,
-                                &self.channels,
-                            );
-                        }
-                        all_scopes |= tech.used_scopes;
-                    });
+                    all_scopes |= variant.used_scopes;
                 }
 
                 // No technique, no scopes, no draw
@@ -559,9 +578,9 @@ impl FeatureRenderer for DynamicModel {
         let identifier_maswk = self.identifier_mask;
         let job = SCHEDULER.job_builder("rigid_model").spawn(move || {
             let self_ref = unsafe { &*(self_p as *const Self) };
-            let cmd = pool.get_command_list(set);
+            let mut cmd = pool.get_command_list(set);
             self_ref.draw_wrapped(
-                cmd,
+                &mut cmd,
                 stage,
                 identifier_maswk,
                 |model, cmd, (_mesh_index, _mesh), (_part_index, part)| {

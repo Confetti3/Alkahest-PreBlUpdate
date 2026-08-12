@@ -276,7 +276,9 @@ impl TerrainPatchesRenderer {
             .enumerate()
             .filter(|(_, u)| u.detail_level == self.detail_level)
         {
-            let (cb11, _aabb, visible) = &self.groups[part.group_index as usize];
+            let Some((cb11, _aabb, visible)) = self.groups.get(part.group_index as usize) else {
+                continue;
+            };
             if !visible.get(view_index) {
                 continue;
             }
@@ -285,13 +287,18 @@ impl TerrainPatchesRenderer {
             // then the group constants and dyemap.  Binding the dyemap before
             // the technique lets an absent/material texture assignment clear
             // slot 14 and leaves terrain with an apparently missing texture.
-            if let Some(technique) = self.techniques[i].get() {
-                technique.bind(cmd).expect("Failed to bind technique");
-            } else {
+            let Some(technique) = self.techniques.get(i).and_then(Handle::get) else {
+                continue;
+            };
+            if technique.bind(cmd).is_err() {
                 continue;
             }
             cb11.bind(cmd, ShaderStage::Vertex, 11);
-            if let Some(dyemap) = self.dyemaps[part.group_index as usize].get() {
+            if let Some(dyemap) = self
+                .dyemaps
+                .get(part.group_index as usize)
+                .and_then(Handle::get)
+            {
                 dyemap.bind(cmd, 14, alkahest_data::tfx::ShaderStage::Pixel);
             }
 
@@ -395,12 +402,12 @@ impl FeatureRenderer for TerrainPatchesRenderer {
             .job_builder("terrain_patches_render")
             .spawn(move || {
                 let self_ref = unsafe { &*(self_p as *const Self) };
-                let cmd = pool.get_command_list(set);
+                let mut cmd = pool.get_command_list(set);
                 cmd.enable_smart_technique_binding();
                 if let Some(ao_vb) = renderer.ao_buffer.read().as_ref().and_then(|h| h.get()) {
                     cmd.vertex_set_shader_resources(1, std::slice::from_ref(&ao_vb.srv.as_ref()));
                 }
-                self_ref.render(cmd, view_index, stage);
+                self_ref.render(&mut cmd, view_index, stage);
             });
         jobs.push(job);
     }

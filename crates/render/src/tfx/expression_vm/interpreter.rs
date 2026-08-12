@@ -77,65 +77,65 @@ impl<'a> InterpreterState<'a> {
     #[must_use = "Pushed value must be stored in the cache register"]
     #[inline(always)]
     fn push(&mut self, value: Vec4) -> anyhow::Result<Vec4> {
-        #[cfg(debug_assertions)]
-        anyhow::ensure!(
+        ensure!(
             self.stack_pointer < self.stack.len(),
             "Stack overflow (ip=0x{:X}, sp={})",
             self.ip,
             self.stack_pointer
         );
-        self.stack_pointer += 1;
         self.stack[self.stack_pointer] = value;
+        self.stack_pointer += 1;
         Ok(value)
     }
 
-    // #[inline(always)]
-    // fn pop(&mut self) -> anyhow::Result<Vec4> {
-    //     anyhow::ensure!(self.stack_pointer < 16, "Stack underflow");
-    //     let value = self.stack[self.stack_pointer];
-    //     self.stack_pointer += 1;
-    //     Ok(value)
-    // }
-
     #[inline(always)]
     fn get(&self, index_relative: isize) -> anyhow::Result<Vec4> {
-        let index = self.stack_pointer as isize + index_relative;
-        #[cfg(debug_assertions)]
-        anyhow::ensure!(
-            (0..32).contains(&index),
-            "Stack index out of bounds (index {index}, ip=0x{:X})",
-            self.ip
+        let index = self.stack_pointer as isize - 1 + index_relative;
+        ensure!(
+            index >= 0 && (index as usize) < self.stack_pointer,
+            "Stack index out of bounds (index {index}, ip=0x{:X}, sp={})",
+            self.ip,
+            self.stack_pointer
         );
-        Ok(self
-            .stack
-            .get(index as usize)
-            .context("Stack index out of bounds")?
-            .to_owned())
+        Ok(self.stack[index as usize])
     }
 
     // Pops the top value off the stack and returns the value at the new top of the stack (or ZERO if the stack is empty)
     #[inline(always)]
     fn pop_top(&mut self) -> Vec4 {
-        self.stack_pointer = self.stack_pointer.saturating_sub(1);
-        self.stack
-            .get(self.stack_pointer)
-            .copied()
-            .unwrap_or(Vec4::ZERO)
+        if self.stack_pointer == 0 {
+            return Vec4::ZERO;
+        }
+        self.stack_pointer -= 1;
+        self.stack_pointer
+            .checked_sub(1)
+            .map_or(Vec4::ZERO, |index| self.stack[index])
     }
 
     #[inline(always)]
-    fn stack_top(&mut self) -> &mut Vec4 {
-        &mut self.stack[self.stack_pointer]
+    fn stack_top(&mut self) -> anyhow::Result<&mut Vec4> {
+        let index = self
+            .stack_pointer
+            .checked_sub(1)
+            .context("Stack underflow")?;
+        Ok(&mut self.stack[index])
     }
 
-    // // Pops the top N values off the stack and returns the value at the new top of the stack (or ZERO if the stack is empty)
-    // fn pop_n(&mut self, n: usize) -> Vec4 {
-    //     self.stack_pointer = self.stack_pointer.saturating_add(n);
-    //     self.stack
-    //         .get(self.stack_pointer)
-    //         .copied()
-    //         .unwrap_or(Vec4::ZERO)
-    // }
+    fn constant_window<'b>(
+        &self,
+        constants: &'b [Vec4],
+        start: u8,
+        len: usize,
+    ) -> anyhow::Result<&'b [Vec4]> {
+        let start = start as usize;
+        let end = start.checked_add(len).context("Constant window overflow")?;
+        constants.get(start..end).with_context(|| {
+            format!(
+                "Invalid constant window {start}..{end} (constant count {})",
+                constants.len()
+            )
+        })
+    }
 
     #[profiling::function]
     pub fn evaluate(
@@ -149,7 +149,7 @@ impl<'a> InterpreterState<'a> {
         macro_rules! set_top {
             ($value:expr) => {{
                 cached_top = $value;
-                *self.stack_top() = cached_top;
+                *self.stack_top()? = cached_top;
             }};
         }
 
@@ -158,6 +158,13 @@ impl<'a> InterpreterState<'a> {
             let Ok(op) = Opcode::try_from(ptr[0]) else {
                 anyhow::bail!("Invalid opcode: 0x{:02X} @ ip 0x{:X}", ptr[0], self.ip);
             };
+            ensure!(
+                ptr.len() >= op.size(),
+                "Truncated {op:?} instruction at ip 0x{:X}: expected {} bytes, found {}",
+                self.ip,
+                op.size(),
+                ptr.len()
+            );
             // profiling::scope!("evaluate_opcode", &format!("{op:?}"));
 
             match op {
@@ -167,17 +174,17 @@ impl<'a> InterpreterState<'a> {
                 Opcode::Add | Opcode::Add_ => {
                     cached_top += self.get(-1)?;
                     self.stack_pointer -= 1;
-                    *self.stack_top() = cached_top;
+                    *self.stack_top()? = cached_top;
                 }
                 Opcode::Subtract => {
                     cached_top = self.get(-1)? - cached_top;
                     self.stack_pointer -= 1;
-                    *self.stack_top() = cached_top;
+                    *self.stack_top()? = cached_top;
                 }
                 Opcode::Multiply | Opcode::Multiply_ => {
                     cached_top *= self.get(-1)?;
                     self.stack_pointer -= 1;
-                    *self.stack_top() = cached_top;
+                    *self.stack_top()? = cached_top;
                 }
                 Opcode::Divide => {
                     let v0 = cached_top;
@@ -197,7 +204,7 @@ impl<'a> InterpreterState<'a> {
                     cached_top = Vec4::select(v20, v1 / v0, safe_part);
 
                     self.stack_pointer -= 1;
-                    *self.stack_top() = cached_top;
+                    *self.stack_top()? = cached_top;
                 }
 
                 Opcode::IsZero => {
@@ -208,12 +215,12 @@ impl<'a> InterpreterState<'a> {
                 Opcode::Min => {
                     cached_top = cached_top.min(self.get(-1)?);
                     self.stack_pointer -= 1;
-                    *self.stack_top() = cached_top;
+                    *self.stack_top()? = cached_top;
                 }
                 Opcode::Max => {
                     cached_top = cached_top.max(self.get(-1)?);
                     self.stack_pointer -= 1;
-                    *self.stack_top() = cached_top;
+                    *self.stack_top()? = cached_top;
                 }
                 Opcode::LessThan => {
                     let cmp_mask = self.get(-1)?.cmplt(cached_top);
@@ -224,21 +231,21 @@ impl<'a> InterpreterState<'a> {
                 Opcode::Dot => {
                     cached_top = Vec4::splat(self.get(-1)?.dot(cached_top));
                     self.stack_pointer -= 1;
-                    *self.stack_top() = cached_top;
+                    *self.stack_top()? = cached_top;
                 }
                 Opcode::Merge1_3 => {
                     let a0 = cached_top;
                     let a1 = self.get(-1)?;
                     self.stack_pointer -= 1;
                     cached_top = Vec4::new(a1.x, a0.x, a0.y, a0.z);
-                    *self.stack_top() = cached_top;
+                    *self.stack_top()? = cached_top;
                 }
                 Opcode::Merge2_2 => {
                     let a0 = cached_top;
                     let a1 = self.get(-1)?;
                     self.stack_pointer -= 1;
                     cached_top = Vec4::new(a1.x, a1.y, a0.x, a0.y);
-                    *self.stack_top() = cached_top;
+                    *self.stack_top()? = cached_top;
                 }
                 Opcode::Merge3_1 => {
                     let a0 = cached_top;
@@ -406,85 +413,51 @@ impl<'a> InterpreterState<'a> {
                     );
                 }
                 Opcode::PushConstVec4 => {
-                    let index = ptr[1];
-                    anyhow::ensure!(index < constants.len() as u8, "Invalid constant index");
-                    cached_top = self.push(constants[index as usize])?;
+                    let index = ptr[1] as usize;
+                    let value = *constants.get(index).context("Invalid constant index")?;
+                    cached_top = self.push(value)?;
                 }
                 Opcode::LerpConstant => {
-                    let constant_start = ptr[1];
-                    ensure!(
-                        (constant_start + 1) < constants.len() as u8,
-                        "Invalid constant index"
-                    );
-                    let a = constants[constant_start as usize];
-                    let b = constants[(constant_start + 1) as usize];
+                    let cl = self.constant_window(constants, ptr[1], 2)?;
+                    let a = cl[0];
+                    let b = cl[1];
                     let t = cached_top;
 
                     cached_top = a + t * (b - a);
-                    *self.stack_top() = cached_top;
+                    *self.stack_top()? = cached_top;
                 }
                 Opcode::Spline4Const => {
-                    let constant_start = ptr[1];
-                    ensure!(
-                        (constant_start + 4) < constants.len() as u8,
-                        "Invalid constant index"
-                    );
-
-                    let cl = &constants[constant_start as usize..constant_start as usize + 5];
+                    let cl = self.constant_window(constants, ptr[1], 5)?;
                     cached_top = super::helpers::bytecode_op_spline4_const(
                         cached_top, cl[0], cl[1], cl[2], cl[3], cl[4],
                     );
                 }
                 Opcode::Spline8Const => {
-                    let constant_start = ptr[1];
-                    ensure!(
-                        (constant_start + 9) < constants.len() as u8,
-                        "Invalid constant index"
-                    );
-
-                    let cl = &constants[constant_start as usize..constant_start as usize + 10];
+                    let cl = self.constant_window(constants, ptr[1], 10)?;
                     cached_top = super::helpers::bytecode_op_spline8_const(
                         cached_top, cl[0], cl[1], cl[2], cl[3], cl[4], cl[5], cl[6], cl[7], cl[8],
                         cl[9],
                     );
                 }
                 Opcode::Spline8ChainConst => {
-                    let constant_start = ptr[1];
-                    ensure!(
-                        (constant_start + 9) < constants.len() as u8,
-                        "Invalid constant index"
-                    );
+                    let cl = self.constant_window(constants, ptr[1], 10)?;
 
                     let x = cached_top;
                     let recursion = self.get(-1)?;
                     self.stack_pointer -= 1;
-
-                    let cl = &constants[constant_start as usize..constant_start as usize + 10];
                     cached_top = super::helpers::bytecode_op_spline8_chain_const(
                         x, recursion, cl[0], cl[1], cl[2], cl[3], cl[4], cl[5], cl[6], cl[7],
                         cl[8], cl[9],
                     );
                 }
                 Opcode::Gradient4Const => {
-                    let constant_start = ptr[1];
-                    ensure!(
-                        (constant_start + 5) < constants.len() as u8,
-                        "Invalid constant index"
-                    );
-
-                    let cl = &constants[constant_start as usize..constant_start as usize + 6];
+                    let cl = self.constant_window(constants, ptr[1], 6)?;
                     cached_top = super::helpers::bytecode_op_gradient4_const(
                         cached_top, cl[0], cl[1], cl[2], cl[3], cl[4], cl[5],
                     );
                 }
                 Opcode::Unknown0x49 => {
-                    let constant_start = ptr[1];
-                    ensure!(
-                        (constant_start + 10) < constants.len() as u8,
-                        "Invalid constant index"
-                    );
-
-                    let cl = &constants[constant_start as usize..];
+                    let cl = self.constant_window(constants, ptr[1], 11)?;
                     set_top!(super::helpers::bytecode_op_unk3b_const(cached_top, cl));
                 }
                 // Push a temporary value onto the stack
@@ -732,7 +705,11 @@ impl<'a> InterpreterState<'a> {
                     out[start_element + 3] = w_axis;
 
                     self.stack_pointer -= 4;
-                    cached_top = self.get(0)?;
+                    cached_top = if self.stack_pointer == 0 {
+                        Vec4::ZERO
+                    } else {
+                        self.get(0)?
+                    };
                 }
                 // Opcode::Unknown0x4D => {
                 //     let channel = ptr[1];
@@ -748,15 +725,11 @@ impl<'a> InterpreterState<'a> {
                 //     cached_top = self.push(val)?;
                 // }
                 Opcode::Unknown0x5e | Opcode::PushGlobalChannelVector => {
-                    let channel = ptr[1];
-                    // Direct indexing is safe here, as globals is 256 elements long
-                    let val = Renderer::instance().externs.globals[channel as usize];
-                    // let val = match channel {
-                    //     124 => Vec4::X * 0.1,  // 138 in tfs
-                    //     125 => Vec4::X * 1.0,  // 139 in tfs
-                    //     128 => Vec4::X * 10.0, // ????
-                    //     _ => Vec4::ONE,
-                    // };
+                    let channel = ptr[1] as usize;
+                    let externs = self.externs.context("No externs set")?;
+                    let val = externs
+                        .get_global_channel(channel)
+                        .with_context(|| format!("Invalid global channel index {channel}"))?;
                     cached_top = self.push(val)?;
                 }
                 Opcode::PushObjectChannelVector => {

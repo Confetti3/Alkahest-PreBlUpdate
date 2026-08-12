@@ -1,4 +1,4 @@
-use std::{ops::Deref, sync::Arc};
+use std::{fmt, ops::Deref, sync::Arc};
 
 use ahash::AHashMap;
 use alkahest_data::tfx::{
@@ -21,6 +21,51 @@ use crate::{
     gpu::command_list::CommandList,
     tfx::sequencer_vm::ObjectChannel,
 };
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum UnsupportedTechniqueReason {
+    MissingStage {
+        bind_mode: TechniqueBindMode,
+        stage: ShaderStage,
+    },
+}
+
+impl fmt::Display for UnsupportedTechniqueReason {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::MissingStage { bind_mode, stage } => {
+                write!(
+                    formatter,
+                    "{bind_mode:?} technique is missing its {stage:?} stage"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for UnsupportedTechniqueReason {}
+
+fn required_stages(bind_mode: TechniqueBindMode) -> &'static [ShaderStage] {
+    match bind_mode {
+        TechniqueBindMode::VertexPixel => &[ShaderStage::Vertex, ShaderStage::Pixel],
+        TechniqueBindMode::VertexOnly => &[ShaderStage::Vertex],
+        TechniqueBindMode::VertexGeometryPixel => &[
+            ShaderStage::Vertex,
+            ShaderStage::Geometry,
+            ShaderStage::Pixel,
+        ],
+        TechniqueBindMode::VertexPixelTesselated => &[
+            ShaderStage::Vertex,
+            ShaderStage::Hull,
+            ShaderStage::Domain,
+            ShaderStage::Pixel,
+        ],
+        TechniqueBindMode::VertexOnlyTesselated => {
+            &[ShaderStage::Vertex, ShaderStage::Hull, ShaderStage::Domain]
+        }
+        TechniqueBindMode::Compute => &[ShaderStage::Compute],
+    }
+}
 
 pub struct Technique {
     pub tech: STechnique,
@@ -57,6 +102,45 @@ impl Technique {
         ]
     }
 
+    fn stage(&self, stage: ShaderStage) -> Option<&TechniqueStage> {
+        match stage {
+            ShaderStage::Vertex => self.stage_vertex.as_ref(),
+            ShaderStage::Hull => self.stage_hull.as_ref(),
+            ShaderStage::Domain => self.stage_domain.as_ref(),
+            ShaderStage::Geometry => self.stage_geometry.as_ref(),
+            ShaderStage::Pixel => self.stage_pixel.as_ref(),
+            ShaderStage::Compute => self.stage_compute.as_ref(),
+        }
+    }
+
+    fn validate_stage_configuration(&self) -> Result<(), UnsupportedTechniqueReason> {
+        for &stage in required_stages(self.bind_mode) {
+            if self.stage(stage).is_none() {
+                return Err(UnsupportedTechniqueReason::MissingStage {
+                    bind_mode: self.bind_mode,
+                    stage,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    fn validated(self) -> anyhow::Result<Self> {
+        self.validate_stage_configuration()
+            .with_context(|| format!("Unsupported technique {}", self.hash))?;
+        Ok(self)
+    }
+
+    fn required_stage(&self, stage: ShaderStage) -> anyhow::Result<&TechniqueStage> {
+        self.stage(stage).ok_or_else(|| {
+            UnsupportedTechniqueReason::MissingStage {
+                bind_mode: self.bind_mode,
+                stage,
+            }
+            .into()
+        })
+    }
+
     pub fn is_loaded(&self) -> bool {
         for (_shader, stage) in self.all_stages() {
             if let Some(stage) = stage
@@ -81,7 +165,7 @@ impl Technique {
         let tech = package_manager()
             .read_tag_struct::<STechnique>(hash)
             .context("Failed to read technique tag")?;
-        Ok(Self {
+        Self {
             stage_vertex: TechniqueStage::load(
                 gpu,
                 asset_manager,
@@ -132,7 +216,8 @@ impl Technique {
             .context("Failed to load compute stage")?,
             tech,
             hash,
-        })
+        }
+        .validated()
     }
 
     /// Loads a Season of Arrivals technique using its own serialized record
@@ -149,7 +234,7 @@ impl Technique {
             .context("Failed to read Shadowkeep technique tag")?;
         let tech = normalize_shadowkeep_technique(&legacy);
 
-        Ok(Self {
+        Self {
             stage_vertex: TechniqueStage::load_shadowkeep(
                 gpu,
                 asset_manager,
@@ -182,7 +267,8 @@ impl Technique {
             )?,
             tech,
             hash,
-        })
+        }
+        .validated()
     }
 
     pub fn bind(&self, cmd: &mut CommandList) -> anyhow::Result<()> {
@@ -197,6 +283,8 @@ impl Technique {
         channels: Option<&AHashMap<u32, ObjectChannel>>,
     ) -> anyhow::Result<()> {
         profiling::scope!("Technique::bind", &format!("hash={}", self.hash));
+        self.validate_stage_configuration()
+            .with_context(|| format!("Cannot bind technique {}", self.hash))?;
         // TODO(cohae): This might break (it probably will, it just wont have that big of an impact)
         if cmd.set_bound_technique(self.hash) {
             return Ok(());
@@ -217,8 +305,10 @@ impl Technique {
                 cmd.domain_set_shader(None);
                 cmd.compute_set_shader(None);
 
-                self.stage_vertex.as_ref().unwrap().bind(cmd, channels)?;
-                self.stage_pixel.as_ref().unwrap().bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Vertex)?
+                    .bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Pixel)?
+                    .bind(cmd, channels)?;
             }
             TechniqueBindMode::VertexOnly => {
                 cmd.pixel_set_shader(None);
@@ -227,34 +317,45 @@ impl Technique {
                 cmd.domain_set_shader(None);
                 cmd.compute_set_shader(None);
 
-                self.stage_vertex.as_ref().unwrap().bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Vertex)?
+                    .bind(cmd, channels)?;
             }
             TechniqueBindMode::VertexGeometryPixel => {
                 cmd.hull_set_shader(None);
                 cmd.domain_set_shader(None);
                 cmd.compute_set_shader(None);
 
-                self.stage_vertex.as_ref().unwrap().bind(cmd, channels)?;
-                self.stage_geometry.as_ref().unwrap().bind(cmd, channels)?;
-                self.stage_pixel.as_ref().unwrap().bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Vertex)?
+                    .bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Geometry)?
+                    .bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Pixel)?
+                    .bind(cmd, channels)?;
             }
             TechniqueBindMode::VertexPixelTesselated => {
                 cmd.geometry_set_shader(None);
                 cmd.compute_set_shader(None);
 
-                self.stage_vertex.as_ref().unwrap().bind(cmd, channels)?;
-                self.stage_hull.as_ref().unwrap().bind(cmd, channels)?;
-                self.stage_domain.as_ref().unwrap().bind(cmd, channels)?;
-                self.stage_pixel.as_ref().unwrap().bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Vertex)?
+                    .bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Hull)?
+                    .bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Domain)?
+                    .bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Pixel)?
+                    .bind(cmd, channels)?;
             }
             TechniqueBindMode::VertexOnlyTesselated => {
                 cmd.pixel_set_shader(None);
                 cmd.geometry_set_shader(None);
                 cmd.compute_set_shader(None);
 
-                self.stage_vertex.as_ref().unwrap().bind(cmd, channels)?;
-                self.stage_hull.as_ref().unwrap().bind(cmd, channels)?;
-                self.stage_domain.as_ref().unwrap().bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Vertex)?
+                    .bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Hull)?
+                    .bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Domain)?
+                    .bind(cmd, channels)?;
             }
             TechniqueBindMode::Compute => {
                 cmd.vertex_set_shader(None);
@@ -263,7 +364,8 @@ impl Technique {
                 cmd.hull_set_shader(None);
                 cmd.domain_set_shader(None);
 
-                self.stage_compute.as_ref().unwrap().bind(cmd, channels)?;
+                self.required_stage(ShaderStage::Compute)?
+                    .bind(cmd, channels)?;
             }
         }
 
@@ -688,4 +790,48 @@ impl ShaderModule {
 
     //     Ok(compiled)
     // }
+}
+
+#[cfg(test)]
+mod tests {
+    use alkahest_data::tfx::{ShaderStage, TechniqueBindMode};
+
+    use super::required_stages;
+
+    #[test]
+    fn every_bind_mode_declares_its_required_stages() {
+        let cases = [
+            (
+                TechniqueBindMode::VertexPixel,
+                vec![ShaderStage::Vertex, ShaderStage::Pixel],
+            ),
+            (TechniqueBindMode::VertexOnly, vec![ShaderStage::Vertex]),
+            (
+                TechniqueBindMode::VertexGeometryPixel,
+                vec![
+                    ShaderStage::Vertex,
+                    ShaderStage::Geometry,
+                    ShaderStage::Pixel,
+                ],
+            ),
+            (
+                TechniqueBindMode::VertexPixelTesselated,
+                vec![
+                    ShaderStage::Vertex,
+                    ShaderStage::Hull,
+                    ShaderStage::Domain,
+                    ShaderStage::Pixel,
+                ],
+            ),
+            (
+                TechniqueBindMode::VertexOnlyTesselated,
+                vec![ShaderStage::Vertex, ShaderStage::Hull, ShaderStage::Domain],
+            ),
+            (TechniqueBindMode::Compute, vec![ShaderStage::Compute]),
+        ];
+
+        for (bind_mode, expected) in cases {
+            assert_eq!(required_stages(bind_mode), expected);
+        }
+    }
 }

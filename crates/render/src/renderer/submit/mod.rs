@@ -9,7 +9,7 @@ pub mod sun_shadows;
 pub mod transparent;
 pub mod water;
 
-use std::{fmt::Debug, path::Path, sync::Arc};
+use std::{collections::BTreeMap, fmt::Debug, path::Path, sync::Arc};
 
 use alkahest_core::convar::ConVars;
 use alkahest_data::tfx::{
@@ -36,6 +36,7 @@ use crate::{
     camera::Camera,
     cmd_event_span,
     gpu::command_list::{CommandList, DepthMode},
+    renderer::shadowkeep::{CapabilityId, PassDecision, PassObservation, SkipReason},
     tfx::{
         expression_vm::{
             self,
@@ -372,9 +373,10 @@ impl Renderer {
             } else {
                 let sun_light_direction = if self.era() == crate::renderer::RendererEra::Shadowkeep
                 {
-                    self.externs.get().global_lighting.unk30
+                    self.externs.read().global_lighting.unk30
                 } else {
                     self.externs
+                        .read()
                         .get_global_channel_by_name("sun_light_direction")
                 };
                 self.debug_cbuffer
@@ -415,6 +417,7 @@ impl Renderer {
                             Vec4::ZERO
                         } else {
                             self.externs
+                                .read()
                                 .get_global_channel_by_name("sky_snapshot_intensity")
                         },
                         Vec4::ZERO,
@@ -535,7 +538,7 @@ impl Renderer {
             if view.settings.anti_aliasing {
                 self.bind_surfaces(cmd, &[view.output], None);
                 let _gpuspan = self.profiler.scope(cmd, "fxaa");
-                *self.externs.get_mut().fxaa = externs::Fxaa {
+                *self.externs.write().fxaa = externs::Fxaa {
                     source: view.postprocess.into(),
                     unk50: 0.75,
                     unk54: 1. / 6.,
@@ -1138,8 +1141,9 @@ impl Renderer {
                     )
                 };
                 let sky_illumination = 0.03 + 0.97 * daylight;
-                let target_pixel_to_world = self.externs.view.target_pixel_to_world;
-                let sky_state = ShadowkeepSkyState::from_externs(&self.externs);
+                let externs = self.externs.read();
+                let target_pixel_to_world = externs.view.target_pixel_to_world;
+                let sky_state = ShadowkeepSkyState::from_externs(&externs);
                 let include_sun = debug_pipeline.is_none_or(|pipeline| pipeline.has_sun());
                 let sun_color = if include_sun {
                     sky_state.sun * daylight
@@ -1151,7 +1155,7 @@ impl Renderer {
                         cmd,
                         &ShadowkeepSkyConstants {
                             target_pixel_to_world,
-                            camera_position: self.externs.view.position,
+                            camera_position: self.externs.read().view.position,
                             sun_direction,
                             zenith_color: sky_state.zenith * sky_illumination,
                             horizon_color: sky_state.horizon * sky_illumination,
@@ -1465,6 +1469,55 @@ impl Renderer {
                 "no validated Shadowkeep postprocess chain",
             ),
         ];
+        let capabilities = [
+            CapabilityId::CoreGeometry,
+            CapabilityId::CoreGeometry,
+            CapabilityId::LocalLighting,
+            CapabilityId::CubemapIbl,
+            CapabilityId::GlobalLighting,
+            CapabilityId::Atmosphere,
+            CapabilityId::LocalLighting,
+            CapabilityId::SkyObjects,
+            CapabilityId::Transparent,
+            CapabilityId::DecalWaterVolumetrics,
+            CapabilityId::DecalWaterVolumetrics,
+            CapabilityId::Presentation,
+        ];
+        let observations = reports
+            .iter()
+            .zip(capabilities)
+            .map(|(report, capability)| {
+                let decision = if !report.requested {
+                    PassDecision::Skipped(SkipReason::NotVisible)
+                } else if !report.available {
+                    PassDecision::Blocked(
+                        report.failure_reason.unwrap_or("pass unavailable").into(),
+                    )
+                } else {
+                    PassDecision::Scheduled
+                };
+                let draws_submitted = report
+                    .draw_count
+                    .and_then(|count| u32::try_from(count).ok())
+                    .unwrap_or(0);
+                let mut draws_skipped = BTreeMap::new();
+                if report.requested && draws_submitted == 0 {
+                    draws_skipped.insert(SkipReason::MissingAsset, 1);
+                }
+                PassObservation {
+                    capability,
+                    decision,
+                    draws_requested: u32::from(report.requested),
+                    draws_submitted,
+                    draws_skipped,
+                    // A D3D11 event query must signal before this can become true.
+                    gpu_completed: false,
+                    output_metrics: None,
+                    evidence_frame: self.frame_id(),
+                }
+            })
+            .collect::<Vec<_>>();
+        *self.pass_observations.write() = observations;
         let reports = reports
             .iter()
             .map(|report| {
@@ -1491,14 +1544,14 @@ impl Renderer {
         let directory = Path::new("artifacts/shadowkeep-directional-light-ab");
         let selected_direction = self
             .externs
-            .get()
+            .read()
             .global_lighting
             .unk30
             .truncate()
             .normalize_or_zero()
             .extend(0.0);
-        let original_direct = self.externs.get().global_lighting.unk30;
-        let original_diffuse = self.externs.get().global_lighting.unk50;
+        let original_direct = self.externs.read().global_lighting.unk30;
+        let original_diffuse = self.externs.read().global_lighting.unk50;
         let world_normal = self.capture_shadowkeep_directional_surfaces(
             cmd,
             view,
@@ -1522,7 +1575,7 @@ impl Renderer {
             }
             let (direct_direction, diffuse_direction) = selection.directions(selected_direction);
             {
-                let ext = self.externs.get_mut();
+                let mut ext = self.externs.write();
                 ext.global_lighting.unk30 = direct_direction;
                 ext.global_lighting.unk50 = diffuse_direction;
             }
@@ -1605,7 +1658,7 @@ impl Renderer {
         }
 
         {
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.global_lighting.unk30 = original_direct;
             ext.global_lighting.unk50 = original_diffuse;
         }
@@ -1779,7 +1832,7 @@ impl Renderer {
             .update(cmd, view.surfaces.get(view.shading_result));
         let input_srv = view.shading_result_read.lock().srv.clone();
         {
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.postprocess.input = input_srv.into();
             ext.postprocess.res_for_input = view
                 .surfaces
@@ -1894,7 +1947,7 @@ impl Renderer {
         }
 
         let (production_exposure_scale, exposure_illum_relative) = {
-            let ext = self.externs.get_mut();
+            let ext = self.externs.read();
             (ext.frame.exposure_scale, ext.frame.exposure_illum_relative)
         };
         let directory = Path::new("artifacts/shadowkeep-exposure-ab");
@@ -2076,7 +2129,7 @@ impl Renderer {
             .collect::<Vec<_>>();
         indices.sort_unstable();
         indices.dedup();
-        let ext = self.externs.get();
+        let ext = self.externs.read();
         indices
             .into_iter()
             .filter_map(|index| {
@@ -2092,7 +2145,7 @@ impl Renderer {
     }
 
     fn shadowkeep_global_lighting_extern_values(&self) -> Vec<GlobalLightingExternValue> {
-        let ext = self.externs.get();
+        let ext = self.externs.read();
         let global_lighting = &ext.global_lighting;
         vec![
             GlobalLightingExternValue {
@@ -2223,6 +2276,7 @@ impl Renderer {
                     .iter()
                     .filter_map(|&index| {
                         self.externs
+                            .read()
                             .globals
                             .get(index as usize)
                             .copied()
@@ -2399,7 +2453,7 @@ impl Renderer {
         //     [0.000000000, 0.000000000, 0.150000393, 0.000000000].into(),
         // );
 
-        let ext = self.externs.get_mut();
+        let mut ext = self.externs.write();
         ext.view
             .update(view.world_to_camera, view.camera_to_projective, fb_res);
 
@@ -2661,7 +2715,7 @@ impl Renderer {
     ) -> anyhow::Result<FrameScope> {
         let misc_guard = self.frame_packet.read();
         let misc = &misc_guard.misc;
-        let ext = self.externs.get_mut();
+        let ext = self.externs.read();
         let exposure_scale = exposure_override.unwrap_or(ext.frame.exposure_scale);
         let frame_scope = FrameScope {
             game_time: ext.frame.game_time,
@@ -2693,7 +2747,7 @@ impl Renderer {
 
     fn prepare_main_view_externs(&self, view: &MainView) {
         let fb_res = view.surfaces.framebuffer_resolution();
-        let ext = self.externs.get_mut();
+        let mut ext = self.externs.write();
         let misc = &self.frame_packet.read().misc;
 
         // ext.deferred.gbuffer_resolution_scale_offset =

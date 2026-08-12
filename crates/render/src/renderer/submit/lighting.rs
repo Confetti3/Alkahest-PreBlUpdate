@@ -35,7 +35,7 @@ impl Renderer {
         let _gpuspan = self.profiler.scope(cmd, "submit_lighting");
         {
             let shading_result = view.surfaces.get(view.shading_result);
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.deferred.deferred_depth = view.gbuffers.depth_proxy.lock().srv.clone().into();
             ext.view.derive_matrices(shading_result.resolution());
         }
@@ -105,7 +105,7 @@ impl Renderer {
             if let Some(geo) = geo {
                 let (sync_job, set) = &geo.lighting;
                 sync_job.wait();
-                self.cmd_pool.finish(cmd, *set);
+                set.finish(cmd);
             } else {
                 cmd.flush_states();
                 self.submit_stage(
@@ -141,7 +141,7 @@ impl Renderer {
         //         .clone()],
         // );
         {
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             // ext.deferred.depth_constants = Vec4::new(0.0, 1. / 0.01, 0.0, 0.0);
             ext.deferred.deferred_depth = view.gbuffers.uber_depth_eighth.into();
             let volumetrics = view.surfaces.get(view.lighting.volumetrics_rt0);
@@ -174,7 +174,7 @@ impl Renderer {
 
         {
             let volumetrics_upres = view.surfaces.get(view.lighting.volumetrics_upres);
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.view.derive_matrices(volumetrics_upres.resolution());
 
             ext.deferred.deferred_depth = view.gbuffers.uber_depth_half.into();
@@ -203,7 +203,7 @@ impl Renderer {
         // Rebind full resolution depth buffer
         {
             let shading_result = view.surfaces.get(view.shading_result);
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.deferred.deferred_depth = view.gbuffers.depth_proxy.lock().srv.clone().into();
             ext.view.derive_matrices(shading_result.resolution());
         }
@@ -218,7 +218,7 @@ impl Renderer {
 
         {
             let shading_result = view.surfaces.get(view.shading_result);
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.deferred.deferred_depth = view.gbuffers.depth_proxy.lock().srv.clone().into();
             ext.view.derive_matrices(shading_result.resolution());
 
@@ -324,7 +324,8 @@ impl Renderer {
             [0.0, 0.0, 1.0, 0.0],
             [-1.0, 1.0, 0.0, 1.0],
         ]);
-        let target_pixel_to_world = self.externs.view.projective_to_world * viewport_to_projective;
+        let target_pixel_to_world =
+            self.externs.read().view.projective_to_world * viewport_to_projective;
 
         let mut sun_dir = self
             .frame_packet
@@ -333,6 +334,7 @@ impl Renderer {
             .shadowkeep_sun_direction
             .unwrap_or_else(|| {
                 self.externs
+                    .read()
                     .get_global_channel_by_name("sun_light_direction")
             })
             .xyz();
@@ -351,8 +353,8 @@ impl Renderer {
                     cmd,
                     &CascadeScope {
                         target_pixel_to_world,
-                        camera_to_projective: self.externs.view.camera_to_projective,
-                        world_to_camera: self.externs.view.world_to_camera,
+                        camera_to_projective: self.externs.read().view.camera_to_projective,
+                        world_to_camera: self.externs.read().view.world_to_camera,
                         light_dir: sun_dir.normalize().into(),
                         // plane_distance: Self::CASCADE_DISTANCE_RANGES[cascade_index],
                         plane_distance: Self::get_cascade_distance_range(cascade_index).1,

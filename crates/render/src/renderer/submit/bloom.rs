@@ -31,7 +31,7 @@ impl Renderer {
             let surf = view.surfaces.get(surface);
             cmd.pixel_set_shader_resources(0, &[surf.srv(0)]);
 
-            let ext = &mut self.externs.get_mut();
+            let ext = &mut self.externs.write();
             ext.postprocess.input = surface.into();
             ext.postprocess.res_for_input = surf.resolution_with_recip();
             ext.postprocess.output_res = view.surfaces.get(out_surface).resolution_with_recip();
@@ -151,7 +151,7 @@ impl Renderer {
                 vec4(0.00, 0.0005, 0.016, 0.016),
             );
 
-            self.externs.get_mut().postprocess_initial_downsample = PostprocessInitialDownsample {
+            self.externs.write().postprocess_initial_downsample = PostprocessInitialDownsample {
                 distortion: view.lighting.distortion.into(),
                 ..Default::default()
             }
@@ -201,7 +201,7 @@ impl Renderer {
 
         // Sample columns for autoexposure
         {
-            let ext = &mut self.externs.get_mut();
+            let ext = &mut self.externs.write();
             *ext.postprocess = externs::Postprocess {
                 input: view.bloom.bloom_24th.into(),
                 output_res: view
@@ -357,7 +357,7 @@ impl Renderer {
                     view.bloom.bloom_12th_combined,
                     Vec4::ZERO,
                 );
-                let ext = &mut self.externs.get_mut();
+                let ext = &mut self.externs.write();
                 ext.postprocess.unk08 = view.bloom.bloom_12th.into();
                 ext.postprocess.unkc0 = vec4(0.75, 1.30, 2.50, 1.00);
                 ext.postprocess.unkd0 = vec4(0.64, 1.07, 2.14, 1.00);
@@ -391,7 +391,7 @@ impl Renderer {
                     view.bloom.bloom_6th_combined,
                     Vec4::ZERO,
                 );
-                let ext = &mut self.externs.get_mut();
+                let ext = &mut self.externs.write();
                 ext.postprocess.unk08 = view.bloom.bloom_6th.into();
 
                 ext.postprocess.unkc0 = vec4(1.00, 1.00, 1.00, 1.00);
@@ -426,7 +426,7 @@ impl Renderer {
                     view.bloom.bloom_3rd_combined,
                     Vec4::ZERO,
                 );
-                let ext = &mut self.externs.get_mut();
+                let ext = &mut self.externs.write();
                 ext.postprocess.unk08 = view.bloom.bloom_3rd.into();
                 ext.postprocess.unk10 = view.bloom.bloom_12th_quarter_width.into();
 

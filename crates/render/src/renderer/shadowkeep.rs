@@ -1,7 +1,10 @@
 //! Shadowkeep renderer resources that are intentionally owned by the renderer
 //! rather than the package-independent D3D platform.
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use alkahest_data::tfx::shadowkeep::{
     SShadowkeepVertexInputLayouts, ShadowkeepEraProfile, ShadowkeepRenderBootstrap,
@@ -19,138 +22,251 @@ use crate::{
     tfx::{scope::Scope, technique::Technique},
 };
 
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum CapabilityId {
+    Bootstrap,
+    Tfx,
+    CoreGeometry,
+    LocalLighting,
+    Presentation,
+    CubemapIbl,
+    GlobalLighting,
+    Atmosphere,
+    SkyObjects,
+    SkyEnvironment,
+    LightShaftOcclusion,
+    MaterialAo,
+    Solar,
+    Transparent,
+    DecalWaterVolumetrics,
+    ActivityLayers,
+}
+
+impl CapabilityId {
+    pub const fn display_name(self) -> &'static str {
+        match self {
+            Self::Bootstrap => "Shadowkeep bootstrap and input layouts",
+            Self::Tfx => "TFX scopes, techniques, and positional channels",
+            Self::CoreGeometry => "Core geometry submission",
+            Self::LocalLighting => "Local lighting and deferred shading",
+            Self::Presentation => "Direct presentation",
+            Self::CubemapIbl => "Cubemap specular IBL",
+            Self::GlobalLighting => "Global directional lighting and cascaded sun shadows",
+            Self::Atmosphere => "Package atmosphere lookup/background",
+            Self::SkyObjects => "Map-authored sky-object models",
+            Self::SkyEnvironment => "Phase-specific sky-object environment selection",
+            Self::LightShaftOcclusion => "Sky-object LightShaftOcclusion",
+            Self::MaterialAo => "Shadowkeep material AO compatibility finalizer",
+            Self::Solar => "Shadowkeep solar path",
+            Self::Transparent => "General transparent/additive geometry",
+            Self::DecalWaterVolumetrics => "Authored decals, water, and volumetrics",
+            Self::ActivityLayers => "Activity and ambient scene layers",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CapabilitySupport {
+    Supported,
+    Degraded { reason: String },
+    Unsupported { reason: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkipReason {
+    MissingAsset,
+    UnsupportedTechnique,
+    InvalidInput,
+    NotVisible,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PassDecision {
+    Scheduled,
+    Skipped(SkipReason),
+    Blocked(String),
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OutputMetrics {
+    pub depth_coverage: f32,
+    pub albedo_variance: f32,
+    pub material_entropy: f32,
+    pub final_luminance_p95: f32,
+    pub non_finite_count: u64,
+}
+
+impl OutputMetrics {
+    pub fn passes_invariants(&self) -> bool {
+        self.non_finite_count == 0
+            && self.depth_coverage.is_finite()
+            && self.albedo_variance.is_finite()
+            && self.material_entropy.is_finite()
+            && self.final_luminance_p95.is_finite()
+            && self.depth_coverage >= 0.001
+            && self.albedo_variance >= 0.0001
+            && self.material_entropy >= 0.01
+            && self.final_luminance_p95 >= 0.001
+    }
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PassObservation {
+    pub capability: CapabilityId,
+    pub decision: PassDecision,
+    pub draws_requested: u32,
+    pub draws_submitted: u32,
+    pub draws_skipped: BTreeMap<SkipReason, u32>,
+    pub gpu_completed: bool,
+    pub output_metrics: Option<OutputMetrics>,
+    pub evidence_frame: u64,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct GraphicsReport {
+    pub schema_version: u32,
+    pub build: String,
+    pub corpus_fingerprint: String,
+    pub map: String,
+    pub observations: Vec<PassObservation>,
+}
+
+impl GraphicsReport {
+    pub const SCHEMA_VERSION: u32 = 1;
+
+    pub fn new(
+        build: String,
+        corpus_fingerprint: String,
+        map: String,
+        observations: Vec<PassObservation>,
+    ) -> Self {
+        Self {
+            schema_version: Self::SCHEMA_VERSION,
+            build,
+            corpus_fingerprint,
+            map,
+            observations,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CapabilityState {
     Ready,
     Degraded,
-    Blocked,
-    AbsentInCorpus,
+    Unavailable,
+    Failed,
+    NotExercised,
+}
+
+impl PassObservation {
+    pub fn state(&self, support: &CapabilitySupport) -> CapabilityState {
+        match support {
+            CapabilitySupport::Unsupported { .. } => CapabilityState::Unavailable,
+            CapabilitySupport::Degraded { .. } => CapabilityState::Degraded,
+            CapabilitySupport::Supported => match self.decision {
+                PassDecision::Skipped(_) => CapabilityState::NotExercised,
+                PassDecision::Blocked(_) => CapabilityState::Failed,
+                PassDecision::Scheduled
+                    if self.draws_requested == 0 && self.draws_submitted == 0 =>
+                {
+                    CapabilityState::NotExercised
+                }
+                PassDecision::Scheduled
+                    if self.draws_submitted == 0
+                        || !self.gpu_completed
+                        || !self
+                            .output_metrics
+                            .as_ref()
+                            .is_some_and(OutputMetrics::passes_invariants) =>
+                {
+                    CapabilityState::Failed
+                }
+                PassDecision::Scheduled => CapabilityState::Ready,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct CapabilityRecord {
-    pub name: &'static str,
-    pub state: CapabilityState,
+    pub id: CapabilityId,
+    pub support: CapabilitySupport,
     pub evidence: String,
 }
 
-/// Conservative renderer capability ledger.  `AbsentInCorpus` is reserved
-/// for a completed corpus-family scan; this bootstrap stage therefore never
-/// assigns it speculatively.
 pub fn bootstrap_capability_ledger() -> Vec<CapabilityRecord> {
-    vec![
+    use CapabilityId::*;
+    let supported = [
+        Bootstrap,
+        Tfx,
+        CoreGeometry,
+        LocalLighting,
+        Presentation,
+        CubemapIbl,
+        GlobalLighting,
+        Atmosphere,
+        SkyObjects,
+        MaterialAo,
+    ];
+    let mut records = supported
+        .into_iter()
+        .map(|id| CapabilityRecord {
+            id,
+            support: CapabilitySupport::Supported,
+            evidence: "Supported by the loaded renderer; runtime evidence not yet observed".into(),
+        })
+        .collect::<Vec<_>>();
+    records.extend([
         CapabilityRecord {
-            name: "Shadowkeep bootstrap and input layouts",
-            state: CapabilityState::Ready,
-            evidence: "client_bootstrap_patchable, render globals, and all dynamic layout records \
-                       parsed"
-                .into(),
+            id: SkyEnvironment,
+            support: CapabilitySupport::Degraded {
+                reason: "activity-owned overlays are not proven for every active phase".into(),
+            },
+            evidence: "Exact collection and package-name selection is deterministic".into(),
         },
         CapabilityRecord {
-            name: "TFX scopes, techniques, and positional channels",
-            state: CapabilityState::Ready,
-            evidence: "legacy serializers and extern-index translation are active".into(),
+            id: LightShaftOcclusion,
+            support: CapabilitySupport::Unsupported {
+                reason: "legacy light-shaft occlusion target/pass is not restored".into(),
+            },
+            evidence: "Authored 0x200 subscriptions are reported but not submitted".into(),
         },
         CapabilityRecord {
-            name: "Core geometry submission",
-            state: CapabilityState::Ready,
-            evidence: "static placements, terrain patches, and map-contained rigid models produce \
-                       the shared G-buffer"
-                .into(),
+            id: Solar,
+            support: CapabilitySupport::Degraded {
+                reason: "admitted maps have no decoded authored solar track".into(),
+            },
+            evidence: "A scene-clock fallback drives sun direction and daylight".into(),
         },
         CapabilityRecord {
-            name: "Local lighting and deferred shading",
-            state: CapabilityState::Ready,
-            evidence: "local diffuse/specular MRTs and deferred_shading_no_atm produce \
-                       non-trivial captures"
-                .into(),
+            id: Transparent,
+            support: CapabilitySupport::Unsupported {
+                reason: "general transparent/additive producers remain disconnected".into(),
+            },
+            evidence: "Only the isolated legacy SkyTransparent path is admitted".into(),
         },
         CapabilityRecord {
-            name: "Direct presentation",
-            state: CapabilityState::Ready,
-            evidence: "shading_result is presented directly through the sRGB output target".into(),
+            id: DecalWaterVolumetrics,
+            support: CapabilitySupport::Unsupported {
+                reason: "era-specific producers and pass ordering are not connected".into(),
+            },
+            evidence: "No runtime submission path is scheduled".into(),
         },
         CapabilityRecord {
-            name: "Cubemap specular IBL",
-            state: CapabilityState::Ready,
-            evidence: "authored cubemap volumes populate light_specular_ibl before deferred \
-                       shading"
-                .into(),
+            id: ActivityLayers,
+            support: CapabilitySupport::Degraded {
+                reason: "no compatible package global-channel producer was found".into(),
+            },
+            evidence: "Base bubble and discovered freeroam scenario tables are admitted".into(),
         },
-        CapabilityRecord {
-            name: "Global directional lighting and cascaded sun shadows",
-            state: CapabilityState::Ready,
-            evidence: "the legacy global-lighting pass runs by default and consumes the \
-                       screen-space cascade mask"
-                .into(),
-        },
-        CapabilityRecord {
-            name: "Package atmosphere lookup/background",
-            state: CapabilityState::Ready,
-            evidence: "authored map atmosphere placements feed preserved lookup generation, \
-                       atmosphere-aware deferred shading, and background composition"
-                .into(),
-        },
-        CapabilityRecord {
-            name: "Map-authored sky-object models",
-            state: CapabilityState::Ready,
-            evidence: "package-matched 0x80806F95 collections render through the isolated legacy \
-                       SkyTransparent pass; frozen Europa/EDZ A/B captures change shaded color \
-                       with finite HDR output while preserving depth, atmosphere, local-light, \
-                       IBL, and shadow-mask buffers"
-                .into(),
-        },
-        CapabilityRecord {
-            name: "Phase-specific sky-object environment selection",
-            state: CapabilityState::Degraded,
-            evidence: "exact collection overrides and package-name selection are deterministic; \
-                       activity-owned overlays remain deferred when no table/world pairing proves \
-                       they belong to the active phase"
-                .into(),
-        },
-        CapabilityRecord {
-            name: "Sky-object LightShaftOcclusion",
-            state: CapabilityState::Blocked,
-            evidence: "authored 0x200 subscriptions are reported and deferred because the legacy \
-                       light-shaft occlusion target/pass is not restored"
-                .into(),
-        },
-        CapabilityRecord {
-            name: "Shadowkeep material AO compatibility finalizer",
-            state: CapabilityState::Ready,
-            evidence: "Frozen comparisons validate RT2 material-occlusion normalization while \
-                       preserving the remaining Arrivals material channels."
-                .into(),
-        },
-        CapabilityRecord {
-            name: "Shadowkeep solar path",
-            state: CapabilityState::Degraded,
-            evidence: "The admitted target maps provide no decodable authored solar track; a \
-                       continuous scene-clock fallback drives sun direction and daylight."
-                .into(),
-        },
-        CapabilityRecord {
-            name: "General transparent/additive geometry",
-            state: CapabilityState::Blocked,
-            evidence: "Only the narrow legacy SkyTransparent path is admitted; general \
-                       transparent and additive feature families remain disconnected."
-                .into(),
-        },
-        CapabilityRecord {
-            name: "Authored decals, water, and volumetrics",
-            state: CapabilityState::Blocked,
-            evidence: "Their era-specific producers and pass ordering have not been connected."
-                .into(),
-        },
-        CapabilityRecord {
-            name: "Activity and ambient scene layers",
-            state: CapabilityState::Degraded,
-            evidence: "base bubble and discovered freeroam scenario tables are admitted and \
-                       unknown classes are counted; no compatible package global-channel producer \
-                       was found in the admitted graph"
-                .into(),
-        },
-    ]
+    ]);
+    records
 }
 
 /// Metadata-first catalog.  It lets the application report exactly which
@@ -453,8 +569,11 @@ impl ShadowkeepRendererBootstrap {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use super::{
-        CapabilityState, ShadowkeepPassState, bootstrap_capability_ledger,
+        CapabilityId, CapabilityState, CapabilitySupport, OutputMetrics, PassDecision,
+        PassObservation, ShadowkeepPassState, bootstrap_capability_ledger,
         pass_status_ledger_with_global_lighting,
     };
 
@@ -462,14 +581,97 @@ mod tests {
     fn transparent_capability_matches_disabled_runtime_pass() {
         let capability = bootstrap_capability_ledger()
             .into_iter()
-            .find(|record| record.name == "Transparent and additive geometry stages")
-            .unwrap();
+            .find(|record| record.id == CapabilityId::Transparent)
+            .expect("transparent capability must exist in the typed registry");
         let runtime_pass = pass_status_ledger_with_global_lighting(true)
             .into_iter()
             .find(|record| record.name == "transparent / decal / water / volumetrics")
-            .unwrap();
+            .expect("transparent pass must be represented in the runtime ledger");
 
-        assert_eq!(capability.state, CapabilityState::Blocked);
+        assert!(matches!(
+            capability.support,
+            CapabilitySupport::Unsupported { .. }
+        ));
         assert_eq!(runtime_pass.state, ShadowkeepPassState::DisabledAsAbsent);
+    }
+
+    fn observation(metrics: OutputMetrics) -> PassObservation {
+        PassObservation {
+            capability: CapabilityId::CoreGeometry,
+            decision: PassDecision::Scheduled,
+            draws_requested: 10,
+            draws_submitted: 10,
+            draws_skipped: BTreeMap::new(),
+            gpu_completed: true,
+            output_metrics: Some(metrics),
+            evidence_frame: 42,
+        }
+    }
+
+    #[test]
+    fn flat_or_black_output_cannot_be_ready() {
+        let flat = observation(OutputMetrics {
+            depth_coverage: 0.5,
+            albedo_variance: 0.0,
+            material_entropy: 0.0,
+            final_luminance_p95: 0.5,
+            non_finite_count: 0,
+        });
+        let black = observation(OutputMetrics {
+            depth_coverage: 0.5,
+            albedo_variance: 0.2,
+            material_entropy: 0.5,
+            final_luminance_p95: 0.0,
+            non_finite_count: 0,
+        });
+        assert_eq!(
+            flat.state(&CapabilitySupport::Supported),
+            CapabilityState::Failed
+        );
+        assert_eq!(
+            black.state(&CapabilitySupport::Supported),
+            CapabilityState::Failed
+        );
+    }
+
+    #[test]
+    fn requested_draws_require_submission_and_completion() {
+        let mut pass = observation(OutputMetrics {
+            depth_coverage: 0.5,
+            albedo_variance: 0.2,
+            material_entropy: 0.5,
+            final_luminance_p95: 0.5,
+            non_finite_count: 0,
+        });
+        pass.draws_submitted = 0;
+        assert_eq!(
+            pass.state(&CapabilitySupport::Supported),
+            CapabilityState::Failed
+        );
+        pass.draws_submitted = 10;
+        pass.gpu_completed = false;
+        assert_eq!(
+            pass.state(&CapabilitySupport::Supported),
+            CapabilityState::Failed
+        );
+    }
+
+    #[test]
+    fn graphics_report_serializes_versioned_typed_ids() {
+        let report = super::GraphicsReport::new(
+            "build".into(),
+            "corpus".into(),
+            "map".into(),
+            vec![observation(OutputMetrics {
+                depth_coverage: 0.5,
+                albedo_variance: 0.2,
+                material_entropy: 0.5,
+                final_luminance_p95: 0.5,
+                non_finite_count: 0,
+            })],
+        );
+        let json = serde_json::to_value(report).unwrap();
+        assert_eq!(json["schema_version"], 1);
+        assert_eq!(json["observations"][0]["capability"], "core_geometry");
     }
 }

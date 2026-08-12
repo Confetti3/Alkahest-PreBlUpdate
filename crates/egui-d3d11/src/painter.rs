@@ -63,7 +63,7 @@ pub struct D3D11Renderer {
 impl D3D11Renderer {
     /// Create a new directx11 renderer from a swapchain
     pub fn new(gpu: &Gpu) -> Result<Self, RenderError> {
-        let backbuffer = gpu.swapchain.lock().get_buffer();
+        let backbuffer = gpu.swapchain.lock().get_buffer()?;
 
         let render_view = gpu.create_render_target_view(&backbuffer, None)?;
 
@@ -272,7 +272,7 @@ impl D3D11Renderer {
     ) -> Result<(), RenderError> {
         drop(self.render_view.take());
         let result = original();
-        let backbuffer: d3d11::Texture2D = gpu.swapchain.lock().get_buffer();
+        let backbuffer: d3d11::Texture2D = gpu.swapchain.lock().get_buffer()?;
         self.render_view = Some(gpu.create_render_target_view(&backbuffer, None)?);
         Ok(result?)
     }

@@ -93,10 +93,10 @@ impl StaticMesh {
             .map(
                 |&(index_buffer, vertex0_buffer, vertex1_buffer, color_buffer)| {
                     ModelBuffers::load(vertex0_buffer, vertex1_buffer, color_buffer, index_buffer)
-                        .expect("Failed to load static model opaque mesh buffers")
+                        .context("Failed to load static model opaque mesh buffers")
                 },
             )
-            .collect();
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         let mut subscribed_stages = model
             .opaque_meshes
@@ -109,9 +109,9 @@ impl StaticMesh {
         let special_meshes = model
             .special_meshes
             .iter()
-            .map(|mesh| {
+            .map(|mesh| -> anyhow::Result<SpecialMesh> {
                 subscribed_stages |= mesh.render_stage;
-                SpecialMesh {
+                Ok(SpecialMesh {
                     mesh: mesh.clone(),
                     buffers: ModelBuffers::load(
                         mesh.vertex0_buffer,
@@ -119,11 +119,11 @@ impl StaticMesh {
                         mesh.color_buffer,
                         mesh.index_buffer,
                     )
-                    .expect("Failed to load special mesh buffers"),
+                    .context("Failed to load special mesh buffers")?,
                     technique: Renderer::instance().asset_manager.load(mesh.technique),
-                }
+                })
             })
-            .collect();
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         Ok(Self {
             hash,
@@ -299,21 +299,24 @@ impl StaticMesh {
 
         if is_opaque {
             let opaque_meshes = &self.model.opaque_meshes;
-            for (i, group, part) in opaque_meshes
-                .mesh_groups
-                .iter()
-                .enumerate()
-                .map(|(i, g)| (i, g, &opaque_meshes.parts[g.part_index as usize]))
-                .filter(|(_, g, p)| g.render_stage == stage && p.lod_category.is_highest_detail())
-            {
-                let buffers = &self.buffers[part.buffer_index as usize];
+            for (i, group) in opaque_meshes.mesh_groups.iter().enumerate() {
+                let Some(part) = opaque_meshes.parts.get(group.part_index as usize) else {
+                    continue;
+                };
+                if group.render_stage != stage || !part.lod_category.is_highest_detail() {
+                    continue;
+                }
+                let Some(buffers) = self.buffers.get(part.buffer_index as usize) else {
+                    continue;
+                };
                 if buffers.bind(cmd).is_none() {
                     continue;
                 }
 
-                if let Some(technique) = &self.materials.get(i).and_then(Handle::get) {
-                    technique.bind(cmd).expect("Failed to bind technique");
-                } else {
+                let Some(technique) = self.materials.get(i).and_then(Handle::get) else {
+                    continue;
+                };
+                if technique.bind(cmd).is_err() {
                     continue;
                 }
 
@@ -345,9 +348,10 @@ impl StaticMesh {
                     continue;
                 }
 
-                if let Some(technique) = &mesh.technique.get() {
-                    technique.bind(cmd).expect("Failed to bind technique");
-                } else {
+                let Some(technique) = mesh.technique.get() else {
+                    continue;
+                };
+                if technique.bind(cmd).is_err() {
                     continue;
                 }
                 if renderer
@@ -387,12 +391,21 @@ impl StaticMesh {
         );
 
         let i = group;
-        let group = &self.model.opaque_meshes.mesh_groups[i];
+        let Some(group) = self.model.opaque_meshes.mesh_groups.get(i) else {
+            return;
+        };
         if group.render_stage != stage {
             return;
         }
 
-        let part = &self.model.opaque_meshes.parts[group.part_index as usize];
+        let Some(part) = self
+            .model
+            .opaque_meshes
+            .parts
+            .get(group.part_index as usize)
+        else {
+            return;
+        };
         if !part.lod_category.is_highest_detail() {
             return;
         }
@@ -402,17 +415,18 @@ impl StaticMesh {
                 "bind buffers",
                 &format!("buffer_index={}", part.buffer_index)
             );
-            let buffers = &self.buffers[part.buffer_index as usize];
+            let Some(buffers) = self.buffers.get(part.buffer_index as usize) else {
+                return;
+            };
             if buffers.bind(cmd).is_none() {
                 return;
             }
         }
 
-        if let Some(technique) = &self.materials.get(i).and_then(Handle::get) {
-            if bind_technique {
-                technique.bind(cmd).expect("Failed to bind technique");
-            }
-        } else {
+        let Some(technique) = self.materials.get(i).and_then(Handle::get) else {
+            return;
+        };
+        if bind_technique && technique.bind(cmd).is_err() {
             return;
         }
 
@@ -922,7 +936,7 @@ impl FeatureRenderer for StaticInstancesRenderer {
                     .job_builder("static_geometry")
                     .priority(Priority::High)
                     .spawn(move || {
-                        let cmd = pool_clone.get_command_list(set);
+                        let mut cmd = pool_clone.get_command_list(set);
                         let renderer = Renderer::instance();
                         if let Some(ao_vb) =
                             renderer.ao_buffer.read().as_ref().and_then(|h| h.get())
@@ -942,11 +956,11 @@ impl FeatureRenderer for StaticInstancesRenderer {
                         let group = &groups[i];
                         let model = &models[group.static_index as usize];
                         group.cbuffer.bind_cbuffer(
-                            cmd,
+                            &mut cmd,
                             ShaderStage::Vertex,
                             renderer.globals.scopes.chunk_model.vertex_slot() as u32,
                         );
-                        model.render_all(cmd, stage, group.num_instances);
+                        model.render_all(&mut cmd, stage, group.num_instances);
                     });
 
                 jobs.push(job);
@@ -979,7 +993,7 @@ impl FeatureRenderer for StaticInstancesRenderer {
                 .job_builder("static_geometry")
                 .priority(Priority::High)
                 .spawn(move || {
-                    let cmd = pool_clone.get_command_list(set);
+                    let mut cmd = pool_clone.get_command_list(set);
 
                     let renderer = Renderer::instance();
                     if let Some(ao_vb) = renderer.ao_buffer.read().as_ref().and_then(|h| h.get()) {
@@ -1001,7 +1015,7 @@ impl FeatureRenderer for StaticInstancesRenderer {
                         let model = &models[range.model_index];
 
                         model.render_group(
-                            cmd,
+                            &mut cmd,
                             stage,
                             range.group_index,
                             bind_technique,
@@ -1256,13 +1270,13 @@ impl FeatureRenderer for StaticModelRenderer {
         let renderer = renderer.clone();
         let job = SCHEDULER.job_builder("rigid_model").spawn(move || {
             let self_ref = unsafe { &*(self_p as *const Self) };
-            let cmd = pool.get_command_list(set);
+            let mut cmd = pool.get_command_list(set);
             self_ref.group.cbuffer.bind_cbuffer(
-                cmd,
+                &mut cmd,
                 ShaderStage::Vertex,
                 renderer.globals.scopes.chunk_model.vertex_slot() as u32,
             );
-            self_ref.model.render_all(cmd, stage, 1);
+            self_ref.model.render_all(&mut cmd, stage, 1);
         });
         jobs.push(job);
     }

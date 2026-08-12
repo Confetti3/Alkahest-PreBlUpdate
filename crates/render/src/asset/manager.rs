@@ -298,6 +298,7 @@ fn load_asset(
                     // plausible-looking white material.  A caller may apply an
                     // explicit semantic fallback only after classifying its slot as
                     // optional; until then the causal failure remains observable.
+                    request.handle.fail(error.clone());
                     manager.set_diagnostic(request.tag, kind, AssetLoadState::Failed { error });
                 }
             }
@@ -310,6 +311,7 @@ fn load_asset(
             Err(e) => {
                 let error = format!("{e:#}");
                 error!("Failed to load vertex buffer {}: {error}", request.tag);
+                request.handle.fail(error.clone());
                 manager.set_diagnostic(request.tag, kind, AssetLoadState::Failed { error });
             }
         },
@@ -321,6 +323,7 @@ fn load_asset(
             Err(e) => {
                 let error = format!("{e:#}");
                 error!("Failed to load index buffer {}: {error}", request.tag);
+                request.handle.fail(error.clone());
                 manager.set_diagnostic(request.tag, kind, AssetLoadState::Failed { error });
             }
         },
@@ -341,6 +344,7 @@ fn load_asset(
                         manager.era(),
                         request.tag
                     );
+                    request.handle.fail(error.clone());
                     manager.set_diagnostic(request.tag, kind, AssetLoadState::Failed { error });
                 }
             }

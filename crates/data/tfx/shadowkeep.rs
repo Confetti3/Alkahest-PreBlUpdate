@@ -581,11 +581,15 @@ pub fn parse_shadowkeep_channel_defaults(
     let value_start = value_array_offset + 0x10;
     let auxiliary_start = auxiliary_array_offset + 0x10;
     let channel_hashes = bytes[hash_start..hash_end]
-        .chunks_exact(4)
-        .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|chunk| u32::from_le_bytes(*chunk))
         .collect();
     let values = bytes[value_start..value_end]
-        .chunks_exact(16)
+        .as_chunks::<16>()
+        .0
+        .iter()
         .map(|chunk| {
             Vec4::new(
                 f32::from_le_bytes(chunk[0..4].try_into().unwrap()),
@@ -596,8 +600,10 @@ pub fn parse_shadowkeep_channel_defaults(
         })
         .collect();
     let auxiliary_fields = bytes[auxiliary_start..auxiliary_end]
-        .chunks_exact(4)
-        .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|chunk| u32::from_le_bytes(*chunk))
         .collect();
     let mut interstitial_bytes = Vec::new();
     interstitial_bytes.extend_from_slice(&bytes[ROOT_HEADER_SIZE..hash_array_offset]);

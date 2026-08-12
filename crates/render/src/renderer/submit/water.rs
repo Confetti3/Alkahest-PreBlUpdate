@@ -13,7 +13,7 @@ impl Renderer {
         let _gpuscope = self.profiler.scope(cmd, "water");
         cmd_event_span!(cmd, "water_reflection");
         {
-            let ext = &mut self.externs.get_mut();
+            let ext = &mut self.externs.write();
             ext.deferred.deferred_depth = view.gbuffers.depth_proxy.lock().srv.clone().into();
             ext.view
                 .derive_matrices(self.surfaces().get(view.water.water_uv).resolution());
@@ -32,7 +32,7 @@ impl Renderer {
         );
 
         {
-            let ext = &mut self.externs.get_mut();
+            let ext = &mut self.externs.write();
             ext.postprocess.input = view.water.water_uv.into();
             ext.postprocess.unkc0 = Vec4::new(5.0, 1.0, 1.0, 1.0);
             ext.postprocess.res_for_input = self
@@ -57,7 +57,7 @@ impl Renderer {
         );
 
         {
-            let ext = &mut self.externs.get_mut();
+            let ext = &mut self.externs.write();
             ext.postprocess.input = view.shading_result_read.lock().srv.clone().into();
             ext.postprocess.unk08 = view.water.water_uv_healed.into();
             ext.postprocess.unkc0 = Vec4::new(1.0, 1.0, 1.0, 1.0);
@@ -83,7 +83,7 @@ impl Renderer {
         );
 
         {
-            let ext = &mut self.externs.get_mut();
+            let ext = &mut self.externs.write();
             ext.postprocess.input = view.water.water_reflection.into();
             ext.postprocess.unk08 = view.water.water_reflection_healed.into();
             ext.postprocess.unkc0 = Vec4::new(5.0, 1.0, 1.0, 1.0);
@@ -106,7 +106,7 @@ impl Renderer {
         );
 
         {
-            let ext = &mut self.externs.get_mut();
+            let ext = &mut self.externs.write();
             ext.water.unk00 = view.shading_result_read.lock().srv.clone().into();
             ext.water.unk08 = view.water.water_uv.into();
             ext.water.unk30 = view.water.water_reflection_healed.into();
@@ -118,7 +118,7 @@ impl Renderer {
     fn submit_water_planes(&self, cmd: &mut CommandList, view: &MainView) {
         {
             {
-                let ext = &mut self.externs.get_mut();
+                let ext = &mut self.externs.write();
                 ext.deferred.deferred_depth = view.gbuffers.depth_proxy.lock().srv.clone().into();
                 ext.view
                     .derive_matrices(self.surfaces().get(view.shading_result).resolution());

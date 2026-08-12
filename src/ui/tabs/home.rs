@@ -1,7 +1,4 @@
-use std::{
-    sync::{Arc, LazyLock},
-    time::Instant,
-};
+use std::sync::Arc;
 
 use egui::{Color32, FontId, RichText, TextStyle, Ui, Widget, include_image, vec2};
 use google_material_symbols::GoogleMaterialSymbols;
@@ -22,16 +19,15 @@ pub struct HomeTab;
 
 impl HomeTab {
     pub fn ui(&self, ui: &mut Ui, shared_state: &Arc<SharedState>) -> TabResult {
-        static START_TIME: LazyLock<Instant> = LazyLock::new(Instant::now);
-
         let mut result = TabResult::Continue;
 
         egui::Image::new(include_image!("../../../assets/ui/bg.png")).paint_at(ui, ui.clip_rect());
         egui::Image::new(include_image!("../../../assets/ui/bg_vignette.png"))
-            .tint(Color32::from_white_alpha(
-                (64.0 + 64.0 * (START_TIME.elapsed().as_secs_f32()).sin()) as u8,
-            ))
+            .tint(Color32::from_white_alpha(96))
             .paint_at(ui, ui.clip_rect());
+        for notice in shared_state.startup_notices.lock().iter() {
+            ui.colored_label(Color32::YELLOW, notice);
+        }
 
         if ui
             .d_button(format!("{} TAG INSPECTOR", GoogleMaterialSymbols::Search))
@@ -43,19 +39,15 @@ impl HomeTab {
         }
 
         let renderer_status = shared_state.renderer_status.read().clone();
-        let core_geometry_available =
-            shared_state
-                .renderer_capabilities
-                .read()
-                .iter()
-                .any(|capability| {
-                    capability.name == "Core geometry submission"
-                        && matches!(
-                            capability.state,
-                            alkahest_render::renderer::shadowkeep::CapabilityState::Ready
-                                | alkahest_render::renderer::shadowkeep::CapabilityState::Degraded
-                        )
-                });
+        let core_geometry_available = shared_state.renderer_capabilities.read().iter().any(
+            |capability| {
+                capability.id == alkahest_render::renderer::shadowkeep::CapabilityId::CoreGeometry
+                    && !matches!(
+                        capability.support,
+                        alkahest_render::renderer::shadowkeep::CapabilitySupport::Unsupported { .. }
+                    )
+            },
+        );
         let rendered_tabs_available = renderer_status.is_ready() && core_geometry_available;
 
         ui.add_space(32.0);
@@ -65,7 +57,7 @@ impl HomeTab {
         ui.columns(1, |uis| {
             uis[0].style_mut().text_styles.insert(
                 TextStyle::Button,
-                FontId::new(32.0, egui::FontFamily::Name("Medium".into())),
+                FontId::new(32.0, egui::FontFamily::Proportional),
             );
             // uis[0].heading("3D");
             // uis[0].add_space(4.0);
@@ -140,21 +132,22 @@ impl HomeTab {
             .default_open(false)
             .show(ui, |ui| {
                 for capability in shared_state.renderer_capabilities.read().iter() {
-                    let state = match capability.state {
-                        alkahest_render::renderer::shadowkeep::CapabilityState::Ready => "ready",
-                        alkahest_render::renderer::shadowkeep::CapabilityState::Degraded => {
-                            "degraded"
+                    let state = match &capability.support {
+                        alkahest_render::renderer::shadowkeep::CapabilitySupport::Supported => {
+                            "supported; not exercised"
                         }
-                        alkahest_render::renderer::shadowkeep::CapabilityState::Blocked => {
-                            "blocked"
-                        }
-                        alkahest_render::renderer::shadowkeep::CapabilityState::AbsentInCorpus => {
-                            "absent in corpus"
-                        }
+                        alkahest_render::renderer::shadowkeep::CapabilitySupport::Degraded {
+                            ..
+                        } => "degraded",
+                        alkahest_render::renderer::shadowkeep::CapabilitySupport::Unsupported {
+                            ..
+                        } => "unavailable",
                     };
                     ui.label(format!(
                         "{}: {} — {}",
-                        capability.name, state, capability.evidence
+                        capability.id.display_name(),
+                        state,
+                        capability.evidence
                     ));
                 }
             });

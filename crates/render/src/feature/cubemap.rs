@@ -230,7 +230,7 @@ impl FeatureRenderer for CubemapRenderer {
         let unk19;
         let unk20;
         {
-            let ext = &*Renderer::instance().externs;
+            let ext = Renderer::instance().externs.read();
             let sun_intensity = ext.get_global_channel_by_name("sun_intensity").x; // sun_intensity
             let sun_light_direction = ext.get_global_channel_by_name("sun_light_direction"); // sun_light_direction
             let unk8f552b79 = ext.get_global_channel_by_id(0x8f552b79).x; // ?
@@ -324,7 +324,7 @@ impl FeatureRenderer for CubemapRenderer {
 
         if Renderer::instance().era() == crate::renderer::RendererEra::Shadowkeep {
             let renderer = Renderer::instance();
-            let externs = renderer.externs.get();
+            let externs = renderer.externs.read();
             let view = &externs.view;
             let model_to_world = self.shadowkeep_model_to_world;
             let (_, cubemap_rotation, _) = self.cubemap.unk110.to_scale_rotation_translation();

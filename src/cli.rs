@@ -9,7 +9,7 @@ pub const BUILD_DATE: &str = build_time_utc!("%Y-%m-%d");
 pub const GIT_HASH: &str = env!("GIT_HASH");
 
 #[derive(Parser, Debug, Clone)]
-#[command(author, version, about, long_about = None, disable_version_flag(true))]
+#[command(author, version, about, long_about = None)]
 pub struct AppArgs {
     /// Shadowkeep client directory; its packages child directory will be used.
     #[arg(short, long, global = true, conflicts_with = "packages")]
@@ -33,9 +33,6 @@ pub struct AppArgs {
     /// Open an activity tag in the universal structural inspector at launch.
     #[arg(long)]
     pub open_activity: Option<String>,
-
-    #[arg(long)]
-    pub test_scene: bool,
 
     /// Do not initialize the package-dependent 3D renderer. The catalog and
     /// structural inspector remain available.

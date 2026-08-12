@@ -2,12 +2,12 @@ use std::{collections::BTreeMap, mem::discriminant, rc::Rc, sync::Arc};
 
 use alkahest_render::{Gpu, gpu::command_list::CommandList};
 use anyhow::Context;
-use egui::{Color32, FontId, Margin, vec2};
+use egui::{Color32, FontId};
 use egui_dock::{DockArea, DockState, TabInteractionStyle, TabPath};
 use google_material_symbols::GoogleMaterialSymbols;
 use tabs::{DockStateExt, Tab, TabViewer};
 
-use crate::{app::SharedState, task::Task, ui::util::DButton, updater::AvailableUpdate};
+use crate::app::SharedState;
 
 pub mod bubble_browser;
 pub mod colors;
@@ -27,9 +27,6 @@ pub struct Gui {
     tree: DockState<Tab>,
 
     added_nodes: Vec<Tab>,
-
-    update_check: Task<Option<AvailableUpdate>>,
-    available_update: Option<AvailableUpdate>,
 }
 
 impl Gui {
@@ -40,71 +37,18 @@ impl Gui {
     ) -> anyhow::Result<Self> {
         let mut fonts = egui::FontDefinitions::default();
         fonts.font_data.insert(
-            "NHaasRegular".into(),
-            Arc::new(egui::FontData::from_static(include_bytes!(
-                "../../assets/fonts/NHaasGroteskTXPro-55Rg.otf"
-            ))),
-        );
-        fonts.font_data.insert(
-            "NHaasMedium".into(),
-            Arc::new(egui::FontData::from_static(include_bytes!(
-                "../../assets/fonts/NHaasGroteskTXPro-65Md.otf"
-            ))),
-        );
-        fonts.font_data.insert(
-            "NHaasBold".into(),
-            Arc::new(egui::FontData::from_static(include_bytes!(
-                "../../assets/fonts/NHaasGroteskDSPro-75Bd.otf"
-            ))),
-        );
-        fonts.font_data.insert(
-            "DestinySymbols".into(),
-            Arc::new(egui::FontData::from_static(include_bytes!(
-                "../../assets/fonts/Destiny_Symbols_PC.otf"
-            ))),
-        );
-        fonts.font_data.insert(
             "MaterialSymbolsRounded-Medium".into(),
             Arc::new(egui::FontData::from_static(
                 GoogleMaterialSymbols::FONT_BYTES,
             )),
         );
-        fonts.font_data.insert(
-            "RobotoMono-Regular".into(),
-            Arc::new(egui::FontData::from_static(include_bytes!(
-                "../../assets/fonts/RobotoMono-Regular.ttf"
-            ))),
-        );
-
-        let mut add_with_icons = |family: egui::FontFamily, elements: &[&str]| {
-            for (i, &element) in elements.iter().enumerate() {
-                fonts
-                    .families
-                    .entry(family.clone())
-                    .or_default()
-                    .insert(i, element.to_owned());
-            }
-
-            fonts
-                .families
-                .entry(family.clone())
-                .or_default()
-                .insert(elements.len(), "DestinySymbols".to_owned());
-
+        for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
             fonts
                 .families
                 .entry(family)
                 .or_default()
-                .insert(elements.len(), "MaterialSymbolsRounded-Medium".to_owned());
-        };
-
-        add_with_icons(
-            egui::FontFamily::Proportional,
-            &["NHaasRegular", "NHaasMedium", "NHaasBold"],
-        );
-        add_with_icons(egui::FontFamily::Monospace, &["RobotoMono-Regular"]);
-        add_with_icons(egui::FontFamily::Name("Medium".into()), &["NHaasMedium"]);
-        add_with_icons(egui::FontFamily::Name("Bold".into()), &["NHaasBold"]);
+                .push("MaterialSymbolsRounded-Medium".to_owned());
+        }
 
         let egui_sdl3 =
             egui_sdl3_platform::Platform::new(&sdl, &window, gpu.swapchain_resolution())
@@ -118,7 +62,7 @@ impl Gui {
         let text_styles: BTreeMap<_, _> = [
             (
                 egui::TextStyle::Heading,
-                FontId::new(42.0, egui::FontFamily::Name("Bold".into())),
+                FontId::new(42.0, egui::FontFamily::Proportional),
             ),
             (
                 egui::TextStyle::Body,
@@ -130,7 +74,7 @@ impl Gui {
             ),
             (
                 egui::TextStyle::Button,
-                FontId::new(24.0, egui::FontFamily::Name("Medium".into())),
+                FontId::new(24.0, egui::FontFamily::Proportional),
             ),
             (
                 egui::TextStyle::Small,
@@ -148,7 +92,8 @@ impl Gui {
 
         let mut tree = DockState::new(vec![Tab::Settings, Tab::Home]);
         if let Some((surface, node, tab)) = tree.find_tab(|t| matches!(t, Tab::Home)) {
-            tree.set_active_tab(TabPath::new(surface, node, tab));
+            tree.set_active_tab(TabPath::new(surface, node, tab))
+                .expect("Home tab path came from the same dock tree");
         }
 
         Ok(Self {
@@ -159,12 +104,6 @@ impl Gui {
             egui_sdl3,
             tree,
             added_nodes: Vec::new(),
-
-            // This branch is pinned to a specific upstream revision and is
-            // intended for preserved-client research.  Do not make an
-            // unrequested network call on every launch.
-            update_check: Task::new("update_check_disabled".to_string(), || None),
-            available_update: None,
         })
     }
 
@@ -250,87 +189,13 @@ impl Gui {
                 .tree
                 .find_tab(|t| discriminant(t) == discriminant(&tab) && t.key() == tab.key())
             {
-                self.tree.set_active_tab(TabPath { surface, node, tab });
+                if let Err(error) = self.tree.set_active_tab(TabPath { surface, node, tab }) {
+                    warn!(?error, "Failed to focus existing tab");
+                }
             } else {
                 self.tree.push_to_focused_leaf(tab);
             }
         }
-
-        if let Some(update) = self.update_check.get() {
-            match update {
-                Ok(update) => {
-                    self.available_update = update;
-                }
-                Err(e) => {
-                    error!("Failed to check for update: {:?}", e);
-                }
-            }
-        }
-
-        let mut close_update_window = false;
-        if let Some(update) = self.available_update.as_ref() {
-            egui::Modal::new("update_available".into())
-                .frame(
-                    egui::Frame::popup(&ctx.global_style()).inner_margin(Margin::symmetric(64, 48)),
-                )
-                .show(&ctx, |ui| {
-                    ui.heading("Update available!");
-                    ui.label(format!(
-                        "Release '{}' is available for download",
-                        update.version
-                    ));
-                    ui.separator();
-                    egui::ScrollArea::vertical()
-                        .max_height(ui.ctx().viewport_rect().height() * 0.6)
-                        .show(ui, |ui| {
-                            ui.label(&update.changelog);
-                        });
-
-                    ui.add_space(32.0);
-                    ui.horizontal(|ui| {
-                        if DButton::new(format!("{} Close", GoogleMaterialSymbols::Close))
-                            .padding(vec2(16.0, 6.0))
-                            .ui(ui)
-                            .clicked()
-                        {
-                            close_update_window = true;
-                        }
-
-                        if DButton::new(format!(
-                            "{} Open in Browser",
-                            GoogleMaterialSymbols::OpenInNew
-                        ))
-                        .padding(vec2(16.0, 6.0))
-                        .ui(ui)
-                        .clicked()
-                        {
-                            ctx.open_url(egui::OpenUrl::new_tab(&update.url));
-                        }
-                    });
-                });
-        }
-
-        if close_update_window {
-            self.available_update = None;
-        }
-
-        // {
-        //     let painter = ctx.layer_painter(egui::LayerId::new(
-        //         egui::Order::Foreground,
-        //         egui::Id::new("sodi"),
-        //     ));
-
-        //     painter.text(
-        //         ctx.content_rect().left_bottom() + vec2(24.0, -16.0),
-        //         egui::Align2::LEFT_BOTTOM,
-        //         format!(
-        //             "{} TEST BUILD, DO NOT DISTRIBUTE",
-        //             GoogleMaterialSymbols::Lock
-        //         ),
-        //         egui::FontId::new(48.0, egui::FontFamily::Name("Medium".into())),
-        //         egui::Color32::from_white_alpha(127),
-        //     );
-        // }
 
         let output = self
             .egui_sdl3

@@ -95,7 +95,7 @@ impl Renderer {
             );
         });
         {
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             [
                 ext.postprocess.unkc0,
                 ext.postprocess.unkd0,
@@ -120,7 +120,7 @@ impl Renderer {
             let sky_mask_surf = view.surfaces.get(view.atmosphere.sky_mask_initial);
             let uber_depth_surf = view.surfaces.get(view.gbuffers.uber_depth_half);
             sky_mask_surf.bind_single(cmd);
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.postprocess.input = view.gbuffers.uber_depth_half.into();
             ext.postprocess.res_for_input = uber_depth_surf.resolution_with_recip();
             ext.postprocess.output_res = sky_mask_surf.resolution_with_recip();
@@ -140,7 +140,7 @@ impl Renderer {
             let sky_mask_initial_surf = view.surfaces.get(view.atmosphere.sky_mask_initial);
             let sky_mask_surf = view.surfaces.get(view.atmosphere.sky_mask);
             sky_mask_surf.bind_single(cmd);
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             *ext.postprocess = externs::Postprocess {
                 input: view.atmosphere.sky_mask_initial.into(),
                 res_for_input: sky_mask_initial_surf.resolution_with_recip(),
@@ -213,7 +213,7 @@ impl Renderer {
     fn generate_sky_lookup(self: &Arc<Self>, cmd: &mut CommandList, view: &MainView) {
         {
             let atm = &self.frame_packet.read().misc.atmosphere;
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.atmosphere.unka0 = view.atmosphere.sky_mask.into();
 
             ext.atmosphere.unk40 = atm.atmosphere_lookup_near_0.clone().into();
@@ -236,7 +236,7 @@ impl Renderer {
 
         {
             let atm = &self.frame_packet.read().misc.atmosphere;
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.atmosphere.unk40 = atm.atmosphere_lookup_far_0.clone().into();
             ext.atmosphere.unk58 = atm.atmosphere_lookup_far_1.clone().into();
         }

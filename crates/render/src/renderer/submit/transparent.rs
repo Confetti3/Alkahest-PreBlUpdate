@@ -26,7 +26,7 @@ impl Renderer {
     ) {
         {
             {
-                let ext = &mut self.externs.get_mut();
+                let ext = &mut self.externs.write();
                 ext.deferred.deferred_depth = view.gbuffers.depth_proxy.lock().srv.clone().into();
                 ext.view
                     .derive_matrices(self.surfaces().get(view.shading_result).resolution());
@@ -77,7 +77,7 @@ impl Renderer {
 
             {
                 let distortion = view.surfaces.get(view.lighting.distortion);
-                let externs = &mut self.externs.get_mut();
+                let externs = &mut self.externs.write();
                 externs.view.derive_matrices(distortion.resolution());
                 externs.deferred.deferred_depth = view.gbuffers.uber_depth_half.into();
             }
@@ -103,7 +103,7 @@ impl Renderer {
         // Rebind full resolution depth buffer
         {
             let output = view.surfaces.get(view.output);
-            let externs = &mut self.externs.get_mut();
+            let externs = &mut self.externs.write();
             externs.view.derive_matrices(output.resolution());
             externs.deferred.deferred_depth = view.gbuffers.depth.into();
         }
@@ -127,7 +127,7 @@ impl Renderer {
             .update(cmd, view.surfaces.get(view.shading_result));
 
         {
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.deferred.deferred_depth = view.gbuffers.depth_proxy.lock().srv.clone().into();
             ext.view
                 .derive_matrices(view.surfaces.get(view.shading_result).resolution());
@@ -180,7 +180,7 @@ impl Renderer {
             .update(cmd, view.surfaces.get(view.shading_result));
         {
             let read: TextureView = view.shading_result_read.lock().srv.clone().into();
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.transparent.unk48 = read.clone();
             ext.transparent.unk60 = read;
         }
@@ -221,7 +221,7 @@ impl Renderer {
             .lock()
             .update(cmd, view.surfaces.get(view.shading_result));
         {
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.deferred.deferred_depth = view.gbuffers.depth_proxy.lock().srv.clone().into();
             ext.view
                 .derive_matrices(view.surfaces.get(view.shading_result).resolution());
@@ -260,7 +260,7 @@ impl Renderer {
             .update(cmd, view.surfaces.get(view.shading_result));
         {
             let read: TextureView = view.shading_result_read.lock().srv.clone().into();
-            let ext = self.externs.get_mut();
+            let mut ext = self.externs.write();
             ext.transparent.unk48 = read.clone();
             ext.transparent.unk60 = read;
         }

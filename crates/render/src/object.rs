@@ -92,6 +92,3 @@ impl RenderObject {
         self.renderer.is_loaded()
     }
 }
-
-unsafe impl Send for RenderObject {}
-unsafe impl Sync for RenderObject {}

@@ -102,7 +102,7 @@ impl ActivityTab {
                 .show(ui, |ui| {
                     ui.style_mut().text_styles.insert(
                         TextStyle::Button,
-                        FontId::new(20.0, egui::FontFamily::Name("Medium".into())),
+                        FontId::new(20.0, egui::FontFamily::Proportional),
                     );
                     ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
                     for (i, map) in self.maps.iter_mut().enumerate() {

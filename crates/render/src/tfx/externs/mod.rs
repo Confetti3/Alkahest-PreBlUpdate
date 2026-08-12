@@ -31,6 +31,10 @@ trait Extern {
 
 pub trait ExternAccessor {
     fn get_value_ptr(&self, index: ExternIndex, offset: usize) -> Option<(*const (), TypeId)>;
+
+    fn get_global_channel(&self, _index: usize) -> Option<Vec4> {
+        None
+    }
 }
 
 pub trait ExternAccessorExt {

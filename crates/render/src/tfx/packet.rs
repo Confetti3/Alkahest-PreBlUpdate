@@ -84,14 +84,12 @@ impl FramePacket {
 #[derive(AssertOffsets)]
 pub struct FrameNode {
     pub render_object_handle: RenderObjectHandle,
-    pub data: Box<dyn Any>,
+    pub data: Box<dyn Any + Send + Sync>,
     /// Distance between the main view and the object
     pub distance: f32,
     pub sky_order: Option<ShadowkeepSkyOrder>,
     pub visible: VisibilityMask,
 }
-
-unsafe impl Send for FrameNode {}
 
 #[repr(C)]
 /// Compact representation of a local->world transform

@@ -41,10 +41,7 @@ use crate::{
         externs::Externs, packet::FramePacket, scope::CascadeScope, technique::Technique,
         view::RenderSettings,
     },
-    util::{
-        arena::Arena,
-        threading::{CommandListPool, ThreadMutCell},
-    },
+    util::{arena::Arena, threading::CommandListPool},
 };
 
 const DEBUG_SHADER: &str = include_str!("../builtin/shaders/debug.hlsl");
@@ -66,7 +63,7 @@ pub struct Renderer {
     shadowkeep_atmosphere_pipelines: Option<ShadowkeepAtmospherePipelines>,
     pub immediate: Mutex<ImmediateShapeRenderer>,
     pub debug_text: Mutex<DebugTextRenderer>,
-    pub externs: ThreadMutCell<Externs>,
+    pub externs: RwLock<Externs>,
 
     pub objects: RwLock<Arena<RenderObject>>,
     pub frame_packet: RwLock<FramePacket>,
@@ -101,6 +98,8 @@ pub struct Renderer {
     pub common: CommonResources,
     active_feature_renderers: AtomicCell<FeatureRendererSubscription>,
     shadowkeep_global_lighting_manifest_emitted: AtomicCell<bool>,
+    frame_id: AtomicCell<u64>,
+    pass_observations: RwLock<Vec<shadowkeep::PassObservation>>,
     placeholder_textures:
         RwLock<HashMap<(ExternIndex, u32), (Texture, d3d11::UnorderedAccessView)>>,
 
@@ -207,9 +206,6 @@ impl ShadowkeepSkyState {
         }
     }
 }
-
-unsafe impl Send for Renderer {}
-unsafe impl Sync for Renderer {}
 
 static RENDERER_GLOBAL: OnceLock<Arc<Renderer>> = OnceLock::new();
 impl Renderer {
@@ -344,7 +340,7 @@ impl Renderer {
             externs.default_globals[126] = Vec4::X;
         }
         Ok(Self {
-            externs: ThreadMutCell::new(externs),
+            externs: RwLock::new(externs),
             globals,
             era,
             shadowkeep_input_layouts,
@@ -360,6 +356,8 @@ impl Renderer {
             ao: RwLock::new(None),
             ao_buffer: RwLock::new(None),
             surfaces: RwLock::new(surfaces),
+            frame_id: AtomicCell::new(0),
+            pass_observations: RwLock::new(Vec::new()),
             cmd_pool: CommandListPool::new(&gpu).into(),
             debug_cbuffer: ConstantBuffer::create(&gpu, Some(&Mat4::ZERO))?,
             postprocess_cbuffer: ConstantBuffer::create(&gpu, None)?,
@@ -459,8 +457,8 @@ impl Renderer {
         }
     }
 
-    pub fn resize_swapchain(&self, resolution: (u32, u32)) {
-        self.gpu.resize_swapchain(resolution);
+    pub fn resize_swapchain(&self, resolution: (u32, u32)) -> anyhow::Result<bool> {
+        self.gpu.resize_swapchain(resolution)
     }
 
     pub fn get_extern_placeholder_texture<F>(&self, index: ExternIndex, offset: usize, f: F)
@@ -531,14 +529,24 @@ impl Renderer {
 
 impl Renderer {
     pub fn begin_frame(&self) {
+        self.frame_id.fetch_add(1);
         // self.timestamps.begin_frame();
         self.asset_manager.remove_unreferenced();
     }
 
-    pub fn present_frame(&self, vsync: bool) {
-        self.gpu.present(vsync);
+    pub fn frame_id(&self) -> u64 {
+        self.frame_id.load()
+    }
+
+    pub fn pass_observations(&self) -> Vec<shadowkeep::PassObservation> {
+        self.pass_observations.read().clone()
+    }
+
+    pub fn present_frame(&self, vsync: bool) -> crate::gpu::swapchain::PresentOutcome {
+        let outcome = self.gpu.present(vsync);
         // self.timestamps.collect();
         self.debug_text.lock().clear();
+        outcome
     }
 }
 

@@ -24,7 +24,7 @@ use alkahest_render::{
     util::fps_histogram::FrametimeHistogram,
 };
 use anyhow::Context;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use sdl3::video::Window;
 use tiger_parse::TigerReadable;
 use tiger_pkg::{TagHash, package_manager};
@@ -191,10 +191,6 @@ impl App {
             }
         }
 
-        if args.test_scene {
-            warn!("--test-scene is queued until the Shadowkeep renderer is ready");
-        }
-
         *shared_state.renderer_status.write() = renderer_status.clone();
 
         Ok(Self {
@@ -221,15 +217,17 @@ impl App {
                 self.running = false;
             }
             sdl3::event::Event::Window { win_event, .. } => match win_event {
-                &sdl3::event::WindowEvent::Resized(new_width, new_height) => {
-                    self.gui
-                        .egui_d3d11
-                        .resize_buffers(&self._gpu, || {
-                            self._gpu
-                                .resize_swapchain((new_width as u32, new_height as u32));
-                            Ok(())
-                        })
-                        .ok();
+                &sdl3::event::WindowEvent::Resized(new_width, new_height)
+                    if new_width > 0 && new_height > 0 =>
+                {
+                    if let Err(error) = self.gui.egui_d3d11.resize_buffers(&self._gpu, || {
+                        self._gpu
+                            .resize_swapchain((new_width as u32, new_height as u32))
+                            .map(|_| ())
+                            .map_err(|error| d3d11::Error::InvalidInput(error.to_string()))
+                    }) {
+                        error!(?error, new_width, new_height, "Failed to resize swap chain");
+                    }
                 }
                 sdl3::event::WindowEvent::CloseRequested => {
                     self.running = false;
@@ -263,13 +261,14 @@ impl App {
             self.gui.draw(&mut cmd, &self.shared_state);
         });
 
-        gpu.present(self.shared_state.config.read().vsync);
+        let _present_outcome = gpu.present(self.shared_state.config.read().vsync);
 
-        let config = self.shared_state.config.read();
-        if config.framelimiter_enabled {
-            let target_frame_delta = 1.0 / config.framerate_limit as f32;
-            while self.last_frame_time.elapsed().as_secs_f32() < target_frame_delta {
-                std::hint::spin_loop();
+        let frame_limit = self.shared_state.config.read().framerate_limit;
+        if let Some(limit) = frame_limit {
+            let target_frame_delta = Duration::from_secs_f64(1.0 / f64::from(limit.get()));
+            if let Some(remaining) = target_frame_delta.checked_sub(self.last_frame_time.elapsed())
+            {
+                std::thread::sleep(remaining);
             }
         }
 
@@ -296,10 +295,9 @@ impl App {
 
         match result {
             Ok(Ok(bootstrap)) => {
-                // `ThreadMutCell` intentionally pins renderer mutable state to
-                // the UI/render thread. Bootstrap parsing is background-safe,
-                // but the renderer must be finalized here before a Scene can
-                // submit its first frame.
+                // Bootstrap parsing is background-safe; D3D resource creation
+                // remains on the UI/render thread before the first Scene can
+                // submit a frame.
                 match Renderer::new_shadowkeep(self._gpu.clone(), bootstrap) {
                     Ok(renderer) => {
                         let renderer = Arc::new(renderer);
@@ -348,6 +346,7 @@ pub struct SharedState {
     pub config: RwLock<AppConfig>,
     pub renderer_status: RwLock<RendererStatus>,
     pub renderer_capabilities: RwLock<Vec<alkahest_render::renderer::shadowkeep::CapabilityRecord>>,
+    pub startup_notices: Mutex<Vec<String>>,
 
     /// Investment hash -> Name
     pub activity_names: HashMap<u32, String>,
@@ -405,6 +404,7 @@ impl SharedState {
             renderer_capabilities: RwLock::new(
                 alkahest_render::renderer::shadowkeep::bootstrap_capability_ledger(),
             ),
+            startup_notices: Mutex::new(Vec::new()),
             activity_names: serde_json::from_str(ACTIVITY_NAME_DATA)?,
             activity_hash_to_investment: serde_json::from_str(ACTIVITY_TO_INVESTENT_DATA)?,
             wordlist,
@@ -438,17 +438,34 @@ impl SharedState {
         let config_path = config_relative_path("config.toml");
         if config_path.exists() {
             let config_str = std::fs::read_to_string(&config_path)?;
-            let config: AppConfig = toml::from_str(&config_str)?;
-            *self.config.write() = config;
+            match toml::from_str::<AppConfig>(&config_str) {
+                Ok(mut config) => {
+                    config.normalize();
+                    *self.config.write() = config;
+                }
+                Err(error) => {
+                    let timestamp = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs();
+                    let invalid_path =
+                        config_path.with_file_name(format!("config.invalid.{timestamp}.toml"));
+                    std::fs::rename(&config_path, &invalid_path)?;
+                    self.startup_notices.lock().push(format!(
+                        "Invalid settings were preserved at {}. Defaults are active: {error}",
+                        invalid_path.display()
+                    ));
+                }
+            }
         }
-
         Ok(())
     }
 
     pub fn save_config(&self) -> anyhow::Result<()> {
         let config_path = config_relative_path("config.toml");
-        let config_str = toml::to_string_pretty(&*self.config.read())?;
-        std::fs::write(&config_path, config_str)?;
+        let config = self.config.read();
+        let config_str = toml::to_string_pretty(&*config)?;
+        alkahest_core::atomic_write(&config_path, config_str.as_bytes())?;
 
         Ok(())
     }

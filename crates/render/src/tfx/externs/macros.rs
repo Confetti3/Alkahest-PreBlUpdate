@@ -68,6 +68,10 @@ macro_rules! extern_container {
                     _ => None,
                 }
             }
+
+            fn get_global_channel(&self, index: usize) -> Option<Vec4> {
+                self.globals.get(index).copied()
+            }
         }
 
         impl Externs {
@@ -148,7 +152,7 @@ macro_rules! local_extern_container {
 
         impl ExternAccessor for LocalExterns {
             fn get_value_ptr(&self, index: ExternIndex, offset: usize) -> Option<(*const (), TypeId)> {
-                let base_externs = &crate::renderer::Renderer::instance().externs;
+                let base_externs = crate::renderer::Renderer::instance().externs.read();
                 match index {
                     $(
                         ExternIndex::$t => {
@@ -157,6 +161,13 @@ macro_rules! local_extern_container {
                     )*
                     _ => base_externs.get_value_ptr(index, offset),
                 }
+            }
+
+            fn get_global_channel(&self, index: usize) -> Option<Vec4> {
+                crate::renderer::Renderer::instance()
+                    .externs
+                    .read()
+                    .get_global_channel(index)
             }
         }
     }

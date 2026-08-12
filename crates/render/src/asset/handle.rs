@@ -1,35 +1,36 @@
 use std::{
     any::Any,
-    cell::UnsafeCell,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicUsize},
+        atomic::{AtomicUsize, Ordering},
     },
 };
 
+use parking_lot::RwLock;
 use tiger_pkg::TagHash;
 
 use super::Asset;
 use crate::tfx::technique::Technique;
 
+enum AssetState {
+    Loading,
+    Ready(Arc<dyn Any + Send + Sync>),
+    Failed(Arc<str>),
+}
+
 struct AssetHolder {
-    data: UnsafeCell<Arc<dyn Any + Send + Sync>>,
-    loaded: AtomicBool,
+    state: RwLock<AssetState>,
     ref_count: AtomicUsize,
 }
 
 impl AssetHolder {
     fn new() -> Self {
         Self {
-            data: UnsafeCell::new(Arc::new(())),
-            loaded: AtomicBool::new(false),
+            state: RwLock::new(AssetState::Loading),
             ref_count: AtomicUsize::new(1),
         }
     }
 }
-
-unsafe impl Send for AssetHolder {}
-unsafe impl Sync for AssetHolder {}
 
 pub struct UntypedHandle {
     inner: Arc<AssetHolder>,
@@ -51,7 +52,7 @@ impl UntypedHandle {
     }
 
     pub fn is_loaded(&self) -> bool {
-        self.inner.loaded.load(std::sync::atomic::Ordering::Relaxed)
+        !matches!(*self.inner.state.read(), AssetState::Loading)
     }
 
     /// # Safety
@@ -64,32 +65,46 @@ impl UntypedHandle {
     }
 
     pub fn update<T: Asset + Send + Sync + 'static>(&self, asset: Box<T>) {
-        if self.is_loaded() {
+        let mut state = self.inner.state.write();
+        if !matches!(*state, AssetState::Loading) {
             error!(
-                "Attempted to update already loaded asset handle {}",
+                "Attempted to complete terminal asset handle {} more than once",
                 self.tag
             );
             return;
         }
 
-        unsafe { *self.inner.data.get() = Arc::<T>::from(asset) };
-        self.inner
-            .loaded
-            .store(true, std::sync::atomic::Ordering::Relaxed);
+        *state = AssetState::Ready(Arc::<T>::from(asset));
+    }
+
+    pub fn fail(&self, error: impl Into<Arc<str>>) {
+        let mut state = self.inner.state.write();
+        if !matches!(*state, AssetState::Loading) {
+            error!(
+                "Attempted to complete terminal asset handle {} more than once",
+                self.tag
+            );
+            return;
+        }
+
+        *state = AssetState::Failed(error.into());
+    }
+
+    pub fn failure(&self) -> Option<Arc<str>> {
+        match &*self.inner.state.read() {
+            AssetState::Failed(error) => Some(error.clone()),
+            AssetState::Loading | AssetState::Ready(_) => None,
+        }
     }
 
     pub fn ref_count(&self) -> usize {
-        self.inner
-            .ref_count
-            .load(std::sync::atomic::Ordering::Relaxed)
+        self.inner.ref_count.load(Ordering::Relaxed)
     }
 }
 
 impl Clone for UntypedHandle {
     fn clone(&self) -> Self {
-        self.inner
-            .ref_count
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.inner.ref_count.fetch_add(1, Ordering::Relaxed);
         Self {
             inner: self.inner.clone(),
             tag: self.tag,
@@ -99,9 +114,7 @@ impl Clone for UntypedHandle {
 
 impl Drop for UntypedHandle {
     fn drop(&mut self) {
-        self.inner
-            .ref_count
-            .fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
+        self.inner.ref_count.fetch_sub(1, Ordering::Relaxed);
     }
 }
 
@@ -125,12 +138,10 @@ impl<T: Asset + Sync + Send + 'static> Handle<T> {
     }
 
     pub fn get(&self) -> Option<Arc<T>> {
-        if !self.is_loaded() {
+        let state = self.asset.inner.state.read();
+        let AssetState::Ready(data) = &*state else {
             return None;
-        }
-
-        let data = unsafe { &*self.asset.inner.data.get() };
-        // data.downcast_ref().cloned()
+        };
         Arc::downcast(Arc::clone(data)).ok()
     }
 
@@ -139,17 +150,19 @@ impl<T: Asset + Sync + Send + 'static> Handle<T> {
     where
         F: FnOnce(&T) -> R,
     {
-        if !self.is_loaded() {
+        let state = self.asset.inner.state.read();
+        let AssetState::Ready(data) = &*state else {
             return None;
-        }
-
-        let data = unsafe { &*self.asset.inner.data.get() };
-        let asset = data.downcast_ref::<T>()?;
-        Some(f(asset))
+        };
+        Some(f(data.downcast_ref::<T>()?))
     }
 
     pub fn update(&self, asset: Box<T>) {
         self.asset.update(asset);
+    }
+
+    pub fn failure(&self) -> Option<Arc<str>> {
+        self.asset.failure()
     }
 
     pub fn ref_count(&self) -> usize {
@@ -185,4 +198,45 @@ pub fn is_technique_loaded(handle: &Handle<Technique>) -> bool {
     };
 
     technique.is_loaded()
+}
+
+#[cfg(test)]
+mod tests {
+    use uuid::Uuid;
+
+    use super::{Asset, Handle, UntypedHandle};
+
+    struct TestAsset(u32);
+
+    impl Asset for TestAsset {
+        const ASSET_TYPE: Uuid = Uuid::nil();
+    }
+
+    fn typed(asset: &UntypedHandle) -> Handle<TestAsset> {
+        Handle {
+            asset: asset.clone(),
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    #[test]
+    fn successful_publication_is_terminal_and_typed() {
+        let asset = UntypedHandle::default();
+        asset.update(Box::new(TestAsset(42)));
+
+        assert!(asset.is_loaded());
+        assert_eq!(typed(&asset).get().unwrap().0, 42);
+        assert!(asset.failure().is_none());
+    }
+
+    #[test]
+    fn failed_publication_is_terminal_without_fake_data() {
+        let asset = UntypedHandle::default();
+        asset.fail("decode failed");
+        asset.update(Box::new(TestAsset(42)));
+
+        assert!(asset.is_loaded());
+        assert!(typed(&asset).get().is_none());
+        assert_eq!(asset.failure().as_deref(), Some("decode failed"));
+    }
 }

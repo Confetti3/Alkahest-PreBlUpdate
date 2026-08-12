@@ -296,6 +296,8 @@ pub struct MapLoadProgress {
     cancelled: Arc<AtomicBool>,
 }
 
+const MAX_MAP_LOAD_DIAGNOSTICS: usize = 512;
+
 /// A process-wide catalog discovered exactly once during application startup.
 #[derive(Debug, Clone)]
 pub struct ShadowkeepBubbleCatalogEntry {
@@ -434,7 +436,10 @@ impl MapLoadProgress {
     }
 
     fn diagnostic(&self, message: String) {
-        self.diagnostics.lock().push(message);
+        let mut diagnostics = self.diagnostics.lock();
+        if diagnostics.len() < MAX_MAP_LOAD_DIAGNOSTICS {
+            diagnostics.push(message);
+        }
     }
 }
 

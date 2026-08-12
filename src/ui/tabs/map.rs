@@ -36,6 +36,14 @@ pub struct MapTab {
     shared: Arc<SharedState>,
 }
 
+impl Drop for MapTab {
+    fn drop(&mut self) {
+        if self.load_task.is_some() {
+            self.progress.cancel();
+        }
+    }
+}
+
 impl MapTab {
     pub fn new(tag: TagHash, name: String, shared: &Arc<SharedState>) -> anyhow::Result<Self> {
         Ok(Self {

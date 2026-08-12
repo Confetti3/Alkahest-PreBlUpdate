@@ -39,7 +39,7 @@ impl Renderer {
             if let Some(geo) = geo {
                 let (sync_job, set) = &geo.generate_gbuffer;
                 sync_job.wait();
-                self.cmd_pool.finish(cmd, *set);
+                set.finish(cmd);
             } else {
                 // cmd.state = PipelineState::new(Some(0), Some(2), Some(1), Some(0));
                 // view.gbuffers.bind_depth_only(cmd, self);
@@ -75,7 +75,7 @@ impl Renderer {
             if let Some(geo) = geo {
                 let (sync_job, set) = &geo.decals;
                 sync_job.wait();
-                self.cmd_pool.finish(cmd, *set);
+                set.finish(cmd);
             } else {
                 self.submit_stage(
                     cmd,
@@ -162,7 +162,7 @@ impl Renderer {
             let depth_full_surf = view.surfaces.get(view.gbuffers.depth);
 
             {
-                let hdao = &mut self.externs.get_mut().hdao;
+                let hdao = &mut self.externs.write().hdao;
                 hdao.unk60_source = view.gbuffers.depth_proxy.lock().srv.clone().into();
                 hdao.unk70_dest_res = depth_half_surf.resolution_with_recip();
                 hdao.unk80_source_res = depth_full_surf.resolution_with_recip();
@@ -193,7 +193,7 @@ impl Renderer {
         }
 
         cmd_event_span!(cmd, "[downsample_max_min_avg_no_swizzle]");
-        self.externs.get_mut().downsample_texture_generic = DownsampleTextureGeneric {
+        self.externs.write().downsample_texture_generic = DownsampleTextureGeneric {
             source: view.gbuffers.uber_depth_quarter.into(),
             resolution_dest: view
                 .surfaces

@@ -150,7 +150,7 @@ pub struct Scene {
 fn shadowkeep_sun_state(time_of_day: f32, heading_degrees: f32) -> (Vec4, f32) {
     let day_fraction = (time_of_day / 3600.0).rem_euclid(1.0);
     let hour_angle = (day_fraction - 0.5) * std::f32::consts::TAU;
-    let maximum_elevation = 35.0f32.to_radians();
+    let maximum_elevation = 0.7f32.atan();
     let local_direction = Vec3::new(
         hour_angle.cos() * maximum_elevation.cos(),
         -hour_angle.sin(),
@@ -227,11 +227,12 @@ impl Scene {
         let view_surfaces = view.surfaces().unwrap().clone();
         view_surfaces.set_resolution_scale(shared.config.read().resolution_scale);
         let is_shadowkeep = renderer.era() == RendererEra::Shadowkeep;
+        let global_channels = renderer.externs.read().default_globals;
 
         Ok(Self {
             world: hecs::World::new(),
             view,
-            global_channels: renderer.externs.default_globals,
+            global_channels,
             renderer,
             camera,
             time_of_day: if is_shadowkeep { 1800.0 } else { 1200.0 },
@@ -279,7 +280,12 @@ impl Scene {
     // }
 
     pub fn set_global_channel_by_name(&mut self, name: &str, value: Vec4) {
-        if let Some(index) = self.renderer.externs.get_global_channel_index_by_name(name) {
+        if let Some(index) = self
+            .renderer
+            .externs
+            .read()
+            .get_global_channel_index_by_name(name)
+        {
             self.global_channels[index] = value;
         }
     }
@@ -1073,7 +1079,7 @@ impl Scene {
         self.renderer.frame_packet.write().begin_frame(packet_misc);
         self.renderer
             .externs
-            .get_mut()
+            .write()
             .globals
             .copy_from_slice(&self.global_channels);
 
@@ -1083,7 +1089,7 @@ impl Scene {
             // the renderer's explicit era-specific state remains authoritative.
             self.renderer
                 .externs
-                .get_mut()
+                .write()
                 .set_global_channel_by_name("sun_light_direction", shadowkeep_sun_direction);
         } else if let Some((_, directions)) = self.world.query::<&SunDirections>().iter().next() {
             let time_of_day_half = self.time_of_day / 2.0;
@@ -1103,22 +1109,22 @@ impl Scene {
 
             self.renderer
                 .externs
-                .get_mut()
+                .write()
                 .set_global_channel_by_name("sun_light_direction", sun_direction);
 
             self.renderer
                 .externs
-                .get_mut()
+                .write()
                 .set_global_channel_by_name("sun_atmosphere_direction", atmos_direction);
         } else {
             self.renderer
                 .externs
-                .get_mut()
+                .write()
                 .set_global_channel_by_name("sun_light_direction", manual_sun_direction);
         }
 
         if self.render_mode == RenderMode::Lookdev {
-            self.renderer.externs.get_mut().set_global_channel_by_name(
+            self.renderer.externs.write().set_global_channel_by_name(
                 "sun_light_direction",
                 -self.camera.forward().extend(0.0),
             );
@@ -1130,7 +1136,7 @@ impl Scene {
             s_extract_render_objects(&self.world, &mut fp);
 
             {
-                let ext = self.renderer.externs.get_mut();
+                let mut ext = self.renderer.externs.write();
                 ext.unk_sequencer_values[0] = Vec4::splat(self.time_of_day / 3600.0);
 
                 if self.renderer.era() == RendererEra::Current {
@@ -1150,14 +1156,14 @@ impl Scene {
                 // Fixes III not showing up in the Singularity.
                 self.renderer
                     .externs
-                    .get_mut()
+                    .write()
                     .set_global_channel_by_id(0x2C53817A, Vec4::splat(1.0));
             }
         }
 
         if is_shadowkeep && !self.shadowkeep_sky_channels_logged {
             let channels = {
-                let ext = self.renderer.externs.get();
+                let ext = self.renderer.externs.read();
                 [
                     ("sun_color", ext.try_get_global_channel_by_name("sun_color")),
                     (
@@ -1326,7 +1332,7 @@ impl Scene {
         }
 
         self.global_channels
-            .copy_from_slice(&self.renderer.externs.globals);
+            .copy_from_slice(&self.renderer.externs.read().globals);
 
         // let cmd = self.draw_world(delta_time);
         // self.renderer.gpu.submit_command_list(cmd);
@@ -1369,6 +1375,7 @@ impl Scene {
             .unwrap_or_else(|| {
                 self.renderer
                     .externs
+                    .read()
                     .get_global_channel_by_name("sun_light_direction")
             })
             .xyz();
@@ -1538,9 +1545,10 @@ impl Scene {
         let automated_ids = s_get_all_global_channel_ids(&self.world);
         ui.heading("Global Channels");
         ui.checkbox(&mut self.automate_channels, "Sequencer Automation");
+        let externs = self.renderer.externs.read();
         egui::ScrollArea::vertical().show(ui, |ui| {
             for (i, channel) in self.global_channels.iter_mut().enumerate() {
-                let Some(channel_id) = self.renderer.externs.global_ids.get(i) else {
+                let Some(channel_id) = externs.global_ids.get(i) else {
                     continue;
                 };
                 let is_automated = automated_ids.contains(channel_id) && self.automate_channels;

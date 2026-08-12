@@ -364,8 +364,8 @@ impl FeatureRenderer for DecoratorRenderer {
             .priority(Priority::High)
             .spawn(move || {
                 let self_ref = unsafe { &*(self_p as *const DecoratorRenderer) };
-                let cmd = pool_clone.get_command_list(set);
-                self_ref.submit(cmd, view_index, stage);
+                let mut cmd = pool_clone.get_command_list(set);
+                self_ref.submit(&mut cmd, view_index, stage);
             });
 
         jobs.push(job);

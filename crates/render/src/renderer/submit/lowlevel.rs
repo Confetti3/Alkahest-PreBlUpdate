@@ -12,7 +12,7 @@ use alkahest_data::tfx::{FeatureRendererSubscription, RenderStage};
 use super::Renderer;
 use crate::{
     gpu::{command_list::CommandList, state::GpuState},
-    util::threading::CommandListSetId,
+    util::threading::CommandListLease,
 };
 
 impl Renderer {
@@ -142,14 +142,14 @@ impl Renderer {
         view_index: usize,
         stage: RenderStage,
         mut features: FeatureRendererSubscription,
-    ) -> (JobHandle, CommandListSetId) {
+    ) -> (JobHandle, CommandListLease) {
         features = self.active_feature_renderers.load().intersection(features);
         // if features.is_empty() {
         //     return None;
         // }
         profiling::scope!("submit_stage_parallel", &format!("stage={stage:?}"));
 
-        let cmd_set = unsafe { self.cmd_pool.begin(cmd) };
+        let cmd_set = self.cmd_pool.begin(cmd);
         let mut job_handles = Vec::new();
         for obj in self.frame_packet.read().iter_visible(view_index) {
             if let Some(render_object) = self
@@ -158,7 +158,13 @@ impl Renderer {
                 .get(obj.render_object_handle.into())
                 .filter(|p| p.stages.is_subscribed(stage) && features.is_subscribed(p.feature_type))
             {
-                render_object.submit_parallel(self, view_index, cmd_set, stage, &mut job_handles);
+                render_object.submit_parallel(
+                    self,
+                    view_index,
+                    cmd_set.id(),
+                    stage,
+                    &mut job_handles,
+                );
             }
         }
 
@@ -189,7 +195,7 @@ impl Renderer {
             error!("Deadlock detected: submit_stage_parallel_sync timed out");
         }
 
-        self.cmd_pool.finish(cmd, cmd_set);
+        cmd_set.finish(cmd);
     }
 
     /// Submits the given render stage in parallel using multiple jobs
@@ -209,8 +215,8 @@ impl Renderer {
         features = self.active_feature_renderers.load().intersection(features);
         profiling::scope!("submit_stage_parallel_linear", &format!("stage={stage:?}"));
 
-        let cmd_sets: [CommandListSetId; 3] =
-            std::array::from_fn(|_| unsafe { self.cmd_pool.begin(cmd) });
+        let cmd_leases: [CommandListLease; 3] = std::array::from_fn(|_| self.cmd_pool.begin(cmd));
+        let cmd_sets = cmd_leases.each_ref().map(CommandListLease::id);
         let mut object_handles = Vec::new();
         for obj in self.frame_packet.read().iter_visible(view_index) {
             if self
@@ -248,7 +254,7 @@ impl Renderer {
                 .job_builder("submit_stage_parallel_linear_chunk")
                 .spawn(move || {
                     let cmd_set = cmd_sets[chunk_idx / num_threads];
-                    let cmd = renderer_clone
+                    let mut cmd = renderer_clone
                         .cmd_pool
                         .get_command_list_manual(cmd_set, chunk_idx % num_threads)
                         .expect("Invalid command list index");
@@ -263,7 +269,7 @@ impl Renderer {
                                     && features.is_subscribed(p.feature_type)
                             })
                         {
-                            render_object.submit(cmd, view_index, stage);
+                            render_object.submit(&mut cmd, view_index, stage);
                         }
                     }
                 });
@@ -276,9 +282,9 @@ impl Renderer {
             .spawn(|| {});
         sync_job.wait();
 
-        // CommandListPool::finish executes command lists in linear order
-        for cmd_set in cmd_sets {
-            self.cmd_pool.finish(cmd, cmd_set);
+        // Leases execute command lists in linear order and release every set.
+        for cmd_lease in cmd_leases {
+            cmd_lease.finish(cmd);
         }
     }
 }

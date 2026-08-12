@@ -14,8 +14,9 @@ use d3d11::{
     dxgi::{self, DxgiUsage, ModeDesc, SwapChainDesc},
     sys::{
         Dxgi::{
-            CreateDXGIFactory, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_QUERY_VIDEO_MEMORY_INFO,
-            IDXGIAdapter, IDXGIAdapter3, IDXGIFactory4,
+            CreateDXGIFactory, DXGI_ADAPTER_FLAG_SOFTWARE, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+            DXGI_MEMORY_SEGMENT_GROUP_LOCAL, DXGI_QUERY_VIDEO_MEMORY_INFO, IDXGIAdapter,
+            IDXGIAdapter1, IDXGIAdapter3, IDXGIFactory4, IDXGIFactory6,
         },
         core::Interface,
     },
@@ -65,9 +66,39 @@ impl Gpu {
     ) -> anyhow::Result<Self> {
         let dxgi: IDXGIFactory4 = unsafe { CreateDXGIFactory() }?;
 
-        let hardware = || unsafe {
-            dxgi.EnumAdapters(0)
-                .context("No compatible hardware adapters found")
+        let hardware = || -> anyhow::Result<IDXGIAdapter> {
+            if let Ok(factory6) = dxgi.cast::<IDXGIFactory6>() {
+                for index in 0.. {
+                    let adapter = match unsafe {
+                        factory6.EnumAdapterByGpuPreference::<IDXGIAdapter>(
+                            index,
+                            DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+                        )
+                    } {
+                        Ok(adapter) => adapter,
+                        Err(_) => break,
+                    };
+                    let adapter1 = adapter.cast::<IDXGIAdapter1>()?;
+                    if unsafe { adapter1.GetDesc1()? }.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32
+                        == 0
+                    {
+                        return Ok(adapter);
+                    }
+                }
+            }
+
+            for index in 0.. {
+                let adapter = match unsafe { dxgi.EnumAdapters(index) } {
+                    Ok(adapter) => adapter,
+                    Err(_) => break,
+                };
+                let adapter1 = adapter.cast::<IDXGIAdapter1>()?;
+                if unsafe { adapter1.GetDesc1()? }.Flags & DXGI_ADAPTER_FLAG_SOFTWARE.0 as u32 == 0
+                {
+                    return Ok(adapter);
+                }
+            }
+            anyhow::bail!("No compatible hardware adapters found")
         };
         let warp = || unsafe {
             dxgi.EnumWarpAdapter()
@@ -75,19 +106,10 @@ impl Gpu {
         };
 
         match preference {
-            AdapterPreference::Hardware => Self::create_with_adapter(window, hardware()?),
+            AdapterPreference::Auto | AdapterPreference::Hardware => {
+                Self::create_with_adapter(window, hardware()?)
+            }
             AdapterPreference::Warp => Self::create_with_adapter(window, warp()?),
-            AdapterPreference::Auto => match hardware().and_then(|adapter| {
-                Self::create_with_adapter(window, adapter)
-                    .context("Hardware adapter could not create the GUI platform")
-            }) {
-                Ok(gpu) => Ok(gpu),
-                Err(hardware_error) => {
-                    warn!("Hardware GPU initialization failed; trying WARP: {hardware_error:#}");
-                    Self::create_with_adapter(window, warp()?)
-                        .context("Both hardware and WARP GUI platform creation failed")
-                }
-            },
         }
     }
 
@@ -122,11 +144,11 @@ impl Gpu {
             &SwapChainDesc::builder()
                 .buffer_desc(
                     ModeDesc::builder()
-                        .format(dxgi::Format::R8g8b8a8Unorm)
+                        .format(swapchain::SWAPCHAIN_FORMAT)
                         .build(),
                 )
                 .buffer_usage(DxgiUsage::RENDER_TARGET_OUTPUT)
-                .buffer_count(2)
+                .buffer_count(swapchain::BUFFER_COUNT)
                 .swap_effect(dxgi::SwapEffect::FlipDiscard)
                 .build(),
         )
@@ -193,7 +215,10 @@ impl Gpu {
                 false,
             )?,
             adapter: adapter3,
-            swapchain: Mutex::new(Swapchain::new(swap_chain, &device, window_size)),
+            swapchain: Mutex::new(
+                Swapchain::new(swap_chain, &device, window_size)
+                    .context("Creating swap-chain target")?,
+            ),
             global_states: global_state::RenderStates::new(&device)
                 .context("Failed to create global render states")?,
             device,
@@ -222,8 +247,8 @@ impl Gpu {
 // Swapchain management
 impl Gpu {
     #[profiling::function]
-    pub fn present(&self, vsync: bool) {
-        self.swapchain.lock().present(vsync);
+    pub fn present(&self, vsync: bool) -> swapchain::PresentOutcome {
+        self.swapchain.lock().present(vsync)
     }
 
     pub fn acquire_rtv(&self) -> d3d11::RenderTargetView {
@@ -240,8 +265,8 @@ impl Gpu {
     }
 
     #[profiling::function]
-    pub fn resize_swapchain(&self, size: (u32, u32)) {
-        self.swapchain.lock().resize(&self.device, size);
+    pub fn resize_swapchain(&self, size: (u32, u32)) -> anyhow::Result<bool> {
+        self.swapchain.lock().resize(&self.device, size)
     }
 }
 

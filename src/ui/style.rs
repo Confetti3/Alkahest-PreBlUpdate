@@ -12,6 +12,8 @@ pub fn gui_style() -> Style {
         },
         spacing: Spacing {
             item_spacing: egui::vec2(16.0, 8.0),
+            interact_size: egui::vec2(40.0, 40.0),
+            button_padding: egui::vec2(16.0, 10.0),
             ..Default::default()
         },
         interaction: Interaction {

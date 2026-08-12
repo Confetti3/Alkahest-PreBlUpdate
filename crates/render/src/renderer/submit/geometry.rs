@@ -9,15 +9,15 @@ use crate::{
     Renderer, cmd_event_span,
     gpu::command_list::CommandList,
     tfx::view::{MainView, View},
-    util::threading::CommandListSetId,
+    util::threading::CommandListLease,
 };
 
 pub struct GeometryCommandLists {
-    pub generate_gbuffer: (JobHandle, CommandListSetId),
-    pub decals: (JobHandle, CommandListSetId),
-    pub lighting: (JobHandle, CommandListSetId),
-    // pub transparent: (JobHandle, CommandListSetId),
-    // pub volumetrics: (JobHandle, CommandListSetId),
+    pub generate_gbuffer: (JobHandle, CommandListLease),
+    pub decals: (JobHandle, CommandListLease),
+    pub lighting: (JobHandle, CommandListLease),
+    // pub transparent: (JobHandle, CommandListLease),
+    // pub volumetrics: (JobHandle, CommandListLease),
 }
 
 impl Renderer {

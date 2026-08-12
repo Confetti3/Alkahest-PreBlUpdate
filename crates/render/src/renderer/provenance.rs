@@ -298,7 +298,7 @@ pub fn record_shadowkeep_sky_technique_dependency(
     }
 
     let renderer = Renderer::instance();
-    let externs = renderer.externs.get();
+    let externs = renderer.externs.read();
     let global_channel_hashes = &renderer.globals.channels.channel_ids;
     let global_channel_values = &externs.globals;
     let legacy_technique = package_manager()

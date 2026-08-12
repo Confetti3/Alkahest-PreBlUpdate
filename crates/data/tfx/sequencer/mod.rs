@@ -5,7 +5,7 @@ use tiger_parse::{
 };
 use tiger_pkg::TagHash;
 
-use crate::tag::{OptionalTag, Tag, WideHash};
+use crate::tag::{OptionalTag, WideHash};
 
 #[derive(Debug, Clone)]
 #[tiger_type(id = 0x80808179, size = 0x220)]

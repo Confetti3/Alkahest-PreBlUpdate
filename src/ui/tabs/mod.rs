@@ -10,7 +10,6 @@ pub mod sequence_list;
 pub mod settings;
 pub mod static_list;
 pub mod tag_lookup;
-pub mod test_scene;
 
 use std::{fmt::Display, sync::Arc};
 
@@ -26,7 +25,7 @@ use tag_lookup::TagLookupTab;
 
 use crate::ui::tabs::{
     activity::ActivityTab, activity_list::ActivityListTab, sequence_list::SequenceListTab,
-    settings::SettingsTab, static_list::StaticListTab, test_scene::TestSceneTab,
+    settings::SettingsTab, static_list::StaticListTab,
 };
 
 pub enum Tab {
@@ -39,7 +38,6 @@ pub enum Tab {
     Map(MapTab),
     ActivityList(ActivityListTab),
     Activity(ActivityTab),
-    TestScene(TestSceneTab),
     TagLookup(TagLookupTab),
     Inspector(InspectorTab),
 }
@@ -61,7 +59,6 @@ impl Tab {
             Tab::Map(tab) => tab.tag.0 as u64,
             Tab::ActivityList(_) => 0,
             Tab::Activity(tab) => tab.tag.0 as u64,
-            Tab::TestScene(_) => 0,
             Tab::TagLookup(_) => 0,
             Tab::Inspector(tab) => tab.tag.0 as u64,
         }
@@ -82,7 +79,6 @@ impl Display for Tab {
                 format!("{} Activities", GoogleMaterialSymbols::StadiaController)
             }
             Tab::Activity(tab) => format!("{} ({})", tab.name, tab.tag),
-            Tab::TestScene(_) => format!("{} Test Scene", GoogleMaterialSymbols::Experiment),
             Tab::TagLookup(_) => format!("{} Tag Lookup", GoogleMaterialSymbols::Search),
             Tab::Inspector(tab) => format!("{} {}", GoogleMaterialSymbols::DataObject, tab.tag),
         };
@@ -143,9 +139,6 @@ impl<'a> egui_dock::TabViewer for TabViewer<'a> {
                         self.process_result(res);
                     }
                     Tab::Activity(tab) => {
-                        tab.ui(ui, self.egui_d3d11);
-                    }
-                    Tab::TestScene(tab) => {
                         tab.ui(ui, self.egui_d3d11);
                     }
                     Tab::TagLookup(data) => {
