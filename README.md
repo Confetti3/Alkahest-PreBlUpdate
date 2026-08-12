@@ -1,25 +1,134 @@
-# Alkahest
+<p align="center">
+  <img src="assets/promotion/project-sunrise-hero.webp" alt="Project Sunrise — Unvaulted Exploration Mode" width="100%">
+</p>
 
-## Build and production controls
+# Project Sunrise — Alkahest Pre-BL
 
-The normal Windows build avoids proprietary audio SDKs:
+Alkahest Pre-BL is a Windows desktop map viewer and research renderer for
+user-supplied Destiny 2 Shadowkeep / Season of Arrivals package files. It lets
+you browse preserved destinations, open map bubbles, move through scenes, and
+inspect the resources used to build them.
+
+This project is under active development. Rendering can be incomplete, and
+some maps or visual effects may not yet match the original game.
+
+## Installation
+
+### Requirements
+
+- 64-bit Windows 10 or Windows 11.
+- A Direct3D 11-capable graphics adapter with current drivers.
+- Your own legally obtained, preserved Destiny 2 Shadowkeep / Season of
+  Arrivals client files. Current live-game packages are not supported.
+
+### Install a release build
+
+1. Open the
+   [Project Sunrise releases page](https://github.com/Confetti3/Alkahest-Sunrise/releases)
+   and download the latest `alkahest-prebl-*-windows-x64.zip` archive.
+2. Optionally download `SHA256SUMS` from the same release and verify the
+   archive as described in [Release verification](#release-verification).
+3. Extract the entire archive to a writable folder. Keep
+   `alkahest-prebl.exe` and `SDL3.dll` together.
+4. Run `alkahest-prebl.exe`.
+5. At the first-launch prompt, select either:
+   - the preserved client folder that contains a `packages` subfolder; or
+   - the `packages` folder itself.
+6. Use the map browser to select a destination bubble and open it.
+
+The selected package location is remembered for later launches. Game data is
+read from that location and is not copied into the application folder.
+
+To update, close the application and replace the extracted program files with
+those from the newer release. User settings are stored separately under
+`%LOCALAPPDATA%\cohae\alkahest-prebl`.
+
+> If the releases page does not contain a published archive, there is not yet
+> a public user build. Do not download unofficial bundles or copies containing
+> redistributed game data.
+
+### Troubleshooting
+
+- Confirm that the selected folder belongs to the preserved Shadowkeep /
+  Season of Arrivals client, not the current Destiny 2 installation.
+- Extract the complete archive; launching the executable without its bundled
+  `SDL3.dll` will fail.
+- Update the graphics driver if Direct3D 11 initialization fails.
+- Startup and renderer diagnostics are written to
+  `%LOCALAPPDATA%\cohae\alkahest-prebl\data\alkahest-prebl.log`.
+- When reporting a problem, include the application version, map or bubble
+  identifier, GPU model, and the relevant log.
+
+## Build from source
+
+Developer builds require the Rust toolchain pinned by `rust-toolchain.toml`.
+From a PowerShell prompt in the repository:
 
 ```powershell
-cargo +nightly build --release -p alkahest --bin alkahest-prebl --no-default-features
+rustup show
+cargo build --profile dist --locked --no-default-features --bin alkahest-prebl
 ```
+
+The executable and bundled `SDL3.dll` are written to `target\dist`.
 
 Wwise support is opt-in (`--features wwise`) and requires its locally installed
 SDK; `crates/rrise` is intentionally excluded from workspace-wide checks.
 
-Shadowkeep diagnostics are off by default. In particular, environment census,
-sky diagnostics, sky-object A/B capture, buffer provenance, and global-lighting
-dependency manifests run only after their corresponding `render.shadowkeep_*`
-diagnostic convar is explicitly enabled. Normal launches do not write captures,
-hash surfaces, or disassemble package resources.
+Shadowkeep diagnostics are off by default. Environment census, sky diagnostics,
+sky-object A/B capture, buffer provenance, and global-lighting dependency
+manifests run only after their corresponding `render.shadowkeep_*` diagnostic
+convar is explicitly enabled.
 
-The `prebl-modern` Windows CI workflow verifies formatting, checks the
-workspace without Wwise, builds the release application without Wwise, and runs
-the deterministic Shadowkeep environment-selector tests.
+The `prebl-modern` Windows CI workflow verifies formatting, checks, Clippy,
+tests, and the distribution build. Signed `v0.7.*` tags additionally require
+tag verification, package smoke testing, SHA-256 checksums, an SPDX SBOM, and
+GitHub artifact provenance before a draft release is created.
+
+## Project and artwork
+
+<p align="center">
+  <img src="assets/promotion/project-sunrise-dark.webp" alt="Project Sunrise title artwork" width="100%">
+</p>
+
+- **Parent project:** [Destiny 2 Shadowkeep Single Player Exploration Mode](https://github.com/stanuwu/d2-prebl-explorer-info)
+  by [stanuwu](https://github.com/stanuwu).
+- **Promotional identity and artwork:** Solus —
+  [YouTube](https://youtube.com/@solus-yt) ·
+  [X / Twitter](https://x.com/solus_yt).
+- **Renderer foundation:** [Alkahest](https://github.com/cohaereo/alkahest)
+  and its contributors.
+
+## Data and affiliation
+
+Alkahest Pre-BL distributes no Bungie game data. Users must supply their own
+legally obtained Destiny 2 Shadowkeep / pre-Beyond Light package corpus. The
+project is independent and is not affiliated with, endorsed by, or sponsored
+by Bungie, Inc.
+
+## Release verification
+
+Each release candidate includes `SHA256SUMS`, `alkahest-prebl.spdx.json`, and a
+GitHub artifact attestation.
+
+To verify the downloaded archive checksum in PowerShell, compare this result
+with the matching entry in `SHA256SUMS`:
+
+```powershell
+Get-FileHash .\alkahest-prebl-v0.7.0-windows-x64.zip -Algorithm SHA256
+```
+
+With the [GitHub CLI](https://cli.github.com/) installed, verify its build
+provenance with:
+
+```powershell
+gh attestation verify .\alkahest-prebl-v0.7.0-windows-x64.zip --repo Confetti3/Alkahest-Sunrise
+```
+
+Replace the example version in both commands with the downloaded release
+version.
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for redistributed
+components and licensing.
 
 ## Resources
 
