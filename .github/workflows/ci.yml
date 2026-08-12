@@ -14,6 +14,7 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  LIB: ${{ github.workspace }}\lib
 
 jobs:
   format:
@@ -69,3 +70,16 @@ jobs:
       - run: cargo build --profile dist --locked --no-default-features --bin alkahest-prebl
       - run: Copy-Item lib\SDL3.dll target\dist\SDL3.dll
       - run: target\dist\alkahest-prebl.exe --version
+      - name: Assemble test build
+        if: github.ref == 'refs/heads/main'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory target\package
+          Copy-Item target\dist\alkahest-prebl.exe,target\dist\SDL3.dll,LICENSE,THIRD_PARTY_NOTICES.md target\package\
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: github.ref == 'refs/heads/main'
+        with:
+          name: alkahest-sunrise-windows-x64-${{ github.sha }}
+          path: target/package
+          if-no-files-found: error
+          retention-days: 14

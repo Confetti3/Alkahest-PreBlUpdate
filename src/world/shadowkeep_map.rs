@@ -2878,7 +2878,7 @@ pub fn load_shadowkeep_map_into_world(
                 report.sky_object_color_stage_mask |= color_stages.bits();
                 report.sky_object_deferred_stage_mask |= deferred_stages.bits();
                 if !deferred_stages.is_empty() {
-                    tracing::info!(
+                    tracing::debug!(
                         collection = %collection_tag,
                         model = %model_tag,
                         deferred_stage_mask = format_args!("0x{:08X}", deferred_stages.bits()),
@@ -2933,7 +2933,7 @@ pub fn load_shadowkeep_map_into_world(
                 progress
                     .visual_resources_loaded
                     .fetch_add(1, Ordering::Relaxed);
-                tracing::info!(
+                tracing::debug!(
                     collection = %collection_tag,
                     origin = candidate.sources.label(),
                     index,
@@ -2995,7 +2995,25 @@ pub fn load_shadowkeep_map_into_world(
     .reduce(|left, right| left.union(&right));
     report.inspection = inspection.finalize();
     report.inspection.validate(&world)?;
-    debug_assert!(report.entity_resource_accounting_is_complete());
+    if !report.entity_resource_accounting_is_complete() {
+        tracing::error!(
+            entity_resource_class_counts = ?report.entity_resource_class_counts,
+            loaded_entity_resource_classes = ?report.loaded_entity_resource_classes,
+            deferred_entity_resource_classes = ?report.deferred_entity_resource_classes,
+            failed_entity_resource_classes = ?report.failed_entity_resource_classes,
+            "Shadowkeep entity-resource accounting is incomplete"
+        );
+        report.diagnostic(
+            progress,
+            MapLoadDiagnostic {
+                table: tag,
+                entry_offset: 0,
+                resource_class: 0,
+                error: "internal entity-resource accounting is incomplete; the map was retained"
+                    .to_owned(),
+            },
+        );
+    }
     tracing::info!(
         map = %tag,
         scenario = ?report.scenario,

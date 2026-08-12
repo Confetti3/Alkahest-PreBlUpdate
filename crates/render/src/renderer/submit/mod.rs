@@ -1143,6 +1143,7 @@ impl Renderer {
                 let sky_illumination = 0.03 + 0.97 * daylight;
                 let externs = self.externs.read();
                 let target_pixel_to_world = externs.view.target_pixel_to_world;
+                let camera_position = externs.view.position;
                 let sky_state = ShadowkeepSkyState::from_externs(&externs);
                 let include_sun = debug_pipeline.is_none_or(|pipeline| pipeline.has_sun());
                 let sun_color = if include_sun {
@@ -1155,7 +1156,7 @@ impl Renderer {
                         cmd,
                         &ShadowkeepSkyConstants {
                             target_pixel_to_world,
-                            camera_position: self.externs.read().view.position,
+                            camera_position,
                             sun_direction,
                             zenith_color: sky_state.zenith * sky_illumination,
                             horizon_color: sky_state.horizon * sky_illumination,
@@ -2438,7 +2439,8 @@ impl Renderer {
     fn prepare_externs(&self, cmd: &mut CommandList, view: &View) {
         let fb_res = view.framebuffer_resolution();
 
-        let misc = &self.frame_packet.read().misc;
+        let frame_packet = self.frame_packet.read();
+        let misc = &frame_packet.misc;
 
         // let cam_view = Mat4::from_cols(
         //     [-0.962532818, -0.027713167, -0.269745320, 0.000000000].into(),
@@ -2647,6 +2649,11 @@ impl Renderer {
             ext.atmosphere.unk1e8 = ext.get_global_channel_by_id(0xe685c537).x;
             ext.atmosphere.unk1ec = ext.get_global_channel_by_id(0xe4a1bf60).x;
         }
+        // Release both frame-state guards before helpers reacquire them below.
+        // parking_lot locks are not reentrant; retaining `ext` here deadlocks
+        // the first rendered frame after a map finishes loading.
+        drop(ext);
+        drop(frame_packet);
 
         // The current fixed 37-register transparent setup belongs to the
         // post-BL scope layout. Shadowkeep owns a shorter, differently laid
@@ -2747,8 +2754,9 @@ impl Renderer {
 
     fn prepare_main_view_externs(&self, view: &MainView) {
         let fb_res = view.surfaces.framebuffer_resolution();
+        let frame_packet = self.frame_packet.read();
+        let misc = &frame_packet.misc;
         let mut ext = self.externs.write();
-        let misc = &self.frame_packet.read().misc;
 
         // ext.deferred.gbuffer_resolution_scale_offset =
         //     vec4(fb_res.0 as f32, fb_res.1 as f32, 0.0, 0.0);
