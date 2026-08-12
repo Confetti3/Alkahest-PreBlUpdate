@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="assets/promotion/project-sunrise-hero.webp" alt="Project Sunrise — Unvaulted Exploration Mode" width="100%">
+  <img src="assets/promotion/project-sunrise-hero.webp" alt="Alkahest Sunrise — Unvaulted Exploration Mode" width="100%">
 </p>
 
-# Project Sunrise — Alkahest Pre-BL
-> **This repository is a fork of [Alkahest](https://github.com/cohaereo/alkahest), created by [cohaereo](https://github.com/cohaereo/cohaereo) with the work of [Alkahest's contributors](https://github.com/cohaereo/alkahest/graphs/contributors). Project Sunrise would not exist without their original architecture, renderer, tooling, and years of work. This fork builds on that foundation for preserved Shadowkeep / Season of Arrivals package support.**
+# Alkahest Sunrise — Alkahest Pre-BL
+> **This repository is a fork of [Alkahest](https://github.com/cohaereo/alkahest), created by [cohaereo](https://github.com/cohaereo/cohaereo) with the work of [Alkahest's contributors](https://github.com/cohaereo/alkahest/graphs/contributors). Alkahest Sunrise would not exist without their original architecture, renderer, tooling, and years of work. This fork builds on that foundation for preserved Shadowkeep / Season of Arrivals package support.**
 
 
 Alkahest Pre-BL is a Windows desktop map viewer and research renderer for
@@ -26,7 +26,7 @@ some maps or visual effects may not yet match the original game.
 ### Install a release build
 
 1. Open the
-   [Project Sunrise releases page](https://github.com/Confetti3/Alkahest-Sunrise/releases)
+   [Alkahest Sunrise releases page](https://github.com/Confetti3/Alkahest-Sunrise/releases)
    and download the latest `alkahest-prebl-*-windows-x64.zip` archive.
 2. Optionally download `SHA256SUMS` from the same release and verify the
    archive as described in [Release verification](#release-verification).
@@ -89,7 +89,7 @@ GitHub artifact provenance before a draft release is created.
 ## Project and artwork
 
 <p align="center">
-  <img src="assets/promotion/project-sunrise-dark.webp" alt="Project Sunrise title artwork" width="100%">
+  <img src="assets/promotion/project-sunrise-dark.webp" alt="Alkahest Sunrise title artwork" width="100%">
 </p>
 
 - **Parent project:** [Destiny 2 Shadowkeep Single Player Exploration Mode](https://github.com/stanuwu/d2-prebl-explorer-info)
@@ -100,7 +100,7 @@ GitHub artifact provenance before a draft release is created.
 - **Upstream authors and renderer foundation:** [cohaereo](https://github.com/cohaereo/cohaereo),
   creator of [Alkahest](https://github.com/cohaereo/alkahest), and
   [Alkahest's contributors](https://github.com/cohaereo/alkahest/graphs/contributors).
-  Project Sunrise is a fork and would not exist without their work.
+  Alkahest Sunrise is a fork and would not exist without their work.
 
 ## Data and affiliation
 
