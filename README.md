@@ -110,7 +110,7 @@ With the [GitHub CLI](https://cli.github.com/) installed, verify its build
 provenance with:
 
 ```powershell
-gh attestation verify .\alkahest-prebl-v0.7.0-windows-x64.zip --repo Confetti3/Alkahest-Sunrise
+gh attestation verify .\alkahest-prebl-v0.7.0-windows-x64.zip --repo Confetti3/Alkahest-PreBlUpdate
 ```
 
 Replace the example version in both commands with the downloaded release
