@@ -28,7 +28,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory target/package
-          Copy-Item target/dist/alkahest-prebl.exe,target/dist/SDL3.dll,LICENSE target/package/
+          Copy-Item target/dist/alkahest-prebl.exe,target/dist/SDL3.dll,wordlist.txt,LICENSE target/package/
           target/package/alkahest-prebl.exe --version
           Compress-Archive target/package/* "target/alkahest-prebl-$env:GITHUB_REF_NAME-windows-x64.zip"
           Get-FileHash target/*.zip -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $([IO.Path]::GetFileName($_.Path))" } | Set-Content target/SHA256SUMS

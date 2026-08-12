@@ -75,7 +75,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory target\package
-          Copy-Item target\dist\alkahest-prebl.exe,target\dist\SDL3.dll,LICENSE,THIRD_PARTY_NOTICES.md target\package\
+          Copy-Item target\dist\alkahest-prebl.exe,target\dist\SDL3.dll,wordlist.txt,LICENSE,THIRD_PARTY_NOTICES.md target\package\
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: github.ref == 'refs/heads/main'
         with:

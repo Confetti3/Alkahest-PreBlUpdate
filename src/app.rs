@@ -5,6 +5,7 @@
 use std::{
     collections::hash_map::Entry,
     io::{Cursor, Seek},
+    path::{Path, PathBuf},
     rc::Rc,
     str::FromStr,
     sync::Arc,
@@ -38,6 +39,59 @@ use crate::{
         tabs::{Tab, inspector::InspectorTab},
     },
 };
+
+fn parse_wordlist(contents: &str) -> HashMap<u32, String> {
+    contents
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| (fnv1(line), line.to_owned()))
+        .collect()
+}
+
+fn wordlist_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::with_capacity(3);
+    if let Ok(executable) = std::env::current_exe()
+        && let Some(directory) = executable.parent()
+    {
+        candidates.push(directory.join("wordlist.txt"));
+    }
+    if let Ok(directory) = std::env::current_dir() {
+        candidates.push(directory.join("wordlist.txt"));
+    }
+    candidates.push(Path::new(env!("CARGO_MANIFEST_DIR")).join("wordlist.txt"));
+    candidates.dedup();
+    candidates
+}
+
+fn load_wordlist_from(candidates: &[PathBuf]) -> anyhow::Result<HashMap<u32, String>> {
+    for path in candidates {
+        if !path.is_file() {
+            continue;
+        }
+        let contents = std::fs::read_to_string(path)
+            .with_context(|| format!("Reading wordlist {}", path.display()))?;
+        let wordlist = parse_wordlist(&contents);
+        info!(
+            path = %path.display(),
+            entries = wordlist.len(),
+            "Loaded internal-name wordlist"
+        );
+        return Ok(wordlist);
+    }
+
+    anyhow::bail!(
+        "Internal-name wordlist was not found; checked {}",
+        candidates
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
+}
+
+fn load_wordlist() -> anyhow::Result<HashMap<u32, String>> {
+    load_wordlist_from(&wordlist_candidates())
+}
 
 pub struct App {
     pub sdl: Rc<sdl3::Sdl>,
@@ -390,11 +444,7 @@ impl SharedState {
         const ACTIVITY_TO_INVESTENT_DATA: &str =
             include_str!("../assets/data/activity_to_investment.json");
 
-        let mut wordlist = HashMap::default();
-        let wordlist_file = std::fs::read_to_string("wordlist.txt").unwrap_or_default();
-        for line in wordlist_file.lines() {
-            wordlist.insert(fnv1(line), line.to_string());
-        }
+        let wordlist = load_wordlist().context("Loading internal development names")?;
 
         let mut s = Self {
             strings: StringContainer::load_all_global().into(),
@@ -495,5 +545,31 @@ impl SharedState {
             .get(&hash)
             .cloned()
             .unwrap_or_else(|| format!("unk{hash:08X}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wordlist_loader_uses_later_existing_candidate() {
+        let directory = std::env::temp_dir().join(format!(
+            "alkahest-wordlist-{}-{}",
+            std::process::id(),
+            fastrand::u64(..)
+        ));
+        std::fs::create_dir_all(&directory).unwrap();
+        let wordlist_path = directory.join("wordlist.txt");
+        std::fs::write(&wordlist_path, "port\nalleys_a\n").unwrap();
+
+        let wordlist = load_wordlist_from(&[directory.join("missing.txt"), wordlist_path]).unwrap();
+
+        assert_eq!(wordlist.get(&0x5FE2_8198).map(String::as_str), Some("port"));
+        assert_eq!(
+            wordlist.get(&fnv1("alleys_a")).map(String::as_str),
+            Some("alleys_a")
+        );
+        std::fs::remove_dir_all(directory).unwrap();
     }
 }
