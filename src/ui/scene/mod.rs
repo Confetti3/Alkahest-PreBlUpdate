@@ -238,7 +238,7 @@ impl Scene {
             time_of_day: if is_shadowkeep { 1800.0 } else { 1200.0 },
             time_scale: 1.0,
             animate_time_of_day: true,
-            diagnostic_freeze: true,
+            diagnostic_freeze: false,
             camera_input_while_frozen: false,
             frozen_render_time: 0.0,
             sun_light_angle: 60f32,
