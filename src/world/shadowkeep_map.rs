@@ -17,7 +17,7 @@ use std::{
 
 use alkahest_core::ConVars;
 use alkahest_data::{
-    map::{ComponentData, SMapNodeTable, SRespawnPointsComponent},
+    map::{ComponentData, SAudioPointComponent, SMapNodeTable, SRespawnPointsComponent},
     shadowkeep::{
         SShadowkeepBubbleDefinition, SShadowkeepBubbleParent, SShadowkeepCubemapPlacement,
         SShadowkeepDynamicModel, SShadowkeepEntity, SShadowkeepEntityResource,
@@ -25,6 +25,7 @@ use alkahest_data::{
         SShadowkeepRigidModelComponent, SShadowkeepShadowingLight, SShadowkeepSkyObjectCollection,
         SShadowkeepStaticPlacement, SShadowkeepTerrainPlacement, SShadowkeepTextureHeader,
     },
+    tag::WideHash,
     tfx::{
         RenderStage, TfxFeatureRenderer, atmosphere::SShadowkeepAtmospherePlacement,
         common::AxisAlignedBBox, features::dynamic::RenderStageSubscription,
@@ -54,8 +55,8 @@ use tiger_pkg::{TagHash, package_manager};
 use crate::world::{
     render_objects::{DynamicRenderObject, StaticRenderObject},
     shadowkeep_inspection::{
-        MapEntityVisibility, MapInspectionBinding, MapInspectionGraphBuilder, MapInspectionNode,
-        MapInspectionNodeId, MapInspectionNodeKind, MapInspectionSourceGroup,
+        MapAudioPlacement, MapEntityVisibility, MapInspectionBinding, MapInspectionGraphBuilder,
+        MapInspectionNode, MapInspectionNodeId, MapInspectionNodeKind, MapInspectionSourceGroup,
     },
     shadowmap::ShadowMap,
     transform::Transform,
@@ -68,6 +69,8 @@ const SHADOWING_LIGHT: u32 = 0x8080_7133;
 const CUBEMAP_VOLUME: u32 = 0x8080_6B7F;
 const ATMOSPHERE_PLACEMENT: u32 = 0x8080_7086;
 const SKY_OBJECT_PLACEMENT: u32 = 0x8080_6F91;
+const AUDIO_POINT_PLACEMENT: u32 = 0x8080_6B59;
+const AUDIO_PATH_PLACEMENT: u32 = 0x8080_6B5B;
 const SKY_OBJECT_COLLECTION: u32 = 0x8080_6F95;
 const RIGID_MODEL_COMPONENT: u32 = 0x8080_72B8;
 const SHADOWKEEP_LOOKUP_TABLE_BYTES: usize = 64 * 64 * 4;
@@ -1512,7 +1515,25 @@ fn collect_shadowkeep_respawn_points(
     Ok(())
 }
 
-fn collect_shadowkeep_map_node_respawns(
+fn audio_path_geometry(
+    nodes: &[Vec4],
+    authored_transform: Transform,
+) -> (Vec<Vec3>, Transform, Option<AxisAlignedBBox>) {
+    let path = nodes
+        .iter()
+        .map(|point| point.xyz())
+        .filter(|point| point.is_finite())
+        .collect::<Vec<_>>();
+    if path.is_empty() {
+        return (path, authored_transform, None);
+    }
+    let center = path.iter().copied().sum::<Vec3>() / path.len() as f32;
+    let transform = Transform::new(center, Default::default(), Vec3::ONE);
+    let bounds = Some(AxisAlignedBBox::from_points(&path));
+    (path, transform, bounds)
+}
+
+fn collect_shadowkeep_map_node_components(
     report: &mut MapLoadReport,
     world: &mut hecs::World,
     inspection: &mut MapInspectionGraphBuilder,
@@ -1532,43 +1553,98 @@ fn collect_shadowkeep_map_node_respawns(
     }
     let node_table: SMapNodeTable = package_manager().read_tag_struct(node_table_tag)?;
     for (node_index, node) in node_table.nodes.iter().enumerate() {
+        let authored_transform = Transform::new(
+            node.translation.xyz(),
+            node.rotation,
+            node.translation.www(),
+        );
         for (component_index, component) in node.component_data.iter().enumerate() {
-            let ComponentData::SRespawnPointsComponent(component) = component else {
-                continue;
-            };
-            let Some(points) = &*component.tag else {
-                continue;
-            };
-            for (point_index, point) in points.unk8.iter().enumerate() {
-                let transform = Transform::new(point.translation.xyz(), point.rotation, Vec3::ONE);
-                let mut inspection_node = MapInspectionNode::new(
-                    MapInspectionNodeKind::SpawnPoint,
-                    MapInspectionDisposition::NonRendering,
-                    format!(
-                        "Spawn {:08X} · node table {node_table_tag} / \
-                         {node_index}:{component_index}:{point_index}",
-                        point.unk20
-                    ),
-                    source.clone(),
-                );
-                inspection_node.tag = Some(component.tag.taghash());
-                inspection_node.definition_offset = Some(definition_offset);
-                // Stable authored path metadata is represented without inventing
-                // an unproven transform composition: node/component/point order
-                // remains encoded in this unique element ordinal.
-                inspection_node.element_index = Some(
-                    node_index
-                        .checked_mul(1_000_000)
-                        .and_then(|value| value.checked_add(component_index * 1_000))
-                        .and_then(|value| value.checked_add(point_index))
-                        .context("map-node spawn path index overflow")?,
-                );
-                inspection_node.transform = Some(transform);
-                inspection_node.name_hash = Some(point.unk20);
-                let node_id = inspection.add_node(Some(parent), inspection_node);
-                let entity = world.spawn((transform, MapInspectionBinding { node: node_id }));
-                inspection.bind_world_entity(node_id, entity)?;
-                report.spawn_points.push(transform.translation);
+            let component_ordinal = node_index
+                .checked_mul(1_000_000)
+                .and_then(|value| value.checked_add(component_index * 1_000))
+                .context("map-node component path index overflow")?;
+            match component {
+                ComponentData::SRespawnPointsComponent(component) => {
+                    let Some(points) = &*component.tag else {
+                        continue;
+                    };
+                    for (point_index, point) in points.unk8.iter().enumerate() {
+                        let transform =
+                            Transform::new(point.translation.xyz(), point.rotation, Vec3::ONE);
+                        let mut inspection_node = MapInspectionNode::new(
+                            MapInspectionNodeKind::SpawnPoint,
+                            MapInspectionDisposition::NonRendering,
+                            format!(
+                                "Spawn {:08X} · node table {node_table_tag} / \
+                                 {node_index}:{component_index}:{point_index}",
+                                point.unk20
+                            ),
+                            source.clone(),
+                        );
+                        inspection_node.tag = Some(component.tag.taghash());
+                        inspection_node.definition_offset = Some(definition_offset);
+                        inspection_node.element_index = Some(
+                            component_ordinal
+                                .checked_add(point_index)
+                                .context("map-node spawn path index overflow")?,
+                        );
+                        inspection_node.transform = Some(transform);
+                        inspection_node.name_hash = Some(point.unk20);
+                        let node_id = inspection.add_node(Some(parent), inspection_node);
+                        let entity =
+                            world.spawn((transform, MapInspectionBinding { node: node_id }));
+                        inspection.bind_world_entity(node_id, entity)?;
+                        report.spawn_points.push(transform.translation);
+                    }
+                }
+                ComponentData::SAudioPointComponent(component) => {
+                    let event = component.event;
+                    let audio = MapAudioPlacement::point(WideHash::Hash32(event));
+                    let mut inspection_node = MapInspectionNode::new(
+                        MapInspectionNodeKind::AudioPoint,
+                        MapInspectionDisposition::NonRendering,
+                        format!("Audio Point · {event}"),
+                        source.clone(),
+                    );
+                    inspection_node.tag = audio.resolved_event;
+                    inspection_node.definition_offset = Some(definition_offset);
+                    inspection_node.element_index = Some(component_ordinal);
+                    inspection_node.transform = Some(authored_transform);
+                    inspection_node.audio = Some(Box::new(audio));
+                    let node_id = inspection.add_node(Some(parent), inspection_node);
+                    let entity = world.spawn((
+                        authored_transform,
+                        MapInspectionBinding { node: node_id },
+                        MapEntityVisibility::default(),
+                    ));
+                    inspection.bind_world_entity(node_id, entity)?;
+                }
+                ComponentData::SAudioPathComponent(component) => {
+                    let event = component.event;
+                    let (path, transform, bounds) =
+                        audio_path_geometry(&component.nodes, authored_transform);
+                    let audio = MapAudioPlacement::path(WideHash::Hash32(event), path);
+                    let mut inspection_node = MapInspectionNode::new(
+                        MapInspectionNodeKind::AudioPath,
+                        MapInspectionDisposition::NonRendering,
+                        format!("Audio Path · {event}"),
+                        source.clone(),
+                    );
+                    inspection_node.tag = audio.resolved_event;
+                    inspection_node.definition_offset = Some(definition_offset);
+                    inspection_node.element_index = Some(component_ordinal);
+                    inspection_node.transform = Some(transform);
+                    inspection_node.bounds = bounds;
+                    inspection_node.audio = Some(Box::new(audio));
+                    let node_id = inspection.add_node(Some(parent), inspection_node);
+                    let entity = world.spawn((
+                        transform,
+                        MapInspectionBinding { node: node_id },
+                        MapEntityVisibility::default(),
+                    ));
+                    inspection.bind_world_entity(node_id, entity)?;
+                }
+                _ => {}
             }
         }
     }
@@ -1754,6 +1830,9 @@ pub fn load_shadowkeep_map_into_world(
                         STATIC_PLACEMENT | TERRAIN_PLACEMENT | LIGHT_COLLECTION | SHADOWING_LIGHT
                         | CUBEMAP_VOLUME | ATMOSPHERE_PLACEMENT | SKY_OBJECT_PLACEMENT,
                     ) => MapInspectionDisposition::Rendering,
+                    Some(AUDIO_POINT_PLACEMENT | AUDIO_PATH_PLACEMENT) => {
+                        MapInspectionDisposition::NonRendering
+                    }
                     Some(_) => MapInspectionDisposition::Deferred,
                     None => MapInspectionDisposition::NonRendering,
                 },
@@ -1813,14 +1892,20 @@ pub fn load_shadowkeep_map_into_world(
                     CUBEMAP_VOLUME => MapInspectionNodeKind::Cubemap,
                     ATMOSPHERE_PLACEMENT => MapInspectionNodeKind::Atmosphere,
                     SKY_OBJECT_PLACEMENT => MapInspectionNodeKind::SkyCollection,
+                    AUDIO_POINT_PLACEMENT => MapInspectionNodeKind::AudioPoint,
+                    AUDIO_PATH_PLACEMENT => MapInspectionNodeKind::AudioPath,
                     _ => MapInspectionNodeKind::DeferredResource,
                 };
                 let mut semantic_node = MapInspectionNode::new(
                     semantic_kind,
-                    if semantic_kind == MapInspectionNodeKind::DeferredResource {
-                        MapInspectionDisposition::Deferred
-                    } else {
-                        MapInspectionDisposition::Rendering
+                    match semantic_kind {
+                        MapInspectionNodeKind::DeferredResource => {
+                            MapInspectionDisposition::Deferred
+                        }
+                        MapInspectionNodeKind::AudioPoint | MapInspectionNodeKind::AudioPath => {
+                            MapInspectionDisposition::NonRendering
+                        }
+                        _ => MapInspectionDisposition::Rendering,
                     },
                     format!("{semantic_kind:?}"),
                     table_sources.clone(),
@@ -2006,7 +2091,7 @@ pub fn load_shadowkeep_map_into_world(
                                     }
                                 }
                                 MAP_NODE_TABLE_COMPONENT => {
-                                    match collect_shadowkeep_map_node_respawns(
+                                    match collect_shadowkeep_map_node_components(
                                         &mut report,
                                         &mut world,
                                         &mut inspection,
@@ -2093,6 +2178,83 @@ pub fn load_shadowkeep_map_into_world(
                 table_semantic_id.expect("valid table resource allocated before entity resources");
 
             match entry.data_resource.resource_type {
+                AUDIO_POINT_PLACEMENT => {
+                    let result = (|| -> anyhow::Result<()> {
+                        bounded_offset(table_bytes.len(), entry.data_resource.offset, 0x20)?;
+                        let mut cursor = Cursor::new(&table_bytes[..]);
+                        cursor.seek(SeekFrom::Start(entry.data_resource.offset))?;
+                        let component = SAudioPointComponent::read_ds(&mut cursor)?;
+                        let event = component.event;
+                        let audio = MapAudioPlacement::point(WideHash::Hash32(event));
+                        let node = inspection.node_mut(table_semantic_id);
+                        node.label = format!("Audio Point · {event}");
+                        node.tag = audio.resolved_event;
+                        node.audio = Some(Box::new(audio));
+                        let entity = world.spawn((
+                            transform,
+                            MapInspectionBinding {
+                                node: table_semantic_id,
+                            },
+                            MapEntityVisibility::default(),
+                        ));
+                        inspection.bind_world_entity(table_semantic_id, entity)?;
+                        Ok(())
+                    })();
+                    if let Err(error) = result {
+                        report.skipped_resources += 1;
+                        let diagnostic = format!("audio-point placement: {error:#}");
+                        let node = inspection.node_mut(table_semantic_id);
+                        node.disposition = MapInspectionDisposition::Failed;
+                        node.error = Some(diagnostic.clone());
+                        report.diagnostic(
+                            progress,
+                            MapLoadDiagnostic {
+                                table: table_hash,
+                                entry_offset: entry.data_resource.offset,
+                                resource_class: AUDIO_POINT_PLACEMENT,
+                                error: diagnostic,
+                            },
+                        );
+                    }
+                }
+                AUDIO_PATH_PLACEMENT => {
+                    let result = (|| -> anyhow::Result<()> {
+                        bounded_offset(table_bytes.len(), entry.data_resource.offset, 0x14)?;
+                        let mut cursor = Cursor::new(&table_bytes[..]);
+                        cursor.seek(SeekFrom::Start(entry.data_resource.offset + 0x10))?;
+                        let event = TagHash::read_ds(&mut cursor)?;
+                        let audio = MapAudioPlacement::path(WideHash::Hash32(event), Vec::new());
+                        let node = inspection.node_mut(table_semantic_id);
+                        node.label = format!("Audio Path · {event}");
+                        node.tag = audio.resolved_event;
+                        node.audio = Some(Box::new(audio));
+                        let entity = world.spawn((
+                            transform,
+                            MapInspectionBinding {
+                                node: table_semantic_id,
+                            },
+                            MapEntityVisibility::default(),
+                        ));
+                        inspection.bind_world_entity(table_semantic_id, entity)?;
+                        Ok(())
+                    })();
+                    if let Err(error) = result {
+                        report.skipped_resources += 1;
+                        let diagnostic = format!("audio-path placement: {error:#}");
+                        let node = inspection.node_mut(table_semantic_id);
+                        node.disposition = MapInspectionDisposition::Failed;
+                        node.error = Some(diagnostic.clone());
+                        report.diagnostic(
+                            progress,
+                            MapLoadDiagnostic {
+                                table: table_hash,
+                                entry_offset: entry.data_resource.offset,
+                                resource_class: AUDIO_PATH_PLACEMENT,
+                                error: diagnostic,
+                            },
+                        );
+                    }
+                }
                 SKY_OBJECT_PLACEMENT => {
                     report.sky_object_placements += 1;
                     let result = (|| -> anyhow::Result<()> {
@@ -3072,9 +3234,10 @@ mod tests {
         AtmospherePlacementCandidate, EntityResourceExample, MapInspectionNodeId, MapLoadProgress,
         MapLoadReport, RESPAWN_POINTS_COMPONENT, ShadowkeepBubbleCatalogEntry,
         ShadowkeepEnvironmentSelectionReason, ShadowkeepTableSources, SkyObjectCollectionEvidence,
-        SkyObjectPlacementCandidate, bounded_offset, select_shadowkeep_environment,
-        serialized_u64_fields, shadowkeep_bubble_catalog_matches,
+        SkyObjectPlacementCandidate, audio_path_geometry, bounded_offset,
+        select_shadowkeep_environment, serialized_u64_fields, shadowkeep_bubble_catalog_matches,
     };
+    use crate::world::transform::Transform;
 
     fn collection_candidate(
         collection: TagHash,
@@ -3405,5 +3568,29 @@ mod tests {
         assert!(shadowkeep_bubble_catalog_matches(&entry, "DEAD ZONE"));
         assert!(shadowkeep_bubble_catalog_matches(&entry, "sandbox_01"));
         assert!(!shadowkeep_bubble_catalog_matches(&entry, "europa"));
+    }
+    #[test]
+    fn audio_path_geometry_uses_finite_authored_points_and_stable_fallback() {
+        let fallback = Transform::new(Vec3::new(7.0, 8.0, 9.0), Default::default(), Vec3::ONE);
+        let nodes = [
+            Vec4::new(1.0, 2.0, 3.0, 1.0),
+            Vec4::new(5.0, 6.0, 7.0, 1.0),
+            Vec4::splat(f32::NAN),
+        ];
+
+        let (path, transform, bounds) = audio_path_geometry(&nodes, fallback);
+        assert_eq!(
+            path,
+            vec![Vec3::new(1.0, 2.0, 3.0), Vec3::new(5.0, 6.0, 7.0)]
+        );
+        assert_eq!(transform.translation, Vec3::new(3.0, 4.0, 5.0));
+        let bounds = bounds.unwrap();
+        assert_eq!(bounds.min.truncate(), Vec3::new(1.0, 2.0, 3.0));
+        assert_eq!(bounds.max.truncate(), Vec3::new(5.0, 6.0, 7.0));
+
+        let (path, transform, bounds) = audio_path_geometry(&[Vec4::splat(f32::NAN)], fallback);
+        assert!(path.is_empty());
+        assert_eq!(transform, fallback);
+        assert!(bounds.is_none());
     }
 }

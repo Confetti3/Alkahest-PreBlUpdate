@@ -549,7 +549,7 @@ pub fn spawn_pattern_from_header(
                 #[cfg(feature = "wwise")]
                 let data = get_component_data!(SAudioPathComponent);
                 #[cfg(feature = "wwise")]
-                match crate::audio::AudioSource::load_event_and_play(data.event.hash32()) {
+                match crate::audio::AudioSource::load_event_and_play(data.event) {
                     Ok(source) => {
                         let mut center = data
                             .nodes
@@ -578,7 +578,7 @@ pub fn spawn_pattern_from_header(
                 let data = get_component_data!(SAudioPointComponent);
                 // println!("Playing event {:X?}", data);
                 #[cfg(feature = "wwise")]
-                match crate::audio::AudioSource::load_event_and_play(data.event.hash32()) {
+                match crate::audio::AudioSource::load_event_and_play(data.event) {
                     Ok(source) => {
                         source.set_position(transform.map(|t| t.translation).unwrap_or_default());
                         world.insert_one(entity, source)?;

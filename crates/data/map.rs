@@ -214,22 +214,22 @@ pub struct SRespawnPoint {
 #[derive(Clone, Debug)]
 #[tiger_type(id = 0x8080666D)]
 pub struct SAudioPathComponent {
-    pub event: WideHash,
-    pub unk10: u32,
+    pub unk0: WideHash,
+    pub event: TagHash,
     pub unk14: u32,
-    pub unk18: f32,
-    pub unk1c: FnvHash,
+    pub unk18: u32,
+    pub unk1c: f32,
     pub nodes: Vec<Vec4>,
 }
 
 #[derive(Clone, Debug)]
 #[tiger_type(id = 0x8080666F)]
 pub struct SAudioPointComponent {
-    pub event: WideHash,
-    pub unk10: u32,
+    pub unk0: WideHash,
+    pub event: TagHash,
     pub unk14: u32,
-    pub unk18: f32,
-    pub unk1c: FnvHash,
+    pub unk18: u32,
+    pub unk1c: f32,
 }
 
 pub struct SComponentDataNode {

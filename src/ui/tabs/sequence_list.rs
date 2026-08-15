@@ -379,8 +379,12 @@ impl SequenceListTab {
                     node!(leaf, "ParticleSystem", icons::sequencer::PARTICLE_SYSTEM);
                 }
             }
-            SUnk808091f1Variant::SSequenceAudioEvent(_) => {
-                node!(leaf, "AudioEvent", icons::sequencer::AUDIO);
+            SUnk808091f1Variant::SSequenceAudioEvent(audio) => {
+                node!(
+                    leaf,
+                    format!("AudioEvent · {}", audio.wwise_event),
+                    icons::sequencer::AUDIO
+                );
             }
             SUnk808091f1Variant::SUnk80802636Animation(_) => {
                 node!(leaf, "(Unknown)Animation", icons::sequencer::ANIMATION);

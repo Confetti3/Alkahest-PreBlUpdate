@@ -6,9 +6,10 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
-use alkahest_data::tfx::common::AxisAlignedBBox;
+use alkahest_data::{tag::WideHash, tfx::common::AxisAlignedBBox};
 use anyhow::Context;
 use bitflags::bitflags;
+use glam::Vec3;
 use tiger_pkg::TagHash;
 
 use crate::world::transform::Transform;
@@ -36,6 +37,8 @@ pub enum MapInspectionNodeKind {
     SkyCollection,
     SkyObject,
     SpawnPoint,
+    AudioPoint,
+    AudioPath,
     EntityResource,
     TableResource,
     DeferredResource,
@@ -92,6 +95,7 @@ impl MapInspectionNodeKind {
                 MapInspectionTypeFilter::ENVIRONMENT
             }
             Self::SpawnPoint => MapInspectionTypeFilter::SPAWNS,
+            Self::AudioPoint | Self::AudioPath => MapInspectionTypeFilter::AUDIO,
             Self::DeferredResource | Self::FailedResource => MapInspectionTypeFilter::DEFERRED,
             _ => MapInspectionTypeFilter::METADATA,
         }
@@ -103,8 +107,10 @@ impl MapInspectionNodeKind {
                 self,
                 Self::StaticInstance
                     | Self::SpawnPoint
+                    | Self::AudioPoint
+                    | Self::AudioPath
                     | Self::DeferredResource
-                    | Self::FailedResource
+                    | Self::FailedResource,
             )
     }
 }
@@ -118,8 +124,10 @@ bitflags! {
         const SPAWNS = 1 << 3;
         const DEFERRED = 1 << 4;
         const METADATA = 1 << 5;
+        const AUDIO = 1 << 6;
         const ALL = Self::GEOMETRY.bits() | Self::LIGHTS.bits() | Self::ENVIRONMENT.bits()
-            | Self::SPAWNS.bits() | Self::DEFERRED.bits() | Self::METADATA.bits();
+            | Self::SPAWNS.bits() | Self::DEFERRED.bits() | Self::METADATA.bits()
+            | Self::AUDIO.bits();
     }
 }
 
@@ -196,6 +204,31 @@ pub enum MapInspectionSourceGroup {
 }
 
 #[derive(Clone, Debug)]
+pub struct MapAudioPlacement {
+    pub event: WideHash,
+    pub resolved_event: Option<TagHash>,
+    pub path: Box<[Vec3]>,
+}
+
+impl MapAudioPlacement {
+    pub fn point(event: WideHash) -> Self {
+        Self {
+            event,
+            resolved_event: event.hash32_checked(),
+            path: Box::new([]),
+        }
+    }
+
+    pub fn path(event: WideHash, path: impl Into<Box<[Vec3]>>) -> Self {
+        Self {
+            event,
+            resolved_event: event.hash32_checked(),
+            path: path.into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct MapInspectionNode {
     pub id: MapInspectionNodeId,
     pub parent: Option<MapInspectionNodeId>,
@@ -215,6 +248,7 @@ pub struct MapInspectionNode {
     pub world_entity: Option<hecs::Entity>,
     pub source: ShadowkeepTableSources,
     pub name_hash: Option<u32>,
+    pub audio: Option<Box<MapAudioPlacement>>,
     pub linked_node: Option<MapInspectionNodeId>,
     /// Activity entity definition whose serialized WorldID identifies this placement.
     pub activity_definition: Option<TagHash>,
@@ -252,6 +286,7 @@ impl MapInspectionNode {
             world_entity: None,
             source,
             name_hash: None,
+            audio: None,
             linked_node: None,
             activity_definition: None,
             activity_reference_offset: None,
@@ -768,6 +803,16 @@ fn node_search_text(node: &MapInspectionNode) -> String {
         values.push(raw.clone());
         values.push(format!("0x{raw}"));
     }
+    if let Some(audio) = &node.audio {
+        let raw = audio.event.to_string();
+        values.push(raw.clone());
+        values.push(format!("0x{raw}"));
+        if let Some(event) = audio.resolved_event {
+            let resolved = event.to_string();
+            values.push(resolved.clone());
+            values.push(format!("0x{resolved}"));
+        }
+    }
     if let Some(owner) = node.visual_owner {
         values.push(format!("owner {}", owner.0));
     }
@@ -1157,5 +1202,37 @@ mod tests {
         let mut non_ancestor = inspection;
         non_ancestor.node_mut(proxy).unwrap().visual_owner = Some(sibling_owner);
         assert!(non_ancestor.validate(&world).is_err());
+    }
+    #[test]
+    fn audio_placements_are_searchable_filtered_locators() {
+        let (mut builder, table, _) = graph();
+        let event = TagHash(0x8080_1234);
+        let mut audio = MapInspectionNode::new(
+            MapInspectionNodeKind::AudioPoint,
+            MapInspectionDisposition::NonRendering,
+            "Audio Point",
+            ShadowkeepTableSources::default(),
+        );
+        audio.tag = Some(event);
+        audio.transform = Some(Transform::default());
+        audio.audio = Some(Box::new(MapAudioPlacement::point(WideHash::Hash32(event))));
+        let audio = builder.add_node(Some(table), audio);
+        let inspection = builder.finalize();
+
+        assert_eq!(inspection.locator_nodes(), &[audio]);
+        assert_eq!(
+            inspection.search("80801234", MapInspectionFilter::default()),
+            vec![audio]
+        );
+        assert_eq!(
+            inspection.search(
+                "",
+                MapInspectionFilter {
+                    types: MapInspectionTypeFilter::AUDIO,
+                    ..Default::default()
+                },
+            ),
+            vec![audio]
+        );
     }
 }

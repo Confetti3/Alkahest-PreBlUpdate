@@ -65,12 +65,23 @@ struct MapWorkspaceSummary {
     visual: usize,
     metadata: usize,
     spawns: usize,
+    audio: usize,
 }
 
 impl MapWorkspaceSummary {
     fn from_inspection(inspection: &ShadowkeepMapInspection) -> Self {
         let mut summary = Self {
             spawns: inspection.spawn_nodes.len(),
+            audio: inspection
+                .nodes
+                .iter()
+                .filter(|node| {
+                    matches!(
+                        node.kind,
+                        MapInspectionNodeKind::AudioPoint | MapInspectionNodeKind::AudioPath
+                    )
+                })
+                .count(),
             ..Default::default()
         };
         for node in &inspection.nodes {
@@ -115,6 +126,7 @@ pub struct MapWorkspaceState {
     pub show_inspector: bool,
     pub show_diagnostics: bool,
     pub show_spawn_markers: bool,
+    pub show_audio_placements: bool,
     pub show_selection_bounds: bool,
     pub show_visual_helpers: bool,
     pub show_visual_labels: bool,
@@ -141,6 +153,7 @@ impl Default for MapWorkspaceState {
             show_inspector: true,
             show_diagnostics: false,
             show_spawn_markers: true,
+            show_audio_placements: true,
             show_selection_bounds: true,
             show_visual_helpers: false,
             show_visual_labels: true,
@@ -208,6 +221,11 @@ impl MapWorkspaceState {
             }
             let visible = inspection
                 .visual_owner(id)
+                .or_else(|| {
+                    inspection
+                        .node(id)
+                        .and_then(|node| node.world_entity.map(|_| id))
+                })
                 .and_then(|owner| inspection.node(owner))
                 .and_then(|owner| owner.world_entity)
                 .is_some_and(|entity| {
@@ -311,6 +329,7 @@ pub fn show(
             )
             .ui(ui, |ui| {
                 ui.checkbox(&mut state.show_spawn_markers, "Spawn markers");
+                ui.checkbox(&mut state.show_audio_placements, "Audio placements");
                 ui.checkbox(&mut state.show_visual_helpers, "Visual helpers");
                 ui.add_enabled_ui(state.show_visual_helpers, |ui| {
                     ui.checkbox(&mut state.show_visual_labels, "Helper labels");
@@ -501,6 +520,7 @@ pub fn show(
                 let hovered = &mut state.hovered;
                 let viewport_scratch = &mut state.viewport_scratch;
                 let show_visual_helpers = state.show_visual_helpers;
+                let show_audio_placements = state.show_audio_placements;
                 let show_visual_labels = state.show_visual_labels;
                 let show_selection_bounds = state.show_selection_bounds;
                 let show_spawn_markers = state.show_spawn_markers;
@@ -526,6 +546,7 @@ pub fn show(
                                 show_selection_bounds,
                                 viewport_scratch,
                                 show_visual_helpers,
+                                show_audio_placements,
                                 show_visual_labels,
                                 show_spawn_markers,
                                 workspace_generation,
@@ -538,8 +559,13 @@ pub fn show(
     });
     ui.horizontal(|ui| {
         ui.weak(format!(
-            "{} ready · {} failed · {} visual · {} metadata · {} spawns · Ready",
-            summary.ready, summary.failed, summary.visual, summary.metadata, summary.spawns,
+            "{} ready · {} failed · {} visual · {} metadata · {} spawns · {} audio · Ready",
+            summary.ready,
+            summary.failed,
+            summary.visual,
+            summary.metadata,
+            summary.spawns,
+            summary.audio,
         ));
     });
     if let Some(action) = marker_select {
@@ -624,6 +650,9 @@ fn map_node_icon(kind: MapInspectionNodeKind) -> GoogleMaterialSymbols {
         MapInspectionNodeKind::Atmosphere => GoogleMaterialSymbols::Cloud,
         MapInspectionNodeKind::SkyCollection | MapInspectionNodeKind::SkyObject => {
             GoogleMaterialSymbols::WeatherMix
+        }
+        MapInspectionNodeKind::AudioPoint | MapInspectionNodeKind::AudioPath => {
+            GoogleMaterialSymbols::GraphicEq
         }
         MapInspectionNodeKind::SpawnPoint => GoogleMaterialSymbols::MyLocation,
         MapInspectionNodeKind::EntityResource | MapInspectionNodeKind::TableResource => {
@@ -748,50 +777,53 @@ fn outliner(
                     .close_behavior(egui::PopupCloseBehavior::IgnoreClicks),
             )
             .ui(ui, |ui| {
-                ui.label("Type");
-                for (label, flag) in [
-                    ("Geometry", MapInspectionTypeFilter::GEOMETRY),
-                    ("Lights", MapInspectionTypeFilter::LIGHTS),
-                    ("Environment", MapInspectionTypeFilter::ENVIRONMENT),
-                    ("Spawns", MapInspectionTypeFilter::SPAWNS),
-                    ("Deferred", MapInspectionTypeFilter::DEFERRED),
-                    ("Metadata", MapInspectionTypeFilter::METADATA),
-                ] {
-                    let mut enabled = state.filter.types.contains(flag);
-                    if ui.checkbox(&mut enabled, label).changed() {
-                        state.filter.types.set(flag, enabled);
-                        filters_changed = true;
+                ScrollArea::vertical().max_height(260.0).show(ui, |ui| {
+                    ui.label("Type");
+                    for (label, flag) in [
+                        ("Geometry", MapInspectionTypeFilter::GEOMETRY),
+                        ("Lights", MapInspectionTypeFilter::LIGHTS),
+                        ("Environment", MapInspectionTypeFilter::ENVIRONMENT),
+                        ("Spawns", MapInspectionTypeFilter::SPAWNS),
+                        ("Audio", MapInspectionTypeFilter::AUDIO),
+                        ("Deferred", MapInspectionTypeFilter::DEFERRED),
+                        ("Metadata", MapInspectionTypeFilter::METADATA),
+                    ] {
+                        let mut enabled = state.filter.types.contains(flag);
+                        if ui.checkbox(&mut enabled, label).changed() {
+                            state.filter.types.set(flag, enabled);
+                            filters_changed = true;
+                        }
                     }
-                }
-                ui.separator();
-                ui.label("Status");
-                for (label, flag) in [
-                    ("Rendering", MapInspectionDispositionFilter::RENDERING),
-                    (
-                        "Non-rendering",
-                        MapInspectionDispositionFilter::NON_RENDERING,
-                    ),
-                    ("Deferred", MapInspectionDispositionFilter::DEFERRED),
-                    ("Failed", MapInspectionDispositionFilter::FAILED),
-                ] {
-                    let mut enabled = state.filter.dispositions.contains(flag);
-                    if ui.checkbox(&mut enabled, label).changed() {
-                        state.filter.dispositions.set(flag, enabled);
-                        filters_changed = true;
+                    ui.separator();
+                    ui.label("Status");
+                    for (label, flag) in [
+                        ("Rendering", MapInspectionDispositionFilter::RENDERING),
+                        (
+                            "Non-rendering",
+                            MapInspectionDispositionFilter::NON_RENDERING,
+                        ),
+                        ("Deferred", MapInspectionDispositionFilter::DEFERRED),
+                        ("Failed", MapInspectionDispositionFilter::FAILED),
+                    ] {
+                        let mut enabled = state.filter.dispositions.contains(flag);
+                        if ui.checkbox(&mut enabled, label).changed() {
+                            state.filter.dispositions.set(flag, enabled);
+                            filters_changed = true;
+                        }
                     }
-                }
-                ui.separator();
-                ui.label("Source");
-                for (label, flag) in [
-                    ("Base bubble", MapInspectionSourceFilter::BASE),
-                    ("Freeroam scenario", MapInspectionSourceFilter::SCENARIO),
-                ] {
-                    let mut enabled = state.filter.sources.contains(flag);
-                    if ui.checkbox(&mut enabled, label).changed() {
-                        state.filter.sources.set(flag, enabled);
-                        filters_changed = true;
+                    ui.separator();
+                    ui.label("Source");
+                    for (label, flag) in [
+                        ("Base bubble", MapInspectionSourceFilter::BASE),
+                        ("Freeroam scenario", MapInspectionSourceFilter::SCENARIO),
+                    ] {
+                        let mut enabled = state.filter.sources.contains(flag);
+                        if ui.checkbox(&mut enabled, label).changed() {
+                            state.filter.sources.set(flag, enabled);
+                            filters_changed = true;
+                        }
                     }
-                }
+                });
             });
     });
     if filters_changed {
@@ -818,9 +850,23 @@ fn outliner(
         ui.style_mut().wrap_mode = Some(TextWrapMode::Extend);
         ScrollArea::vertical()
             .id_salt("map_workspace_outliner")
-            .show_rows(ui, row_height, rows.len(), |ui, row_range| {
-                if rows.is_empty() && mode == MapOutlinerMode::Spawns {
-                    ui.weak("No authored or activity-correlated spawn placements were discovered.");
+            .show_rows(ui, row_height, rows.len().max(1), |ui, row_range| {
+                if rows.is_empty() {
+                    let audio_only = state.filter.types == MapInspectionTypeFilter::AUDIO;
+                    let map_has_audio = inspection
+                        .nodes
+                        .iter()
+                        .any(|node| node.kind.type_group() == MapInspectionTypeFilter::AUDIO);
+                    if mode == MapOutlinerMode::Spawns {
+                        ui.weak(
+                            "No authored or activity-correlated spawn placements were discovered.",
+                        );
+                    } else if audio_only && !map_has_audio {
+                        ui.weak("This map contains no authored audio placements.");
+                    } else {
+                        ui.weak("No hierarchy items match the current search and filters.");
+                    }
+                    return;
                 }
                 for index in row_range {
                     let row = rows[index];
@@ -1095,6 +1141,8 @@ fn is_world_node(kind: MapInspectionNodeKind) -> bool {
             | MapInspectionNodeKind::SkyCollection
             | MapInspectionNodeKind::SkyObject
             | MapInspectionNodeKind::SpawnPoint
+            | MapInspectionNodeKind::AudioPoint
+            | MapInspectionNodeKind::AudioPath
             | MapInspectionNodeKind::DeferredResource
             | MapInspectionNodeKind::FailedResource
             | MapInspectionNodeKind::MetadataOnly
@@ -1139,6 +1187,39 @@ fn inspector(
     ));
     if let Some(tag) = node.tag {
         ui.monospace(format!("Tag {tag}"));
+    }
+    if let Some(audio) = &node.audio {
+        ui.separator();
+        ui.strong("Audio placement");
+        ui.monospace(format!("Event reference {}", audio.event));
+        if let Some(event) = audio.resolved_event {
+            ui.monospace(format!("Resolved event tag {event}"));
+        } else {
+            ui.weak("The 64-bit event reference is not present in the package lookup table.");
+        }
+        ui.horizontal(|ui| {
+            if ui.button("Copy event reference").clicked() {
+                ui.ctx().copy_text(audio.event.to_string());
+            }
+            if let Some(event) = audio.resolved_event
+                && ui.button("Copy resolved tag").clicked()
+            {
+                ui.ctx().copy_text(event.to_string());
+            }
+        });
+        if node.kind == MapInspectionNodeKind::AudioPath {
+            ui.label(format!("Authored path points: {}", audio.path.len()));
+            if !audio.path.is_empty() && ui.button("Copy path points").clicked() {
+                ui.ctx().copy_text(
+                    audio
+                        .path
+                        .iter()
+                        .map(|point| format!("{},{},{}", point.x, point.y, point.z))
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                );
+            }
+        }
     }
     if let Some(class) = node.class {
         ui.monospace(format!("Class 0x{class:08X}"));
@@ -1305,6 +1386,7 @@ mod tests {
         assert!(state.show_outliner);
         assert!(state.show_inspector);
         assert!(state.show_spawn_markers);
+        assert!(state.show_audio_placements);
         assert!(!state.show_visual_helpers);
         assert!(!state.show_diagnostics);
         assert_eq!(state.hidden_filter, MapHiddenFilter::All);
@@ -1497,6 +1579,7 @@ mod tests {
                 visual: 1,
                 metadata: 1,
                 spawns: 1,
+                audio: 0,
             }
         );
     }

@@ -30,17 +30,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## Unreleased / Rolling Release
 
+## 0.7.0-rc.2 - 2026-08-14
+
 ### Added
 
 - Restored Shadowkeep freeroam scenario discovery, authored cubemap specular IBL, package-authored atmosphere lookup and sky rendering, default directional sunlight with scene-clock day/night motion, cascaded sun shadows, and a validated compatibility material-occlusion finalizer without raw post-deferred overlays. Atmosphere diagnostics now report the authored texture formats, volume dimensions, lookup parameters, table statistics, and the explicitly synthetic fixed-basis and solar fallbacks.
 - Added a viewport-primary Shadowkeep map inspector: cached package-wide bubble navigation, a table/entry outliner that preserves rendering and non-rendering resources, and authored respawn provenance with in-viewport markers when the package graph contains respawn components.
 - Added the production Shadowkeep entity workspace with stable inspection bindings, non-destructive visibility controls, actionable authored spawn metadata, and the shared cached bubble browser.
+- Added map audio-point and audio-path placement overlays, searchable inspection metadata with copyable Wwise event references, and referenced event tags in the sequence viewer without requiring the optional Wwise runtime.
 
 ### Changed
 
 - Shortened Shadowkeep startup by deferring freeroam scenario traversal until a bubble opens, added persistent multi-select map filters and collapsible source/world hierarchies, reduced default helper noise, and correlated squad-spawn rules to real map placements through exact same-scenario WorldID references.
 
 ### Fixed
+- Corrected Shadowkeep audio component layouts and table-resource dispatch so map audio points and paths expose their authored event tags, and made the map filter menu scrollable with explicit empty-result feedback.
 
 - Restored Shadowkeep entity-only rigid-model entries that were skipped when their unrelated table-local resource pointer was empty, recovering omitted map geometry.
 

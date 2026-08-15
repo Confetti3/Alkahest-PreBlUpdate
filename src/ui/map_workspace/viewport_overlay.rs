@@ -90,6 +90,11 @@ fn helper_color(
         Color32::from_rgb(255, 92, 92)
     } else if helper.disposition == MapInspectionDisposition::Deferred {
         Color32::from_rgb(255, 184, 72)
+    } else if matches!(
+        helper.kind,
+        MapInspectionNodeKind::AudioPoint | MapInspectionNodeKind::AudioPath
+    ) {
+        Color32::from_rgb(214, 110, 255)
     } else if helper.hidden {
         Color32::GRAY
     } else {
@@ -477,6 +482,7 @@ pub fn show<S: BuildHasher>(
     show_selection_bounds: bool,
     scratch: &mut ViewportScratch,
     show_visual_helpers: bool,
+    show_audio_placements: bool,
     show_visual_labels: bool,
     show_spawn_markers: bool,
     workspace_generation: u64,
@@ -541,15 +547,22 @@ pub fn show<S: BuildHasher>(
     }
     let mut action = None;
     scratch.active_helpers = 0;
-    if show_visual_helpers || show_spawn_markers {
+    if show_visual_helpers || show_spawn_markers || show_audio_placements {
         for &id in locator_rows {
             let Some(node) = inspection.node(id) else {
                 continue;
             };
+            let is_audio = matches!(
+                node.kind,
+                MapInspectionNodeKind::AudioPoint | MapInspectionNodeKind::AudioPath
+            );
             if node.kind == MapInspectionNodeKind::SpawnPoint && !show_spawn_markers {
                 continue;
             }
-            if !show_visual_helpers && node.kind != MapInspectionNodeKind::SpawnPoint {
+            if is_audio && !show_audio_placements {
+                continue;
+            }
+            if !show_visual_helpers && node.kind != MapInspectionNodeKind::SpawnPoint && !is_audio {
                 continue;
             }
             let anchor = node
@@ -606,6 +619,44 @@ pub fn show<S: BuildHasher>(
             continue;
         };
         let color = helper_color(helper, selected, *hovered);
+        let is_audio = matches!(
+            node.kind,
+            MapInspectionNodeKind::AudioPoint | MapInspectionNodeKind::AudioPath
+        );
+        if show_audio_placements && is_audio {
+            if let Some(audio) = &node.audio {
+                for segment in audio.path.windows(2) {
+                    let Some(start) = project_point(world_to_clip, rect, segment[0]) else {
+                        continue;
+                    };
+                    let Some(end) = project_point(world_to_clip, rect, segment[1]) else {
+                        continue;
+                    };
+                    draw_line(
+                        ui,
+                        [start, end],
+                        Stroke::new(
+                            if selected == Some(helper.id) {
+                                3.0
+                            } else {
+                                2.0
+                            },
+                            color,
+                        ),
+                        helper.hidden,
+                    );
+                }
+            }
+            ui.painter().circle_filled(
+                helper.center,
+                if selected == Some(helper.id) {
+                    8.0
+                } else {
+                    6.0
+                },
+                color,
+            );
+        }
         if show_visual_helpers {
             if let Some(bounds) = node.bounds {
                 draw_helper_bounds(
@@ -648,7 +699,7 @@ pub fn show<S: BuildHasher>(
                 Color32::from_rgb(255, 210, 80),
             );
         }
-        if show_visual_helpers {
+        if show_visual_helpers || (show_audio_placements && is_audio) {
             let chip = Rect::from_center_size(helper.center, vec2(16.0, 16.0));
             ui.painter()
                 .rect_filled(chip, 2.0, Color32::from_black_alpha(210));
@@ -692,8 +743,10 @@ pub fn show<S: BuildHasher>(
         response.clone().on_hover_text(format!(
             "{}\nTag/hash: {}{}\nStatus: {}\nOwner: {}\nPosition: {:?}\nExtents: {:?}",
             inspection.breadcrumb(id),
-            node.tag
-                .map(|tag| tag.to_string())
+            node.audio
+                .as_ref()
+                .map(|audio| audio.event.to_string())
+                .or_else(|| node.tag.map(|tag| tag.to_string()))
                 .or_else(|| node.class.map(|class| format!("0x{class:08X}")))
                 .unwrap_or_else(|| "none".to_owned()),
             if annotation.is_empty() {
