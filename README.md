@@ -1,7 +1,5 @@
 
-
 > **This repository is a fork of [Alkahest](https://github.com/cohaereo/alkahest), created by [cohaereo](https://github.com/cohaereo/cohaereo) with the work of [Alkahest's contributors](https://github.com/cohaereo/alkahest/graphs/contributors). This project would not exist without their original architecture, renderer, tooling, and years of work. This fork builds on that foundation for preserved Shadowkeep / Season of Arrivals package support.**
-
 
 Alkahest is a Windows desktop map viewer and research renderer for
 user-supplied Destiny 2 Shadowkeep / Season of Arrivals package files. It lets
@@ -30,8 +28,10 @@ some maps or visual effects may not yet match the original game.
    `alkahest-prebl.exe` and `SDL3.dll` together.
 4. Run `alkahest-prebl.exe`.
 5. At the first-launch prompt, select either:
-   - the preserved client folder that contains a `packages` subfolder; or
-   - the `packages` folder itself.
+   - the preserved client folder that contains a `packages` subfolder;
+   - the `packages` folder itself; or
+   - a DepotDownloader root containing `depots\1085661\<install>\packages`
+     (for example, `G:\depot`).
 6. Use the map browser to select a destination bubble and open it.
 
 The selected package location is remembered for later launches. Game data is

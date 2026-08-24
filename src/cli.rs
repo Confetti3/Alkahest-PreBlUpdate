@@ -11,11 +11,11 @@ pub const GIT_HASH: &str = env!("GIT_HASH");
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct AppArgs {
-    /// Shadowkeep client directory; its packages child directory will be used.
+    /// Shadowkeep client directory or DepotDownloader root.
     #[arg(short, long, global = true, conflicts_with = "packages")]
     pub gamedir: Option<String>,
 
-    /// Explicit Shadowkeep packages directory.
+    /// Shadowkeep packages directory (a DepotDownloader root is also accepted).
     #[arg(long, global = true, conflicts_with = "gamedir")]
     pub packages: Option<String>,
 

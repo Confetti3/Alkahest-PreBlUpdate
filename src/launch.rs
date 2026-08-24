@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use crate::cli::AppArgs;
 
 const PACKAGE_SOURCE_FILE: &str = "package-source.toml";
+const DESTINY2_BASE_DEPOT_ID: &str = "1085661";
 
 #[derive(Debug, Serialize, Deserialize)]
 struct PackageSourceConfig {
@@ -106,9 +107,12 @@ fn explicit_source(args: &AppArgs) -> Option<PathBuf> {
 
 fn normalize_explicit_source(args: &AppArgs, source: PathBuf) -> anyhow::Result<PathBuf> {
     if args.gamedir.is_some() {
-        normalize_packages_dir(&source.join("packages"))
-    } else {
+        normalize_client_or_download_root(&source)
+    } else if directory_contains_packages(&source)? {
         normalize_packages_dir(&source)
+    } else {
+        // Be forgiving when a DepotDownloader root is supplied to --packages.
+        normalize_client_or_download_root(&source)
     }
 }
 
@@ -133,8 +137,63 @@ fn normalize_picker_selection(selection: &Path) -> anyhow::Result<PathBuf> {
     if is_packages {
         normalize_packages_dir(selection)
     } else {
-        normalize_packages_dir(&selection.join("packages"))
+        normalize_client_or_download_root(selection)
     }
+}
+
+fn normalize_client_or_download_root(path: &Path) -> anyhow::Result<PathBuf> {
+    let direct_packages = path.join("packages");
+    if direct_packages.is_dir() {
+        return normalize_packages_dir(&direct_packages);
+    }
+
+    if let Some(packages) = find_depotdownloader_packages(path)? {
+        return normalize_packages_dir(&packages);
+    }
+
+    anyhow::bail!(
+        "No Destiny 2 packages were found under {}. Select a client root, its packages folder, or a DepotDownloader root containing depots\\{}\\<install>\\packages.",
+        path.display(),
+        DESTINY2_BASE_DEPOT_ID
+    )
+}
+
+fn find_depotdownloader_packages(path: &Path) -> anyhow::Result<Option<PathBuf>> {
+    let leaf = path.file_name().and_then(|name| name.to_str());
+    let base_depot = if leaf.is_some_and(|name| name == DESTINY2_BASE_DEPOT_ID) {
+        path.to_path_buf()
+    } else if leaf.is_some_and(|name| name.eq_ignore_ascii_case("depots")) {
+        path.join(DESTINY2_BASE_DEPOT_ID)
+    } else {
+        path.join("depots").join(DESTINY2_BASE_DEPOT_ID)
+    };
+
+    if !base_depot.is_dir() {
+        return Ok(None);
+    }
+
+    let mut candidates = std::fs::read_dir(&base_depot)
+        .with_context(|| format!("Reading DepotDownloader depot {}", base_depot.display()))?
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|install| install.join("packages").is_dir())
+        .collect::<Vec<_>>();
+
+    // DepotDownloader can retain more than one manifest. Its current install is
+    // the most recently updated directory; use the path as a stable tie-breaker.
+    candidates.sort_by(|a, b| {
+        let modified = |path: &Path| {
+            path.metadata()
+                .and_then(|metadata| metadata.modified())
+                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+        };
+        modified(b).cmp(&modified(a)).then_with(|| b.cmp(a))
+    });
+
+    Ok(candidates
+        .into_iter()
+        .next()
+        .map(|install| install.join("packages")))
 }
 
 fn normalize_packages_dir(path: &Path) -> anyhow::Result<PathBuf> {
@@ -143,7 +202,27 @@ fn normalize_packages_dir(path: &Path) -> anyhow::Result<PathBuf> {
     if !path.is_dir() {
         anyhow::bail!("Packages path is not a directory: {}", path.display());
     }
+    if !directory_contains_packages(&path)? {
+        anyhow::bail!("No .pkg files were found in packages directory: {}", path.display());
+    }
     Ok(path)
+}
+
+fn directory_contains_packages(path: &Path) -> anyhow::Result<bool> {
+    if !path.is_dir() {
+        return Ok(false);
+    }
+
+    Ok(std::fs::read_dir(path)
+        .with_context(|| format!("Reading package source {}", path.display()))?
+        .filter_map(Result::ok)
+        .any(|entry| {
+            entry
+                .path()
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("pkg"))
+        }))
 }
 
 fn show_alert(title: &str, text: &str) {
@@ -181,5 +260,26 @@ mod tests {
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name.eq_ignore_ascii_case("packages"))
         );
+    }
+
+    #[test]
+    fn depotdownloader_root_resolves_base_depot_packages() {
+        let root = std::env::temp_dir().join(format!(
+            "alkahest-depot-source-test-{}-{}",
+            std::process::id(),
+            fastrand::u64(..)
+        ));
+        let packages = root
+            .join("depots")
+            .join(DESTINY2_BASE_DEPOT_ID)
+            .join("24238629")
+            .join("packages");
+        std::fs::create_dir_all(&packages).unwrap();
+        std::fs::write(packages.join("w64_test_0000_0.pkg"), []).unwrap();
+
+        let resolved = normalize_picker_selection(&root).unwrap();
+        assert_eq!(resolved, std::fs::canonicalize(&packages).unwrap());
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 }
