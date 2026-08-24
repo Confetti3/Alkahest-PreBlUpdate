@@ -19,6 +19,7 @@ keys.txt
 /misc
 /.cargo
 /dist
+/artifacts/
 /Media
 
 /profile.json.gz

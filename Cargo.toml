@@ -4,7 +4,7 @@ version = "0.7.0-rc.2"
 edition = "2024"
 rust-version = "1.89"
 license = "GPL-3.0-only"
-repository = "https://github.com/Confetti3/Alkahest-Sunrise"
+repository = "https://github.com/Confetti3/Alkahest-PreBlUpdate"
 description = "Desktop inspector and renderer for user-supplied Destiny 2 Shadowkeep package corpora"
 default-run = "alkahest-prebl"
 
