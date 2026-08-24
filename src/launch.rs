@@ -152,7 +152,8 @@ fn normalize_client_or_download_root(path: &Path) -> anyhow::Result<PathBuf> {
     }
 
     anyhow::bail!(
-        "No Destiny 2 packages were found under {}. Select a client root, its packages folder, or a DepotDownloader root containing depots\\{}\\<install>\\packages.",
+        "No Destiny 2 packages were found under {}. Select a client root, its packages folder, or \
+         a DepotDownloader root containing depots\\{}\\<install>\\packages.",
         path.display(),
         DESTINY2_BASE_DEPOT_ID
     )
@@ -203,7 +204,10 @@ fn normalize_packages_dir(path: &Path) -> anyhow::Result<PathBuf> {
         anyhow::bail!("Packages path is not a directory: {}", path.display());
     }
     if !directory_contains_packages(&path)? {
-        anyhow::bail!("No .pkg files were found in packages directory: {}", path.display());
+        anyhow::bail!(
+            "No .pkg files were found in packages directory: {}",
+            path.display()
+        );
     }
     Ok(path)
 }
